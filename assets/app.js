@@ -399,6 +399,7 @@ if (collectionForm) {
     const amountInput = collectionForm.querySelector('[data-collection-amount]');
     const balanceDisplay = collectionForm.querySelector('[data-collection-balance]');
     const preview = collectionForm.querySelector('[data-collection-preview]');
+    const collectionLabel = collectionForm.dataset.collectionLabel || 'invoice';
 
     const money = (value) => Number.isFinite(value) ? value.toFixed(2) : '0.00';
 
@@ -409,7 +410,7 @@ if (collectionForm) {
         const remaining = Math.max(0, balance - amount);
 
         if (balanceDisplay) {
-            balanceDisplay.textContent = selected?.value ? money(balance) : 'Choose invoice';
+            balanceDisplay.textContent = selected?.value ? money(balance) : `Choose ${collectionLabel}`;
         }
 
         if (!preview) {
@@ -417,12 +418,12 @@ if (collectionForm) {
         }
 
         if (!selected?.value) {
-            preview.textContent = 'Select an invoice to preview the remaining balance.';
+            preview.textContent = `Select a ${collectionLabel} to preview the remaining balance.`;
             return;
         }
 
         preview.textContent = amount > balance
-            ? 'Payment is higher than the invoice balance and cannot be saved.'
+            ? `Payment is higher than the ${collectionLabel} balance and cannot be saved.`
             : `Remaining balance after payment: ${money(remaining)}.`;
     };
 

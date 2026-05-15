@@ -1,6 +1,7 @@
 <?php
 /** @var ?PDO $pdo */
 /** @var bool $dbReady */
+/** @var array $config */
 
 $search = trim((string) ($_GET['product_search'] ?? ''));
 $statusFilter = (string) ($_GET['product_status'] ?? 'active');
@@ -69,6 +70,7 @@ if ($dbReady && $pdo !== null) {
 }
 
 $formTitle = $editingProduct === null ? 'Add Product' : 'Edit Product';
+$showProductForm = $editingProduct !== null || (string) ($_GET['form'] ?? '') === 'product';
 ?>
 
 <div class="page-heading">
@@ -76,57 +78,35 @@ $formTitle = $editingProduct === null ? 'Add Product' : 'Edit Product';
         <p class="eyebrow">Inventory control</p>
         <h1>Products</h1>
     </div>
-    <a class="top-action" href="#product-form">
-        <i data-lucide="package-plus"></i>
-        Add Product
-    </a>
+    <?php if ($showProductForm): ?>
+        <a class="top-action" href="<?php echo e(app_url('?page=products')); ?>">
+            <i data-lucide="arrow-left"></i>
+            Product List
+        </a>
+    <?php else: ?>
+        <a class="top-action" href="<?php echo e(app_url('?page=products&form=product#product-form')); ?>">
+            <i data-lucide="package-plus"></i>
+            Add Product
+        </a>
+    <?php endif; ?>
 </div>
 
-<section class="stats-grid compact-stats" aria-label="Product summary">
-    <article class="stat-card">
-        <div>
-            <span>Active Products</span>
-            <strong><?php echo (int) $summary['products']; ?></strong>
-        </div>
-        <div class="stat-icon"><i data-lucide="package-search"></i></div>
-        <small>Available in catalog</small>
-    </article>
-    <article class="stat-card">
-        <div>
-            <span>Low Stock</span>
-            <strong><?php echo (int) $summary['low_stock']; ?></strong>
-        </div>
-        <div class="stat-icon"><i data-lucide="triangle-alert"></i></div>
-        <small>At or below reorder level</small>
-    </article>
-    <article class="stat-card">
-        <div>
-            <span>Stock Units</span>
-            <strong><?php echo (int) $summary['stock_units']; ?></strong>
-        </div>
-        <div class="stat-icon"><i data-lucide="boxes"></i></div>
-        <small>Total quantity on hand</small>
-    </article>
-    <article class="stat-card">
-        <div>
-            <span>Stock Value</span>
-            <strong><?php echo e(format_money($summary['stock_value'])); ?></strong>
-        </div>
-        <div class="stat-icon"><i data-lucide="badge-dollar-sign"></i></div>
-        <small>Cost value on hand</small>
-    </article>
-</section>
-
-<section class="product-layout">
-    <article class="panel form-panel" id="product-form">
+<?php if ($showProductForm): ?>
+<section class="product-form-window" id="product-form">
+    <article class="panel form-panel">
         <div class="panel-header">
             <div>
                 <p class="panel-label">Product Setup</p>
                 <h2><?php echo e($formTitle); ?></h2>
             </div>
-            <?php if ($editingProduct !== null): ?>
-                <a class="muted-link" href="<?php echo e(app_url('?page=products')); ?>">Cancel edit</a>
-            <?php endif; ?>
+            <div class="modal-actions">
+                <?php if ($editingProduct !== null): ?>
+                    <a class="muted-link" href="<?php echo e(app_url('?page=products&form=product#product-form')); ?>">New product</a>
+                <?php endif; ?>
+                <a class="icon-button" href="<?php echo e(app_url('?page=products')); ?>" aria-label="Close product form">
+                    <i data-lucide="x"></i>
+                </a>
+            </div>
         </div>
 
         <?php if (! $dbReady): ?>
@@ -214,7 +194,7 @@ $formTitle = $editingProduct === null ? 'Add Product' : 'Edit Product';
 
                 <label class="field">
                     <span>Reorder Level</span>
-                    <input type="number" name="reorder_level" value="<?php echo e($editingProduct['reorder_level'] ?? '0'); ?>" min="0" step="1">
+                    <input type="number" name="reorder_level" value="<?php echo e($editingProduct['reorder_level'] ?? ($config['default_reorder_level'] ?? '0')); ?>" min="0" step="1">
                 </label>
 
                 <?php if ($editingProduct === null): ?>
@@ -230,6 +210,7 @@ $formTitle = $editingProduct === null ? 'Add Product' : 'Edit Product';
                 </label>
 
                 <div class="form-actions span-2">
+                    <a class="ghost-button" href="<?php echo e(app_url('?page=products')); ?>">Cancel</a>
                     <button class="top-action" type="submit">
                         <i data-lucide="save"></i>
                         Save Product
@@ -238,7 +219,44 @@ $formTitle = $editingProduct === null ? 'Add Product' : 'Edit Product';
             </form>
         <?php endif; ?>
     </article>
+</section>
+<?php else: ?>
+<section class="stats-grid compact-stats" aria-label="Product summary">
+    <article class="stat-card">
+        <div>
+            <span>Active Products</span>
+            <strong><?php echo (int) $summary['products']; ?></strong>
+        </div>
+        <div class="stat-icon"><i data-lucide="package-search"></i></div>
+        <small>Available in catalog</small>
+    </article>
+    <article class="stat-card">
+        <div>
+            <span>Low Stock</span>
+            <strong><?php echo (int) $summary['low_stock']; ?></strong>
+        </div>
+        <div class="stat-icon"><i data-lucide="triangle-alert"></i></div>
+        <small>At or below reorder level</small>
+    </article>
+    <article class="stat-card">
+        <div>
+            <span>Stock Units</span>
+            <strong><?php echo (int) $summary['stock_units']; ?></strong>
+        </div>
+        <div class="stat-icon"><i data-lucide="boxes"></i></div>
+        <small>Total quantity on hand</small>
+    </article>
+    <article class="stat-card">
+        <div>
+            <span>Stock Value</span>
+            <strong><?php echo e(format_money($summary['stock_value'])); ?></strong>
+        </div>
+        <div class="stat-icon"><i data-lucide="badge-dollar-sign"></i></div>
+        <small>Cost value on hand</small>
+    </article>
+</section>
 
+<section class="product-layout product-catalog-layout">
     <article class="panel table-panel">
         <div class="panel-header">
             <div>
@@ -300,7 +318,7 @@ $formTitle = $editingProduct === null ? 'Add Product' : 'Edit Product';
                             <td><span class="status status-<?php echo e($product['status']); ?>"><?php echo e(ucfirst((string) $product['status'])); ?></span></td>
                             <td>
                                 <div class="table-actions">
-                                    <a class="icon-button" href="<?php echo e(app_url('?page=products&edit=' . (int) $product['id'])); ?>" aria-label="Edit product">
+                                    <a class="icon-button" href="<?php echo e(app_url('?page=products&edit=' . (int) $product['id'] . '#product-form')); ?>" aria-label="Edit product">
                                         <i data-lucide="pencil"></i>
                                     </a>
                                     <?php if ($product['status'] === 'active'): ?>
@@ -321,3 +339,4 @@ $formTitle = $editingProduct === null ? 'Add Product' : 'Edit Product';
         </div>
     </article>
 </section>
+<?php endif; ?>

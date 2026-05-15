@@ -98,6 +98,7 @@ try {
 
     $pdo->commit();
 
+    app_log_activity($pdo, $currentUser, 'payment_collect', 'Collected ' . format_money($amount) . ' for invoice ' . $sale['invoice_no'] . '.');
     set_flash('success', 'Payment collected for invoice ' . $sale['invoice_no'] . '.');
     redirect('?page=credit-sales');
 } catch (Throwable $exception) {

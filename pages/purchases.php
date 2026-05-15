@@ -87,6 +87,10 @@ foreach ($products as $product) {
         <i data-lucide="truck"></i>
         Receive Stock
     </a>
+    <a class="top-action" href="<?php echo e(app_url('?page=supplier-credit')); ?>">
+        <i data-lucide="hand-coins"></i>
+        Supplier Credit
+    </a>
 </div>
 
 <section class="stats-grid compact-stats" aria-label="Purchase summary">
@@ -255,12 +259,13 @@ foreach ($products as $product) {
                         <th>Paid</th>
                         <th>Balance</th>
                         <th>Status</th>
+                        <th>Action</th>
                     </tr>
                 </thead>
                 <tbody>
                     <?php if ($purchases === []): ?>
                         <tr>
-                            <td colspan="9">No purchases recorded yet.</td>
+                            <td colspan="10">No purchases recorded yet.</td>
                         </tr>
                     <?php endif; ?>
 
@@ -275,7 +280,16 @@ foreach ($products as $product) {
                             <td><?php echo e(format_money($purchase['total'])); ?></td>
                             <td><?php echo e(format_money($purchase['paid'])); ?></td>
                             <td class="<?php echo $balance > 0 ? 'text-danger' : ''; ?>"><?php echo e(format_money($balance)); ?></td>
-                            <td><span class="status status-active"><?php echo e(ucfirst((string) $purchase['status'])); ?></span></td>
+                            <td><span class="status <?php echo e(purchase_payment_status_class((string) $purchase['status'], $balance)); ?>"><?php echo e($balance > 0 ? ucfirst((string) $purchase['status']) : 'Closed'); ?></span></td>
+                            <td>
+                                <?php if ($balance > 0): ?>
+                                    <a class="icon-button" href="<?php echo e(app_url('?page=supplier-credit&collect=' . (int) $purchase['id'] . '#supplier-payment-form')); ?>" aria-label="Pay supplier">
+                                        <i data-lucide="hand-coins"></i>
+                                    </a>
+                                <?php else: ?>
+                                    <span class="muted-link">Closed</span>
+                                <?php endif; ?>
+                            </td>
                         </tr>
                     <?php endforeach; ?>
                 </tbody>
@@ -313,4 +327,17 @@ function render_purchase_row(string $productOptions): void
         </button>
     </div>
     <?php
+}
+
+function purchase_payment_status_class(string $status, float $balance): string
+{
+    if ($balance <= 0) {
+        return 'status-active';
+    }
+
+    return match ($status) {
+        'partial' => 'status-warranty',
+        'credit' => 'status-pending',
+        default => 'status-inactive',
+    };
 }

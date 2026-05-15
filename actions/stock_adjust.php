@@ -117,6 +117,7 @@ try {
 
     $pdo->commit();
 
+    app_log_activity($pdo, $currentUser, 'stock_adjust', 'Adjusted stock for ' . $product['name'] . ' by ' . $quantityChange . ' unit(s).');
     set_flash('success', 'Stock adjusted successfully.');
     redirect('?page=stock');
 } catch (Throwable $exception) {

@@ -7,12 +7,22 @@ USE stock_management;
 CREATE TABLE IF NOT EXISTS users (
     id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     full_name VARCHAR(120) NOT NULL,
+    email VARCHAR(160) NULL UNIQUE,
     username VARCHAR(80) NOT NULL UNIQUE,
     password_hash VARCHAR(255) NOT NULL,
     role VARCHAR(40) NOT NULL DEFAULT 'owner',
     status VARCHAR(20) NOT NULL DEFAULT 'active',
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS user_permissions (
+    user_id INT UNSIGNED NOT NULL,
+    permission_key VARCHAR(80) NOT NULL,
+    allowed TINYINT(1) NOT NULL DEFAULT 1,
+    updated_at TIMESTAMP NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (user_id, permission_key),
+    CONSTRAINT fk_user_permissions_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS categories (
@@ -142,6 +152,40 @@ CREATE TABLE IF NOT EXISTS purchase_items (
     CONSTRAINT fk_purchase_items_product FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS supplier_payments (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    purchase_id BIGINT UNSIGNED NOT NULL,
+    supplier_id INT UNSIGNED NULL,
+    payment_date DATETIME NOT NULL,
+    amount DECIMAL(12,2) NOT NULL,
+    payment_method VARCHAR(40) NOT NULL DEFAULT 'cash',
+    notes VARCHAR(255) NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_supplier_payments_purchase FOREIGN KEY (purchase_id) REFERENCES purchases(id) ON DELETE CASCADE,
+    CONSTRAINT fk_supplier_payments_supplier FOREIGN KEY (supplier_id) REFERENCES suppliers(id) ON DELETE SET NULL,
+    INDEX idx_supplier_payments_date (payment_date),
+    INDEX idx_supplier_payments_supplier (supplier_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS expenses (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    expense_date DATE NOT NULL,
+    category VARCHAR(80) NOT NULL,
+    vendor VARCHAR(160) NULL,
+    amount DECIMAL(12,2) NOT NULL,
+    payment_method VARCHAR(40) NOT NULL DEFAULT 'cash',
+    reference_no VARCHAR(100) NULL,
+    notes TEXT NULL,
+    status VARCHAR(30) NOT NULL DEFAULT 'active',
+    created_by INT UNSIGNED NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+    CONSTRAINT fk_expenses_user FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
+    INDEX idx_expenses_date (expense_date),
+    INDEX idx_expenses_category (category),
+    INDEX idx_expenses_status (status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS sales (
     id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     customer_id INT UNSIGNED NULL,
@@ -240,7 +284,9 @@ CREATE TABLE IF NOT EXISTS warranty_claims (
     CONSTRAINT fk_warranty_customer FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE SET NULL,
     CONSTRAINT fk_warranty_product FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE RESTRICT,
     CONSTRAINT fk_warranty_serial FOREIGN KEY (serial_id) REFERENCES product_serials(id) ON DELETE SET NULL,
-    CONSTRAINT fk_warranty_sale FOREIGN KEY (sale_id) REFERENCES sales(id) ON DELETE SET NULL
+    CONSTRAINT fk_warranty_sale FOREIGN KEY (sale_id) REFERENCES sales(id) ON DELETE SET NULL,
+    INDEX idx_warranty_claims_status (status),
+    INDEX idx_warranty_claims_received_date (received_date)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS settings (
@@ -256,11 +302,10 @@ CREATE TABLE IF NOT EXISTS activity_logs (
     description VARCHAR(255) NOT NULL,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT fk_activity_logs_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
+    INDEX idx_activity_logs_user (user_id),
+    INDEX idx_activity_logs_action (action),
     INDEX idx_activity_logs_created_at (created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
-INSERT IGNORE INTO users (id, full_name, username, password_hash, role, status) VALUES
-(1, 'System Owner', 'admin', '$2y$10$ELA.2Sj4yoxtQEP5lZjNJudvmwd4yld63U1gG/P0ChKqomAPlNBoG', 'owner', 'active');
 
 INSERT IGNORE INTO categories (id, name, description) VALUES
 (1, 'Mouse', 'Computer mouse and pointing devices'),
@@ -285,5 +330,15 @@ INSERT IGNORE INTO suppliers (id, name, contact_person, phone) VALUES
 
 INSERT IGNORE INTO settings (setting_key, setting_value) VALUES
 ('shop_name', 'Tech Accessories Hub'),
+('shop_legal_name', ''),
+('shop_phone', ''),
+('shop_email', ''),
+('shop_address', ''),
+('shop_website', ''),
 ('currency', 'Rs.'),
-('default_tax_percent', '0');
+('timezone', 'Asia/Colombo'),
+('default_tax_percent', '0'),
+('default_reorder_level', '5'),
+('invoice_footer', 'Thank you for your business.'),
+('return_policy', 'Returns are accepted with invoice and original condition.'),
+('warranty_policy', 'Warranty claims require invoice and item inspection.');

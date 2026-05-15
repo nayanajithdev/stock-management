@@ -158,6 +158,7 @@ try {
 
     $pdo->commit();
 
+    app_log_activity($pdo, $currentUser, 'return_create', 'Saved return ' . $returnNo . ' for invoice ' . $saleItem['invoice_no'] . '.');
     set_flash('success', 'Return saved as ' . $returnNo . '.');
     redirect('?page=returns');
 } catch (Throwable $exception) {

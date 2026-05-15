@@ -5,7 +5,6 @@
             <span class="brand-kicker">Computer Shop</span>
             <strong><?php echo e($config['shop_name']); ?></strong>
         </div>
-        <i data-lucide="chevrons-up-down"></i>
     </div>
 
     <nav class="side-nav" aria-label="Primary">
@@ -26,4 +25,16 @@
             </section>
         <?php endforeach; ?>
     </nav>
+
+    <?php if (isset($currentUser) && is_array($currentUser)): ?>
+        <div class="sidebar-user">
+            <div>
+                <strong><?php echo e($currentUser['full_name']); ?></strong>
+                <span><?php echo e($currentUser['role_label']); ?></span>
+            </div>
+            <a class="icon-button" href="<?php echo e(app_url('actions/logout.php')); ?>" aria-label="Logout">
+                <i data-lucide="log-out"></i>
+            </a>
+        </div>
+    <?php endif; ?>
 </aside>

@@ -231,6 +231,7 @@ try {
 
     $pdo->commit();
 
+    app_log_activity($pdo, $currentUser, 'sale_create', 'Created invoice ' . $invoiceNo . ' for ' . format_money($total) . '.');
     set_flash('success', 'Sale saved as invoice ' . $invoiceNo . '.');
     redirect('?page=sales');
 } catch (Throwable $exception) {

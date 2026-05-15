@@ -1,0 +1,36 @@
+# Local machine config
+config/database.local.php
+.env
+.env.*
+!.env.example
+
+# Logs and runtime files
+*.log
+logs/
+tmp/
+temp/
+
+# Database dumps and backups
+*.sql.gz
+*.dump
+*.bak
+*.backup
+backups/
+backup/
+
+# Packaged exports
+*.zip
+*.rar
+*.7z
+*.tar
+*.tar.gz
+
+# Dependencies, if added later
+vendor/
+node_modules/
+
+# OS and editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

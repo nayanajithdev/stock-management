@@ -164,6 +164,7 @@ try {
         }
     }
 
+    app_log_activity($pdo, $currentUser, strtolower($label) . '_save', 'Saved ' . strtolower($label) . ' ' . $name . '.');
     set_flash('success', $label . ' saved successfully.');
     redirect('?page=inventory-setup&section=' . $redirectSection);
 } catch (PDOException $exception) {

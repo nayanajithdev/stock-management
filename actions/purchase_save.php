@@ -81,6 +81,13 @@ if ($paid > $total) {
     redirect('?page=purchases');
 }
 
+$status = 'paid';
+if ($paid <= 0.0) {
+    $status = 'credit';
+} elseif ($paid < $total) {
+    $status = 'partial';
+}
+
 try {
     $pdo->beginTransaction();
 
@@ -88,7 +95,7 @@ try {
         'INSERT INTO purchases
             (supplier_id, invoice_no, purchase_date, subtotal, discount, total, paid, status)
          VALUES
-            (:supplier_id, :invoice_no, :purchase_date, :subtotal, :discount, :total, :paid, "received")'
+            (:supplier_id, :invoice_no, :purchase_date, :subtotal, :discount, :total, :paid, :status)'
     );
     $purchaseStatement->execute([
         'supplier_id' => $supplierId,
@@ -98,6 +105,7 @@ try {
         'discount' => $discount,
         'total' => $total,
         'paid' => $paid,
+        'status' => $status,
     ]);
     $purchaseId = (int) $pdo->lastInsertId();
 
@@ -157,6 +165,7 @@ try {
 
     $pdo->commit();
 
+    app_log_activity($pdo, $currentUser, 'purchase_create', 'Saved purchase ' . ($invoiceNo ?? '#' . $purchaseId) . ' for ' . format_money($total) . '.');
     set_flash('success', 'Purchase saved and stock updated.');
     redirect('?page=purchases');
 } catch (Throwable $exception) {

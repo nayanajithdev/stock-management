@@ -18,7 +18,7 @@ function app_base_path(): string
         }
     }
 
-    return $base === '/' ? '' : $base;
+    return in_array($base, ['/', '.', '\\'], true) ? '' : $base;
 }
 
 function app_url(string $path = ''): string

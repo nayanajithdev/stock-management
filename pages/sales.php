@@ -285,12 +285,13 @@ foreach ($products as $product) {
                         <th>Paid</th>
                         <th>Balance</th>
                         <th>Status</th>
+                        <th>Action</th>
                     </tr>
                 </thead>
                 <tbody>
                     <?php if ($sales === []): ?>
                         <tr>
-                            <td colspan="9">No sales recorded yet.</td>
+                            <td colspan="10">No sales recorded yet.</td>
                         </tr>
                     <?php endif; ?>
 
@@ -298,7 +299,9 @@ foreach ($products as $product) {
                         <?php $balance = (float) $sale['total'] - (float) $sale['paid']; ?>
                         <tr>
                             <td><?php echo e(date('Y-m-d H:i', strtotime((string) $sale['sale_date']))); ?></td>
-                            <td><?php echo e($sale['invoice_no']); ?></td>
+                            <td>
+                                <a class="table-title" href="<?php echo e(app_url('?page=sale-view&id=' . (int) $sale['id'])); ?>"><?php echo e($sale['invoice_no']); ?></a>
+                            </td>
                             <td>
                                 <strong class="table-title"><?php echo e($sale['customer_name'] ?: 'Walk-in Customer'); ?></strong>
                                 <span class="table-subtitle"><?php echo e($sale['customer_phone'] ?? ''); ?></span>
@@ -309,6 +312,11 @@ foreach ($products as $product) {
                             <td><?php echo e(format_money($sale['paid'])); ?></td>
                             <td class="<?php echo $balance > 0 ? 'text-danger' : ''; ?>"><?php echo e(format_money($balance)); ?></td>
                             <td><span class="status <?php echo e(sale_status_class((string) $sale['status'])); ?>"><?php echo e(ucfirst((string) $sale['status'])); ?></span></td>
+                            <td>
+                                <a class="icon-button" href="<?php echo e(app_url('?page=sale-view&id=' . (int) $sale['id'])); ?>" aria-label="View invoice">
+                                    <i data-lucide="file-text"></i>
+                                </a>
+                            </td>
                         </tr>
                     <?php endforeach; ?>
                 </tbody>

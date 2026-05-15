@@ -21,18 +21,21 @@ $phone = nullable_string((string) ($_POST['phone'] ?? ''));
 $email = nullable_string((string) ($_POST['email'] ?? ''));
 $address = nullable_string((string) ($_POST['address'] ?? ''));
 $creditLimit = max(0.0, input_decimal('credit_limit'));
+$formRedirect = '?page=customers' . ($customerId !== null ? '&edit=' . $customerId : '&form=customer');
 
 if ($name === '') {
     set_flash('error', 'Customer name is required.');
-    redirect('?page=customers' . ($customerId !== null ? '&edit=' . $customerId : ''));
+    redirect($formRedirect);
 }
 
 if ($email !== null && filter_var($email, FILTER_VALIDATE_EMAIL) === false) {
     set_flash('error', 'Customer email is not valid.');
-    redirect('?page=customers' . ($customerId !== null ? '&edit=' . $customerId : ''));
+    redirect($formRedirect);
 }
 
 try {
+    $logAction = $customerId !== null ? 'customer_update' : 'customer_create';
+
     if ($customerId !== null) {
         $statement = $pdo->prepare(
             'UPDATE customers
@@ -63,6 +66,7 @@ try {
         }
 
         if (is_array($existingCustomer)) {
+            $logAction = 'customer_update';
             $statement = $pdo->prepare(
                 'UPDATE customers
                  SET name = :name,
@@ -95,9 +99,10 @@ try {
         }
     }
 
+    app_log_activity($pdo, $currentUser, $logAction, 'Saved customer ' . $name . '.');
     set_flash('success', 'Customer saved successfully.');
     redirect('?page=customers');
 } catch (PDOException $exception) {
     set_flash('error', 'Customer could not be saved.');
-    redirect('?page=customers' . ($customerId !== null ? '&edit=' . $customerId : ''));
+    redirect($formRedirect);
 }

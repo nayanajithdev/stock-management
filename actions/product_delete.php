@@ -25,5 +25,6 @@ if ($productId <= 0) {
 $statement = $pdo->prepare('UPDATE products SET status = "inactive", updated_at = CURRENT_TIMESTAMP WHERE id = :id');
 $statement->execute(['id' => $productId]);
 
+app_log_activity($pdo, $currentUser, 'product_archive', 'Archived product ID ' . $productId . '.');
 set_flash('success', 'Product archived. Existing stock history was kept.');
 redirect('?page=products');

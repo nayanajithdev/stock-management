@@ -30,15 +30,16 @@ $wholesalePrice = input_decimal('wholesale_price');
 $warrantyMonths = input_int('warranty_months');
 $reorderLevel = input_int('reorder_level');
 $openingStock = input_int('opening_stock');
+$formRedirect = '?page=products' . ($productId !== null ? '&edit=' . $productId : '&form=product');
 
 if ($name === '' || $sku === '') {
     set_flash('error', 'Product name and SKU are required.');
-    redirect('?page=products' . ($productId !== null ? '&edit=' . $productId : ''));
+    redirect($formRedirect);
 }
 
 if ($sellingPrice < $costPrice) {
     set_flash('error', 'Selling price should be equal to or higher than cost price.');
-    redirect('?page=products' . ($productId !== null ? '&edit=' . $productId : ''));
+    redirect($formRedirect);
 }
 
 try {
@@ -79,6 +80,7 @@ try {
             'id' => $productId,
         ]);
 
+        app_log_activity($pdo, $currentUser, 'product_update', 'Updated product ' . $sku . ' - ' . $name . '.');
         set_flash('success', 'Product updated successfully.');
         redirect('?page=products');
     }
@@ -128,6 +130,7 @@ try {
 
     $pdo->commit();
 
+    app_log_activity($pdo, $currentUser, 'product_create', 'Created product ' . $sku . ' - ' . $name . '.');
     set_flash('success', 'Product created successfully.');
     redirect('?page=products');
 } catch (PDOException $exception) {
@@ -141,5 +144,5 @@ try {
         set_flash('error', 'Product could not be saved. Please check the database and try again.');
     }
 
-    redirect('?page=products' . ($productId !== null ? '&edit=' . $productId : ''));
+    redirect($formRedirect);
 }

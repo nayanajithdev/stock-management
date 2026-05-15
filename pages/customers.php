@@ -65,6 +65,8 @@ if ($dbReady && $pdo !== null) {
         $editingCustomer = $editStatement->fetch() ?: null;
     }
 }
+
+$showCustomerForm = $editingCustomer !== null || (string) ($_GET['form'] ?? '') === 'customer';
 ?>
 
 <div class="page-heading">
@@ -72,12 +74,76 @@ if ($dbReady && $pdo !== null) {
         <p class="eyebrow">Customer accounts</p>
         <h1>Customers</h1>
     </div>
-    <a class="top-action" href="#customer-form">
-        <i data-lucide="user-plus"></i>
-        Add Customer
-    </a>
+    <?php if ($showCustomerForm): ?>
+        <a class="top-action" href="<?php echo e(app_url('?page=customers')); ?>">
+            <i data-lucide="arrow-left"></i>
+            Customer List
+        </a>
+    <?php else: ?>
+        <a class="top-action" href="<?php echo e(app_url('?page=customers&form=customer#customer-form')); ?>">
+            <i data-lucide="user-plus"></i>
+            Add Customer
+        </a>
+    <?php endif; ?>
 </div>
 
+<?php if ($showCustomerForm): ?>
+<section class="customer-form-window" id="customer-form">
+    <article class="panel form-panel">
+        <div class="panel-header">
+            <div>
+                <p class="panel-label">Customer Profile</p>
+                <h2><?php echo $editingCustomer === null ? 'Add Customer' : 'Edit Customer'; ?></h2>
+            </div>
+            <div class="modal-actions">
+                <?php if ($editingCustomer !== null): ?>
+                    <a class="muted-link" href="<?php echo e(app_url('?page=customers&form=customer#customer-form')); ?>">New customer</a>
+                <?php endif; ?>
+                <a class="icon-button" href="<?php echo e(app_url('?page=customers')); ?>" aria-label="Close customer form">
+                    <i data-lucide="x"></i>
+                </a>
+            </div>
+        </div>
+
+        <?php if (! $dbReady): ?>
+            <p class="empty-state">Import <code>database/schema.sql</code> before saving customers.</p>
+        <?php else: ?>
+            <form class="customer-form" method="post" action="<?php echo e(app_url('actions/customer_save.php')); ?>">
+                <?php echo csrf_field(); ?>
+                <input type="hidden" name="customer_id" value="<?php echo e($editingCustomer['id'] ?? ''); ?>">
+
+                <label class="field">
+                    <span>Name</span>
+                    <input type="text" name="name" value="<?php echo e($editingCustomer['name'] ?? ''); ?>" placeholder="Customer name" required autofocus>
+                </label>
+                <label class="field">
+                    <span>Phone</span>
+                    <input type="text" name="phone" value="<?php echo e($editingCustomer['phone'] ?? ''); ?>" placeholder="0770000000">
+                </label>
+                <label class="field">
+                    <span>Email</span>
+                    <input type="email" name="email" value="<?php echo e($editingCustomer['email'] ?? ''); ?>" placeholder="customer@example.com">
+                </label>
+                <label class="field">
+                    <span>Credit Limit</span>
+                    <input type="number" name="credit_limit" value="<?php echo e($editingCustomer['credit_limit'] ?? '0.00'); ?>" min="0" step="0.01">
+                </label>
+                <label class="field span-2">
+                    <span>Address</span>
+                    <textarea name="address" rows="4" placeholder="Customer address"><?php echo e($editingCustomer['address'] ?? ''); ?></textarea>
+                </label>
+                <div class="form-actions span-2">
+                    <a class="ghost-button" href="<?php echo e(app_url('?page=customers')); ?>">Cancel</a>
+                    <button class="top-action" type="submit">
+                        <i data-lucide="save"></i>
+                        Save Customer
+                    </button>
+                </div>
+            </form>
+        <?php endif; ?>
+    </article>
+</section>
+<?php else: ?>
 <section class="stats-grid compact-stats" aria-label="Customer summary">
     <article class="stat-card">
         <div>
@@ -113,55 +179,7 @@ if ($dbReady && $pdo !== null) {
     </article>
 </section>
 
-<section class="customer-layout">
-    <article class="panel form-panel" id="customer-form">
-        <div class="panel-header">
-            <div>
-                <p class="panel-label">Customer Profile</p>
-                <h2><?php echo $editingCustomer === null ? 'Add Customer' : 'Edit Customer'; ?></h2>
-            </div>
-            <?php if ($editingCustomer !== null): ?>
-                <a class="muted-link" href="<?php echo e(app_url('?page=customers')); ?>">Cancel edit</a>
-            <?php endif; ?>
-        </div>
-
-        <?php if (! $dbReady): ?>
-            <p class="empty-state">Import <code>database/schema.sql</code> before saving customers.</p>
-        <?php else: ?>
-            <form class="product-form single-form" method="post" action="<?php echo e(app_url('actions/customer_save.php')); ?>">
-                <?php echo csrf_field(); ?>
-                <input type="hidden" name="customer_id" value="<?php echo e($editingCustomer['id'] ?? ''); ?>">
-
-                <label class="field">
-                    <span>Name</span>
-                    <input type="text" name="name" value="<?php echo e($editingCustomer['name'] ?? ''); ?>" placeholder="Customer name" required>
-                </label>
-                <label class="field">
-                    <span>Phone</span>
-                    <input type="text" name="phone" value="<?php echo e($editingCustomer['phone'] ?? ''); ?>" placeholder="0770000000">
-                </label>
-                <label class="field">
-                    <span>Email</span>
-                    <input type="email" name="email" value="<?php echo e($editingCustomer['email'] ?? ''); ?>" placeholder="customer@example.com">
-                </label>
-                <label class="field">
-                    <span>Credit Limit</span>
-                    <input type="number" name="credit_limit" value="<?php echo e($editingCustomer['credit_limit'] ?? '0.00'); ?>" min="0" step="0.01">
-                </label>
-                <label class="field">
-                    <span>Address</span>
-                    <textarea name="address" rows="4" placeholder="Customer address"><?php echo e($editingCustomer['address'] ?? ''); ?></textarea>
-                </label>
-                <div class="form-actions">
-                    <button class="top-action" type="submit">
-                        <i data-lucide="save"></i>
-                        Save Customer
-                    </button>
-                </div>
-            </form>
-        <?php endif; ?>
-    </article>
-
+<section class="customer-layout customer-ledger-layout">
     <article class="panel table-panel">
         <div class="panel-header">
             <div>
@@ -220,7 +238,7 @@ if ($dbReady && $pdo !== null) {
                             <td><span class="status status-<?php echo (int) $customer['is_active'] === 1 ? 'active' : 'inactive'; ?>"><?php echo (int) $customer['is_active'] === 1 ? 'Active' : 'Archived'; ?></span></td>
                             <td>
                                 <div class="table-actions">
-                                    <a class="icon-button" href="<?php echo e(app_url('?page=customers&edit=' . (int) $customer['id'])); ?>" aria-label="Edit customer">
+                                    <a class="icon-button" href="<?php echo e(app_url('?page=customers&edit=' . (int) $customer['id'] . '#customer-form')); ?>" aria-label="Edit customer">
                                         <i data-lucide="pencil"></i>
                                     </a>
                                     <a class="icon-button" href="<?php echo e(app_url('?page=credit-sales&q=' . rawurlencode((string) $customer['phone']))); ?>" aria-label="View credit sales">
@@ -244,3 +262,4 @@ if ($dbReady && $pdo !== null) {
         </div>
     </article>
 </section>
+<?php endif; ?>

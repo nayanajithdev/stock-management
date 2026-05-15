@@ -35,5 +35,6 @@ $redirectSection = $entityConfig[$entity]['redirect'];
 $statement = $pdo->prepare("UPDATE {$table} SET is_active = 0, updated_at = CURRENT_TIMESTAMP WHERE id = :id");
 $statement->execute(['id' => $id]);
 
+app_log_activity($pdo, $currentUser, strtolower($label) . '_archive', 'Archived ' . strtolower($label) . ' ID ' . $id . '.');
 set_flash('success', $label . ' archived successfully.');
 redirect('?page=inventory-setup&section=' . $redirectSection);

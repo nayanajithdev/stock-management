@@ -89,10 +89,6 @@ foreach ($products as $product) {
         <p class="eyebrow">Point of sale</p>
         <h1>Sales POS</h1>
     </div>
-    <a class="top-action" href="#sales-pos-form">
-        <i data-lucide="scan-barcode"></i>
-        New Invoice
-    </a>
 </div>
 
 <section class="stats-grid compact-stats" aria-label="Sales summary">

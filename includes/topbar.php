@@ -3,95 +3,38 @@
         <i data-lucide="menu"></i>
     </button>
 
-    <div class="breadcrumb">
-        <span>Dashboard</span>
-        <i data-lucide="chevron-right"></i>
-        <strong><?php echo e($pageTitle); ?></strong>
-    </div>
-
-    <form class="search-box" role="search" method="get" action="<?php echo e(app_url('')); ?>">
-        <i data-lucide="search"></i>
-        <input type="hidden" name="page" value="<?php echo e($currentPage); ?>">
+    <?php if (isset($currentUser) && is_array($currentUser)): ?>
         <?php
-        $searchName = $currentPage === 'products' ? 'product_search' : 'q';
-        $placeholder = match ($currentPage) {
-            'inventory-setup' => 'Search setup records from each table...',
-            'purchases' => 'Search invoice or supplier...',
-            'supplier-credit' => 'Search purchase invoice or supplier...',
-            'expenses' => 'Search expense, category, vendor...',
-            'stock' => 'Search stock movement, SKU, notes...',
-            'sales' => 'Search invoice, customer, phone...',
-            'sale-view' => 'Search invoices...',
-            'warranty' => 'Search claim, invoice, customer, product...',
-            'customers' => 'Search customer, phone, email...',
-            'credit-sales' => 'Search credit invoice or customer...',
-            'returns' => 'Search return, invoice, customer...',
-            'reports' => 'Search report tables...',
-            'users' => 'Search users, email, role...',
-            'settings' => 'Search settings...',
-            default => 'Search products, invoice, serial...',
-        };
+        $profileName = trim((string) ($currentUser['full_name'] ?? 'User'));
+        $profileRole = (string) ($currentUser['role_label'] ?? auth_role_label((string) ($currentUser['role'] ?? 'manager')));
+        $profileImage = trim((string) ($currentUser['profile_image'] ?? ''));
+        $profileImageUrl = $profileImage !== '' ? app_url($profileImage) : '';
+        $profileInitial = strtoupper(substr($profileName !== '' ? $profileName : 'User', 0, 1));
         ?>
-        <input
-            type="search"
-            name="<?php echo e($searchName); ?>"
-            value="<?php echo e((string) ($_GET[$searchName] ?? '')); ?>"
-            placeholder="<?php echo e($placeholder); ?>"
-            aria-label="Search"
-        >
-    </form>
+        <div class="topbar-account">
+            <span class="online-pill">Online</span>
 
-    <?php
-    $actionHref = match ($currentPage) {
-        'products' => '?page=products&form=product#product-form',
-        'inventory-setup' => '?page=products&form=product#product-form',
-        'purchases' => '?page=purchases#purchase-form',
-        'supplier-credit' => '?page=supplier-credit#supplier-payment-form',
-        'expenses' => '?page=expenses#expense-form',
-        'stock' => '?page=stock#stock-adjustment-form',
-        'sales' => '?page=sales#sales-pos-form',
-        'sale-view' => '?page=sales',
-        'warranty' => '?page=warranty#warranty-claim-form',
-        'customers' => '?page=customers&form=customer#customer-form',
-        'credit-sales' => '?page=credit-sales#payment-collection-form',
-        'returns' => '?page=returns#sales-return-form',
-        'reports' => '?page=reports#report-filters',
-        'users' => '?page=users&modal=user#user-form',
-        'settings' => '?page=settings#shop-settings-form',
-        default => '?page=inventory-setup',
-    };
-    $actionLabel = match ($currentPage) {
-        'products' => 'Add Product',
-        'inventory-setup' => 'New Product',
-        'purchases' => 'Receive Stock',
-        'supplier-credit' => 'Pay Supplier',
-        'expenses' => 'New Expense',
-        'stock' => 'Adjust Stock',
-        'sales' => 'New Invoice',
-        'sale-view' => 'Sales',
-        'warranty' => 'New Claim',
-        'customers' => 'Add Customer',
-        'credit-sales' => 'Collect Payment',
-        'returns' => 'New Return',
-        'reports' => 'Filters',
-        'users' => 'New Manager',
-        'settings' => 'Settings',
-        default => 'Setup',
-    };
-    $actionIcon = match ($currentPage) {
-        'reports' => 'sliders-horizontal',
-        'settings' => 'settings',
-        'sale-view' => 'arrow-left',
-        default => 'plus',
-    };
-    if ($currentPage === 'users' && ($currentUser['role'] ?? '') !== 'owner') {
-        $actionHref = '?page=users';
-        $actionLabel = 'Users';
-        $actionIcon = 'users';
-    }
-    ?>
-    <a class="top-action" href="<?php echo e(app_url($actionHref)); ?>">
-        <i data-lucide="<?php echo e($actionIcon); ?>"></i>
-        <?php echo e($actionLabel); ?>
-    </a>
+            <div class="user-menu" data-user-menu>
+                <button class="user-menu-toggle" type="button" aria-haspopup="true" aria-expanded="false" data-user-menu-toggle>
+                    <?php if ($profileImageUrl !== ''): ?>
+                        <img class="user-avatar" src="<?php echo e($profileImageUrl); ?>" alt="">
+                    <?php else: ?>
+                        <span class="user-avatar user-avatar-fallback"><?php echo e($profileInitial); ?></span>
+                    <?php endif; ?>
+                    <span class="user-menu-text">
+                        <strong><?php echo e($profileName); ?></strong>
+                        <small><?php echo e($profileRole); ?></small>
+                    </span>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-down-icon lucide-chevron-down" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+                </button>
+
+                <div class="user-menu-dropdown" role="menu">
+                    <a href="<?php echo e(app_url('?page=profile')); ?>" role="menuitem">Account</a>
+                    <a class="user-menu-logout" href="<?php echo e(app_url('actions/logout.php')); ?>" role="menuitem">Logout</a>
+                </div>
+            </div>
+
+            <span class="date-pill"><?php echo e(date('d M Y')); ?></span>
+        </div>
+    <?php endif; ?>
 </header>

@@ -10,6 +10,11 @@ logs/
 tmp/
 temp/
 
+# User-uploaded profile images
+uploads/profile-icons/*
+!uploads/profile-icons/.gitkeep
+!uploads/profile-icons/.htaccess
+
 # Database dumps and backups
 *.sql.gz
 *.dump

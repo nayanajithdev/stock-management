@@ -119,7 +119,6 @@ if ($dbReady && $pdo !== null) {
                 <p class="panel-label">Manual Adjustment</p>
                 <h2>Correct stock</h2>
             </div>
-            <a class="muted-link" href="<?php echo e(app_url('?page=purchases')); ?>">Use purchase for stock in</a>
         </div>
 
         <?php if (! $dbReady): ?>

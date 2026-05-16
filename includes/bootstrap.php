@@ -100,6 +100,7 @@ $menuSections = [
     ],
     'Settings' => [
         ['key' => 'settings', 'label' => 'Shop Settings', 'icon' => 'settings'],
+        ['key' => 'invoice-settings', 'label' => 'Invoice Settings', 'icon' => 'file-text'],
         ['key' => 'backup', 'label' => 'Backup', 'icon' => 'database-backup', 'disabled' => true],
     ],
 ];
@@ -194,6 +195,11 @@ $pages = [
         'description' => 'Manage owner and manager accounts',
         'view' => __DIR__ . '/../pages/users.php',
     ],
+    'profile' => [
+        'title' => 'Profile',
+        'description' => 'Manage your account details and password',
+        'view' => __DIR__ . '/../pages/profile.php',
+    ],
     'activity-logs' => [
         'title' => 'Activity Logs',
         'description' => 'Review user actions and system changes',
@@ -201,8 +207,13 @@ $pages = [
     ],
     'settings' => [
         'title' => 'Shop Settings',
-        'description' => 'Configure shop identity, invoice text, currency, and defaults',
+        'description' => 'Configure shop identity, currency, and system defaults',
         'view' => __DIR__ . '/../pages/settings.php',
+    ],
+    'invoice-settings' => [
+        'title' => 'Invoice Settings',
+        'description' => 'Configure invoice tax, footer, and policy text',
+        'view' => __DIR__ . '/../pages/invoice_settings.php',
     ],
 ];
 

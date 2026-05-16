@@ -116,7 +116,7 @@ $showProductForm = $editingProduct !== null || (string) ($_GET['form'] ?? '') ==
                 <?php echo csrf_field(); ?>
                 <input type="hidden" name="product_id" value="<?php echo e($editingProduct['id'] ?? ''); ?>">
 
-                <label class="field span-2">
+                <label class="field span-4">
                     <span>Product Name</span>
                     <input type="text" name="name" value="<?php echo e($editingProduct['name'] ?? ''); ?>" placeholder="Logitech M185 Wireless Mouse" required>
                 </label>
@@ -204,12 +204,12 @@ $showProductForm = $editingProduct !== null || (string) ($_GET['form'] ?? '') ==
                     </label>
                 <?php endif; ?>
 
-                <label class="field span-2">
+                <label class="field span-4">
                     <span>Description</span>
                     <textarea name="description" rows="3" placeholder="Optional product notes"><?php echo e($editingProduct['description'] ?? ''); ?></textarea>
                 </label>
 
-                <div class="form-actions span-2">
+                <div class="form-actions span-4">
                     <a class="ghost-button" href="<?php echo e(app_url('?page=products')); ?>">Cancel</a>
                     <button class="top-action" type="submit">
                         <i data-lucide="save"></i>

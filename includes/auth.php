@@ -16,6 +16,11 @@ function auth_users_have_email_column(PDO $pdo): bool
     return (int) $statement->fetchColumn() > 0;
 }
 
+function auth_users_have_profile_image_column(PDO $pdo): bool
+{
+    return app_column_exists($pdo, 'users', 'profile_image');
+}
+
 function auth_configured_owner_exists(PDO $pdo): bool
 {
     if (! auth_users_have_email_column($pdo)) {
@@ -41,8 +46,12 @@ function auth_current_user(PDO $pdo): ?array
         return null;
     }
 
+    $profileImageSelect = auth_users_have_profile_image_column($pdo)
+        ? 'profile_image'
+        : 'NULL AS profile_image';
+
     $statement = $pdo->prepare(
-        'SELECT id, full_name, email, username, role, status
+        'SELECT id, full_name, email, username, role, status, ' . $profileImageSelect . '
          FROM users
          WHERE id = :id
          LIMIT 1'
@@ -154,8 +163,8 @@ function auth_permission_definitions(): array
         ],
         'settings' => [
             'label' => 'Shop Settings',
-            'description' => 'Update business profile and invoice settings.',
-            'pages' => ['settings'],
+            'description' => 'Update business profile, invoice settings, and system defaults.',
+            'pages' => ['settings', 'invoice-settings'],
         ],
     ];
 }
@@ -190,7 +199,7 @@ function auth_action_permission(string $scriptName): ?string
         'customer_save.php', 'customer_archive.php' => 'customers',
         'payment_collect.php' => 'credit_sales',
         'sales_return_save.php' => 'returns',
-        'settings_save.php' => 'settings',
+        'settings_save.php', 'invoice_settings_save.php' => 'settings',
         default => null,
     };
 }

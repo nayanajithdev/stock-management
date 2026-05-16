@@ -24,11 +24,7 @@ $settings = [
     'shop_website' => trim((string) ($_POST['shop_website'] ?? '')),
     'currency' => trim((string) ($_POST['currency'] ?? '')),
     'timezone' => trim((string) ($_POST['timezone'] ?? 'Asia/Colombo')),
-    'default_tax_percent' => trim((string) ($_POST['default_tax_percent'] ?? '0')),
     'default_reorder_level' => trim((string) ($_POST['default_reorder_level'] ?? '5')),
-    'invoice_footer' => trim((string) ($_POST['invoice_footer'] ?? '')),
-    'return_policy' => trim((string) ($_POST['return_policy'] ?? '')),
-    'warranty_policy' => trim((string) ($_POST['warranty_policy'] ?? '')),
 ];
 
 try {
@@ -56,26 +52,16 @@ try {
         throw new RuntimeException('Choose a valid timezone.');
     }
 
-    $taxPercent = str_replace(',', '', $settings['default_tax_percent']);
-
-    if (! is_numeric($taxPercent) || (float) $taxPercent < 0 || (float) $taxPercent > 100) {
-        throw new RuntimeException('Default tax percent must be between 0 and 100.');
-    }
-
     $reorderLevel = (int) $settings['default_reorder_level'];
 
     if ((string) $reorderLevel !== $settings['default_reorder_level'] || $reorderLevel < 0 || $reorderLevel > 99999) {
         throw new RuntimeException('Default reorder level must be a whole number.');
     }
 
-    $settings['default_tax_percent'] = number_format((float) $taxPercent, 2, '.', '');
     $settings['default_reorder_level'] = (string) $reorderLevel;
     $settings['shop_legal_name'] = limit_setting_text($settings['shop_legal_name'], 160);
     $settings['shop_phone'] = limit_setting_text($settings['shop_phone'], 60);
     $settings['shop_address'] = limit_setting_text($settings['shop_address'], 500);
-    $settings['invoice_footer'] = limit_setting_text($settings['invoice_footer'], 500);
-    $settings['return_policy'] = limit_setting_text($settings['return_policy'], 500);
-    $settings['warranty_policy'] = limit_setting_text($settings['warranty_policy'], 500);
 
     app_save_settings($pdo, $settings);
     app_log_activity($pdo, $currentUser, 'settings_update', 'Updated shop settings.');

@@ -11,6 +11,49 @@ if (toggle && sidebar) {
     });
 }
 
+document.querySelectorAll('[data-nav-dropdown]').forEach((dropdown) => {
+    const button = dropdown.querySelector('.nav-dropdown-toggle');
+
+    if (!button) {
+        return;
+    }
+
+    button.addEventListener('click', () => {
+        const isOpen = dropdown.classList.toggle('open');
+        button.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+    });
+});
+
+document.querySelectorAll('[data-user-menu]').forEach((menu) => {
+    const button = menu.querySelector('[data-user-menu-toggle]');
+
+    if (!button) {
+        return;
+    }
+
+    const closeMenu = () => {
+        menu.classList.remove('open');
+        button.setAttribute('aria-expanded', 'false');
+    };
+
+    button.addEventListener('click', (event) => {
+        event.stopPropagation();
+        const isOpen = menu.classList.toggle('open');
+        button.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+    });
+
+    menu.addEventListener('click', (event) => {
+        event.stopPropagation();
+    });
+
+    document.addEventListener('click', closeMenu);
+    document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape') {
+            closeMenu();
+        }
+    });
+});
+
 document.querySelectorAll('[data-confirm]').forEach((form) => {
     form.addEventListener('submit', (event) => {
         const message = form.getAttribute('data-confirm') || 'Are you sure?';

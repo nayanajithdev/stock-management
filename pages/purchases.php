@@ -83,14 +83,16 @@ foreach ($products as $product) {
         <p class="eyebrow">Stock receiving</p>
         <h1>Purchases</h1>
     </div>
-    <a class="top-action" href="#purchase-form">
-        <i data-lucide="truck"></i>
-        Receive Stock
-    </a>
-    <a class="top-action" href="<?php echo e(app_url('?page=supplier-credit')); ?>">
-        <i data-lucide="hand-coins"></i>
-        Supplier Credit
-    </a>
+    <div class="heading-actions">
+        <a class="top-action" href="#purchase-form">
+            <i data-lucide="truck"></i>
+            Receive Stock
+        </a>
+        <a class="top-action" href="<?php echo e(app_url('?page=supplier-credit')); ?>">
+            <i data-lucide="hand-coins"></i>
+            Supplier Credit
+        </a>
+    </div>
 </div>
 
 <section class="stats-grid compact-stats" aria-label="Purchase summary">

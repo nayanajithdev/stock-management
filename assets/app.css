@@ -125,6 +125,13 @@ textarea {
 
 .nav-dropdown {
     gap: 0;
+    border-bottom: 0;
+    padding-bottom: 0;
+}
+
+.nav-dropdown + .nav-dropdown {
+    border-bottom: 0;
+    margin-top: -18px;
 }
 
 .nav-dropdown-toggle {
@@ -423,6 +430,12 @@ textarea {
     cursor: pointer;
 }
 
+.topbar-sales-link.active {
+    border-color: rgba(14, 165, 233, .52);
+    background: rgba(14, 165, 233, .14);
+    color: var(--accent-2);
+}
+
 .inline-action {
     width: max-content;
 }
@@ -462,7 +475,7 @@ textarea {
     width: min(100%, 460px);
     border: 1px solid var(--line);
     border-radius: 8px;
-    background: linear-gradient(180deg, rgba(34, 47, 59, .96), rgba(24, 33, 42, .98));
+    background: linear-gradient(180deg, rgba(39, 54, 68, .95), rgba(24, 33, 42, .97));
     box-shadow: var(--shadow);
     padding: 24px;
 }
@@ -562,6 +575,10 @@ code {
     letter-spacing: .08em;
 }
 
+.eyebrow {
+    color: #8b98a6;
+}
+
 h1,
 h2 {
     margin: 0;
@@ -596,7 +613,7 @@ h2 {
 .panel {
     border: 1px solid var(--line);
     border-radius: 8px;
-    background: linear-gradient(180deg, rgba(35, 48, 60, .92), rgba(24, 33, 42, .96));
+    background: linear-gradient(180deg, rgba(39, 54, 68, .93), rgba(24, 33, 42, .96));
     box-shadow: var(--shadow);
 }
 
@@ -611,14 +628,7 @@ h2 {
 }
 
 .stat-card::after {
-    content: "";
-    position: absolute;
-    right: 22px;
-    bottom: 22px;
-    width: 68px;
-    height: 44px;
-    opacity: .32;
-    background: repeating-linear-gradient(90deg, transparent 0 10px, var(--soft) 10px 13px, transparent 13px 20px);
+    display: none;
 }
 
 .stat-card strong {
@@ -659,6 +669,12 @@ h2 {
 .dashboard-four-grid {
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 20px;
+}
+
+.dashboard-three-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 20px;
 }
 
@@ -1132,7 +1148,7 @@ meter {
 
 .purchase-row {
     display: grid;
-    grid-template-columns: minmax(260px, 1fr) 90px 130px 130px 40px;
+    grid-template-columns: minmax(260px, 1fr) 120px 90px 130px 130px 40px;
     align-items: end;
     gap: 10px;
 }
@@ -1173,6 +1189,29 @@ meter {
 
 .stock-pill.low {
     color: var(--danger);
+}
+
+.tracking-panel {
+    margin-bottom: 20px;
+}
+
+.history-meta-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.history-meta-row span {
+    display: inline-flex;
+    align-items: center;
+    min-height: 30px;
+    border: 1px solid rgba(14, 165, 233, .2);
+    border-radius: 999px;
+    background: rgba(14, 165, 233, .08);
+    color: var(--muted);
+    padding: 0 12px;
+    font-size: 13px;
 }
 
 .compact-field span {
@@ -1289,33 +1328,6 @@ input[readonly] {
     grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
-.profile-avatar-block {
-    grid-column: 1 / -1;
-    display: grid;
-    grid-template-columns: 92px minmax(0, 360px);
-    align-items: start;
-    gap: 16px;
-}
-
-.profile-avatar-large {
-    display: grid;
-    place-items: center;
-    width: 84px;
-    height: 84px;
-    border: 1px solid var(--line);
-    border-radius: 20px;
-    background: var(--surface-2);
-    color: var(--text);
-    font-size: 34px;
-    font-weight: 800;
-    object-fit: cover;
-}
-
-.profile-avatar-fallback {
-    background: linear-gradient(135deg, rgba(14, 165, 233, .28), rgba(56, 189, 248, .08));
-}
-
-.profile-upload-field small,
 .field small,
 .security-note span {
     color: var(--muted);
@@ -1333,39 +1345,99 @@ input[readonly] {
 
 .permission-panel {
     display: grid;
-    gap: 14px;
-    border: 1px solid rgba(255, 255, 255, .08);
-    border-radius: 8px;
-    background: rgba(0, 0, 0, .14);
-    padding: 16px;
+    gap: 16px;
+    border-top: 1px solid rgba(255, 255, 255, .08);
+    padding-top: 18px;
 }
 
-.permission-panel > div:first-child {
+.permission-panel-header,
+.permission-group-heading {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 14px;
+}
+
+.permission-panel-header > div:first-child,
+.permission-group-heading > div:first-child {
     display: grid;
     gap: 4px;
 }
 
-.permission-panel > div:first-child span,
+.permission-panel-header > div:first-child span,
+.permission-group-heading span,
 .permission-card small {
     color: var(--muted);
     font-size: 13px;
 }
 
+.permission-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.permission-action {
+    min-height: 34px;
+    padding: 0 12px;
+    font-size: 13px;
+}
+
+.permission-groups {
+    display: grid;
+    gap: 18px;
+}
+
+.permission-group {
+    display: grid;
+    gap: 12px;
+    padding-bottom: 18px;
+    border-bottom: 1px solid rgba(255, 255, 255, .07);
+}
+
+.permission-group-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 28px;
+    color: var(--muted);
+    white-space: nowrap;
+    font-size: 13px;
+}
+
+.permission-group-toggle input {
+    width: 16px;
+    height: 16px;
+    accent-color: var(--accent);
+}
+
 .permission-grid {
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 10px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px 18px;
 }
 
 .permission-card {
     display: flex;
     align-items: flex-start;
     gap: 10px;
-    min-height: 88px;
-    border: 1px solid rgba(255, 255, 255, .08);
-    border-radius: 8px;
-    background: rgba(255, 255, 255, .035);
-    padding: 12px;
+    min-height: 58px;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    padding: 4px 0;
+    cursor: pointer;
+}
+
+.permission-card:hover,
+.permission-card.checked {
+    background: transparent;
+}
+
+.permission-card.required {
+    cursor: default;
+    opacity: .78;
 }
 
 .permission-card input {
@@ -1377,7 +1449,7 @@ input[readonly] {
 
 .permission-card span {
     display: grid;
-    gap: 4px;
+    gap: 3px;
 }
 
 .settings-form {
@@ -1755,6 +1827,28 @@ input[readonly] {
     accent-color: var(--accent);
 }
 
+.checkbox-row {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 42px;
+    width: max-content;
+    color: var(--muted);
+}
+
+.checkbox-row input[type="checkbox"] {
+    width: 18px;
+    min-width: 18px;
+    height: 18px;
+    accent-color: var(--accent);
+}
+
+.checkbox-row span {
+    color: var(--text);
+    font-size: 14px;
+    font-weight: 700;
+}
+
 .field {
     display: grid;
     gap: 8px;
@@ -1859,6 +1953,40 @@ select,
 
 .movement-filter {
     grid-template-columns: minmax(180px, 280px) 170px 40px;
+}
+
+.table-action-header {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 14px;
+    flex-wrap: wrap;
+}
+
+.ledger-tabs-block {
+    display: grid;
+    gap: 0;
+}
+
+.table-tabs-outside {
+    margin-bottom: -1px;
+    border-bottom: 0;
+    border-bottom-right-radius: 0;
+    border-bottom-left-radius: 0;
+}
+
+.table-tabs-outside a {
+    border-bottom-right-radius: 0;
+    border-bottom-left-radius: 0;
+}
+
+.tabbed-table-panel {
+    border-top-left-radius: 0;
+}
+
+.tabbed-table-panel .table-wrap:first-child,
+.table-action-header + .table-wrap {
+    margin-top: 0;
 }
 
 .tab-row {
@@ -2019,6 +2147,7 @@ td {
     }
 
     .dashboard-two-grid,
+    .dashboard-three-grid,
     .dashboard-four-grid {
         grid-template-columns: 1fr;
     }
@@ -2091,7 +2220,7 @@ td {
     }
 
     .purchase-row {
-        grid-template-columns: 1fr 90px 130px 130px 40px;
+        grid-template-columns: 1fr 120px 90px 130px 130px 40px;
     }
 
     .sale-row {
@@ -2177,6 +2306,20 @@ td {
         width: 100%;
     }
 
+    .table-action-header {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .table-tabs-outside {
+        width: 100%;
+    }
+
+    .table-tabs-outside a {
+        flex: 1 1 150px;
+        justify-content: center;
+    }
+
     .product-form {
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
@@ -2201,11 +2344,22 @@ td {
         grid-template-columns: 1fr;
     }
 
-    .profile-form {
-        grid-template-columns: 1fr;
+    .permission-panel-header,
+    .permission-group-heading {
+        align-items: stretch;
+        flex-direction: column;
     }
 
-    .profile-avatar-block {
+    .permission-actions {
+        justify-content: stretch;
+    }
+
+    .permission-actions .ghost-button {
+        flex: 1 1 140px;
+        justify-content: center;
+    }
+
+    .profile-form {
         grid-template-columns: 1fr;
     }
 

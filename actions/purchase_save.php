@@ -21,6 +21,7 @@ $purchaseDate = trim((string) ($_POST['purchase_date'] ?? date('Y-m-d')));
 $discount = max(0.0, input_decimal('discount'));
 $paid = max(0.0, input_decimal('paid'));
 $productIds = $_POST['product_id'] ?? [];
+$warrantyMonthsInput = $_POST['warranty_months'] ?? [];
 $quantities = $_POST['quantity'] ?? [];
 $unitCosts = $_POST['unit_cost'] ?? [];
 
@@ -29,7 +30,7 @@ if (! preg_match('/^\d{4}-\d{2}-\d{2}$/', $purchaseDate)) {
     redirect('?page=purchases');
 }
 
-if (! is_array($productIds) || ! is_array($quantities) || ! is_array($unitCosts)) {
+if (! is_array($productIds) || ! is_array($warrantyMonthsInput) || ! is_array($quantities) || ! is_array($unitCosts)) {
     set_flash('error', 'Purchase items are not valid.');
     redirect('?page=purchases');
 }
@@ -38,6 +39,7 @@ $items = [];
 
 foreach ($productIds as $index => $rawProductId) {
     $productId = (int) $rawProductId;
+    $warrantyMonths = max(0, (int) ($warrantyMonthsInput[$index] ?? 0));
     $quantity = max(0, (int) ($quantities[$index] ?? 0));
     $unitCost = str_replace(',', '', trim((string) ($unitCosts[$index] ?? '0')));
     $unitCost = is_numeric($unitCost) ? max(0.0, (float) $unitCost) : 0.0;
@@ -53,6 +55,7 @@ foreach ($productIds as $index => $rawProductId) {
 
     $items[] = [
         'product_id' => $productId,
+        'warranty_months' => $warrantyMonths,
         'quantity' => $quantity,
         'unit_cost' => $unitCost,
     ];
@@ -111,8 +114,8 @@ try {
 
     $productStatement = $pdo->prepare('SELECT id, name, current_stock FROM products WHERE id = :id AND status = "active" FOR UPDATE');
     $itemStatement = $pdo->prepare(
-        'INSERT INTO purchase_items (purchase_id, product_id, quantity, unit_cost, total)
-         VALUES (:purchase_id, :product_id, :quantity, :unit_cost, :total)'
+        'INSERT INTO purchase_items (purchase_id, product_id, quantity, unit_cost, warranty_months, total)
+         VALUES (:purchase_id, :product_id, :quantity, :unit_cost, :warranty_months, :total)'
     );
     $stockUpdate = $pdo->prepare(
         'UPDATE products
@@ -123,9 +126,9 @@ try {
     );
     $movementStatement = $pdo->prepare(
         'INSERT INTO stock_movements
-            (product_id, movement_type, quantity_change, stock_after, unit_cost, reference_type, reference_id, notes)
+            (product_id, movement_type, quantity_change, stock_after, unit_cost, warranty_months, reference_type, reference_id, notes, created_by)
          VALUES
-            (:product_id, "purchase", :quantity_change, :stock_after, :unit_cost, "purchase", :reference_id, :notes)'
+            (:product_id, "purchase", :quantity_change, :stock_after, :unit_cost, :warranty_months, "purchase", :reference_id, :notes, :created_by)'
     );
 
     foreach ($items as $item) {
@@ -144,6 +147,7 @@ try {
             'product_id' => $item['product_id'],
             'quantity' => $item['quantity'],
             'unit_cost' => $item['unit_cost'],
+            'warranty_months' => $item['warranty_months'],
             'total' => $lineTotal,
         ]);
 
@@ -158,8 +162,10 @@ try {
             'quantity_change' => $item['quantity'],
             'stock_after' => $newStock,
             'unit_cost' => $item['unit_cost'],
+            'warranty_months' => $item['warranty_months'],
             'reference_id' => $purchaseId,
             'notes' => 'Stock received' . ($invoiceNo !== null ? ' from invoice ' . $invoiceNo : ''),
+            'created_by' => (int) ($currentUser['id'] ?? 0) ?: null,
         ]);
     }
 

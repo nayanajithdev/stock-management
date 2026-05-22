@@ -71,10 +71,6 @@ if ($dbReady && $pdo !== null) {
         <p class="eyebrow">Inventory audit</p>
         <h1>Stock Movements</h1>
     </div>
-    <a class="top-action" href="#stock-adjustment-form">
-        <i data-lucide="sliders-horizontal"></i>
-        Adjust Stock
-    </a>
 </div>
 
 <section class="stats-grid compact-stats" aria-label="Stock movement summary">

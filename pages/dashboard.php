@@ -3,127 +3,156 @@
 /** @var ?PDO $pdo */
 /** @var bool $dbReady */
 
-$stats = [
-    ['label' => 'Month Revenue', 'value' => format_money(0), 'meta' => 'No sales this month', 'icon' => 'badge-dollar-sign'],
+$primaryStats = [
+    ['label' => 'Today Sales', 'value' => format_money(0), 'meta' => '0 invoice(s)', 'icon' => 'badge-dollar-sign'],
+    ['label' => 'Cash In Today', 'value' => format_money(0), 'meta' => 'Sales and collections', 'icon' => 'wallet'],
+    ['label' => 'Customer Due', 'value' => format_money(0), 'meta' => 'Open receivables', 'icon' => 'receipt-text'],
+    ['label' => 'Supplier Due', 'value' => format_money(0), 'meta' => 'Open payables', 'icon' => 'hand-coins'],
+];
+$financeStats = [
+    ['label' => 'Month Revenue', 'value' => format_money(0), 'meta' => '0 invoice(s)', 'icon' => 'chart-no-axes-combined'],
     ['label' => 'Gross Profit', 'value' => format_money(0), 'meta' => '0.00% margin', 'icon' => 'trending-up'],
-    ['label' => 'Receivable', 'value' => format_money(0), 'meta' => 'Open customer balance', 'icon' => 'receipt-text'],
-    ['label' => 'Stock Value', 'value' => format_money(0), 'meta' => 'Cost value on hand', 'icon' => 'boxes'],
+    ['label' => 'Month Expenses', 'value' => format_money(0), 'meta' => 'Active expenses', 'icon' => 'receipt'],
+    ['label' => 'Est. Net Profit', 'value' => format_money(0), 'meta' => 'After expenses/refunds', 'icon' => 'banknote'],
 ];
 $monthlyTrend = [];
 $lowStockItems = [];
 $recentInvoices = [];
-$topProducts = [];
 $creditRows = [];
-$returnRows = [];
-$warrantyRows = [];
-$summary = [
+$supplierRows = [];
+$recentExpenses = [];
+$metrics = [
+    'today_sales' => 0.0,
+    'today_orders' => 0,
+    'today_paid' => 0.0,
+    'today_collections' => 0.0,
+    'today_expenses' => 0.0,
+    'today_supplier_paid' => 0.0,
     'month_revenue' => 0.0,
-    'month_profit' => 0.0,
     'month_orders' => 0,
-    'units_sold' => 0,
+    'month_profit' => 0.0,
+    'month_expenses' => 0.0,
+    'month_refunds' => 0.0,
+    'month_net_profit' => 0.0,
     'receivable' => 0.0,
+    'payable' => 0.0,
     'stock_value' => 0.0,
     'low_stock' => 0,
     'open_warranty' => 0,
-    'month_refunds' => 0.0,
+    'warranty_expiring' => 0,
 ];
 
 if ($dbReady && $pdo !== null) {
-    $summaryStatement = $pdo->query(
-        'SELECT COUNT(*) AS month_orders,
-                COALESCE(SUM(total), 0) AS month_revenue
+    $todaySalesRow = dashboard_fetch_one($pdo,
+        'SELECT COUNT(*) AS orders,
+                COALESCE(SUM(total), 0) AS total,
+                COALESCE(SUM(paid), 0) AS paid
+         FROM sales
+         WHERE DATE(sale_date) = CURRENT_DATE'
+    );
+    $monthSalesRow = dashboard_fetch_one($pdo,
+        'SELECT COUNT(*) AS orders,
+                COALESCE(SUM(total), 0) AS total
          FROM sales
          WHERE sale_date >= DATE_FORMAT(CURRENT_DATE, "%Y-%m-01")'
     );
-    $summaryRow = $summaryStatement->fetch() ?: [];
-    $profitStatement = $pdo->query(
-        'SELECT COALESCE(SUM(si.quantity), 0) AS units_sold,
-                COALESCE(SUM(si.total - (si.quantity * si.unit_cost)), 0) AS month_profit
+    $monthProfitRow = dashboard_fetch_one($pdo,
+        'SELECT COALESCE(SUM(si.total - (si.quantity * si.unit_cost)), 0) AS profit
          FROM sale_items si
          INNER JOIN sales s ON s.id = si.sale_id
          WHERE s.sale_date >= DATE_FORMAT(CURRENT_DATE, "%Y-%m-01")'
     );
-    $profitRow = $profitStatement->fetch() ?: [];
-    $summary['month_revenue'] = (float) ($summaryRow['month_revenue'] ?? 0);
-    $summary['month_profit'] = (float) ($profitRow['month_profit'] ?? 0);
-    $summary['month_orders'] = (int) ($summaryRow['month_orders'] ?? 0);
-    $summary['units_sold'] = (int) ($profitRow['units_sold'] ?? 0);
-    $summary['receivable'] = (float) $pdo->query('SELECT COALESCE(SUM(total - paid), 0) FROM sales WHERE total > paid')->fetchColumn();
-    $summary['stock_value'] = (float) $pdo->query('SELECT COALESCE(SUM(current_stock * cost_price), 0) FROM products WHERE status = "active"')->fetchColumn();
-    $summary['low_stock'] = (int) $pdo->query('SELECT COUNT(*) FROM products WHERE status = "active" AND reorder_level > 0 AND current_stock <= reorder_level')->fetchColumn();
-    $summary['open_warranty'] = (int) $pdo->query('SELECT COUNT(*) FROM warranty_claims WHERE status IN ("received", "sent_to_supplier", "ready_for_pickup")')->fetchColumn();
-    $summary['month_refunds'] = (float) $pdo->query('SELECT COALESCE(SUM(refund_amount), 0) FROM sales_returns WHERE return_date >= DATE_FORMAT(CURRENT_DATE, "%Y-%m-01")')->fetchColumn();
 
-    $stats = [
+    $metrics['today_orders'] = (int) ($todaySalesRow['orders'] ?? 0);
+    $metrics['today_sales'] = (float) ($todaySalesRow['total'] ?? 0);
+    $metrics['today_paid'] = (float) ($todaySalesRow['paid'] ?? 0);
+    $metrics['today_collections'] = (float) $pdo->query('SELECT COALESCE(SUM(amount), 0) FROM customer_payments WHERE DATE(payment_date) = CURRENT_DATE')->fetchColumn();
+    $metrics['today_expenses'] = (float) $pdo->query('SELECT COALESCE(SUM(amount), 0) FROM expenses WHERE status = "active" AND expense_date = CURRENT_DATE')->fetchColumn();
+    $metrics['today_supplier_paid'] = (float) $pdo->query('SELECT COALESCE(SUM(amount), 0) FROM supplier_payments WHERE DATE(payment_date) = CURRENT_DATE')->fetchColumn();
+    $metrics['month_orders'] = (int) ($monthSalesRow['orders'] ?? 0);
+    $metrics['month_revenue'] = (float) ($monthSalesRow['total'] ?? 0);
+    $metrics['month_profit'] = (float) ($monthProfitRow['profit'] ?? 0);
+    $metrics['month_expenses'] = (float) $pdo->query('SELECT COALESCE(SUM(amount), 0) FROM expenses WHERE status = "active" AND expense_date >= DATE_FORMAT(CURRENT_DATE, "%Y-%m-01")')->fetchColumn();
+    $metrics['month_refunds'] = (float) $pdo->query('SELECT COALESCE(SUM(refund_amount), 0) FROM sales_returns WHERE return_date >= DATE_FORMAT(CURRENT_DATE, "%Y-%m-01")')->fetchColumn();
+    $metrics['month_net_profit'] = $metrics['month_profit'] - $metrics['month_expenses'] - $metrics['month_refunds'];
+    $metrics['receivable'] = (float) $pdo->query('SELECT COALESCE(SUM(total - paid), 0) FROM sales WHERE total > paid')->fetchColumn();
+    $metrics['payable'] = (float) $pdo->query('SELECT COALESCE(SUM(total - paid), 0) FROM purchases WHERE total > paid')->fetchColumn();
+    $metrics['stock_value'] = (float) $pdo->query('SELECT COALESCE(SUM(current_stock * cost_price), 0) FROM products WHERE status = "active"')->fetchColumn();
+    $metrics['low_stock'] = (int) $pdo->query('SELECT COUNT(*) FROM products WHERE status = "active" AND reorder_level > 0 AND current_stock <= reorder_level')->fetchColumn();
+    $metrics['open_warranty'] = (int) $pdo->query('SELECT COUNT(*) FROM warranty_claims WHERE status IN ("received", "sent_to_supplier", "ready_for_pickup")')->fetchColumn();
+    $metrics['warranty_expiring'] = dashboard_warranty_expiring_lots($pdo);
+
+    $primaryStats = [
         [
-            'label' => 'Month Revenue',
-            'value' => format_money($summary['month_revenue']),
-            'meta' => $summary['month_orders'] . ' invoice(s), ' . $summary['units_sold'] . ' unit(s)',
+            'label' => 'Today Sales',
+            'value' => format_money($metrics['today_sales']),
+            'meta' => $metrics['today_orders'] . ' invoice(s)',
             'icon' => 'badge-dollar-sign',
         ],
         [
-            'label' => 'Gross Profit',
-            'value' => format_money($summary['month_profit']),
-            'meta' => dashboard_margin_label($summary['month_profit'], $summary['month_revenue']),
-            'icon' => 'trending-up',
+            'label' => 'Cash In Today',
+            'value' => format_money($metrics['today_paid'] + $metrics['today_collections']),
+            'meta' => 'Sales and credit collections',
+            'icon' => 'wallet',
         ],
         [
-            'label' => 'Receivable',
-            'value' => format_money($summary['receivable']),
-            'meta' => 'Open customer balance',
+            'label' => 'Customer Due',
+            'value' => format_money($metrics['receivable']),
+            'meta' => 'Open receivables',
             'icon' => 'receipt-text',
         ],
         [
-            'label' => 'Stock Value',
-            'value' => format_money($summary['stock_value']),
-            'meta' => $summary['low_stock'] . ' low-stock item(s)',
-            'icon' => 'boxes',
+            'label' => 'Supplier Due',
+            'value' => format_money($metrics['payable']),
+            'meta' => 'Open payables',
+            'icon' => 'hand-coins',
+        ],
+    ];
+    $financeStats = [
+        [
+            'label' => 'Month Revenue',
+            'value' => format_money($metrics['month_revenue']),
+            'meta' => $metrics['month_orders'] . ' invoice(s)',
+            'icon' => 'chart-no-axes-combined',
+        ],
+        [
+            'label' => 'Gross Profit',
+            'value' => format_money($metrics['month_profit']),
+            'meta' => dashboard_margin_label($metrics['month_profit'], $metrics['month_revenue']),
+            'icon' => 'trending-up',
+        ],
+        [
+            'label' => 'Month Expenses',
+            'value' => format_money($metrics['month_expenses']),
+            'meta' => format_money($metrics['month_refunds']) . ' refunds',
+            'icon' => 'receipt',
+        ],
+        [
+            'label' => 'Est. Net Profit',
+            'value' => format_money($metrics['month_net_profit']),
+            'meta' => 'After expenses/refunds',
+            'icon' => 'banknote',
         ],
     ];
 
+    $trendRows = [];
     $trendStatement = $pdo->query(
         'SELECT MONTH(sale_date) AS sale_month,
                 COALESCE(SUM(total), 0) AS revenue
          FROM sales
          WHERE YEAR(sale_date) = YEAR(CURRENT_DATE)
-         GROUP BY MONTH(sale_date)
-         ORDER BY sale_month ASC'
+         GROUP BY MONTH(sale_date)'
     );
-    $trendRows = [];
 
     foreach ($trendStatement->fetchAll() as $row) {
-        $trendRows[(int) $row['sale_month']] = [
-            'revenue' => (float) $row['revenue'],
-            'profit' => 0.0,
-        ];
-    }
-
-    $trendProfitStatement = $pdo->query(
-        'SELECT MONTH(s.sale_date) AS sale_month,
-                COALESCE(SUM(si.total - (si.quantity * si.unit_cost)), 0) AS profit
-         FROM sale_items si
-         INNER JOIN sales s ON s.id = si.sale_id
-         WHERE YEAR(s.sale_date) = YEAR(CURRENT_DATE)
-         GROUP BY MONTH(s.sale_date)
-         ORDER BY sale_month ASC'
-    );
-
-    foreach ($trendProfitStatement->fetchAll() as $row) {
-        $month = (int) $row['sale_month'];
-
-        if (! isset($trendRows[$month])) {
-            $trendRows[$month] = ['revenue' => 0.0, 'profit' => 0.0];
-        }
-
-        $trendRows[$month]['profit'] = (float) $row['profit'];
+        $trendRows[(int) $row['sale_month']] = (float) $row['revenue'];
     }
 
     for ($month = 1; $month <= 12; $month++) {
         $monthlyTrend[] = [
             'month' => $month,
             'label' => date('M', mktime(0, 0, 0, $month, 1)),
-            'revenue' => $trendRows[$month]['revenue'] ?? 0.0,
-            'profit' => $trendRows[$month]['profit'] ?? 0.0,
+            'revenue' => $trendRows[$month] ?? 0.0,
         ];
     }
 
@@ -134,7 +163,7 @@ if ($dbReady && $pdo !== null) {
            AND reorder_level > 0
            AND current_stock <= reorder_level
          ORDER BY current_stock ASC, name ASC
-         LIMIT 6'
+         LIMIT 8'
     )->fetchAll();
 
     $recentInvoices = $pdo->query(
@@ -144,27 +173,11 @@ if ($dbReady && $pdo !== null) {
                 s.total,
                 s.paid,
                 s.status,
-                c.name AS customer_name,
-                c.phone AS customer_phone
+                c.name AS customer_name
          FROM sales s
          LEFT JOIN customers c ON c.id = s.customer_id
          ORDER BY s.sale_date DESC, s.id DESC
          LIMIT 8'
-    )->fetchAll();
-
-    $topProducts = $pdo->query(
-        'SELECT p.sku,
-                p.name,
-                p.current_stock,
-                COALESCE(SUM(si.quantity), 0) AS units_sold,
-                COALESCE(SUM(si.total), 0) AS revenue
-         FROM sale_items si
-         INNER JOIN sales s ON s.id = si.sale_id
-         INNER JOIN products p ON p.id = si.product_id
-         WHERE s.sale_date >= DATE_FORMAT(CURRENT_DATE, "%Y-%m-01")
-         GROUP BY p.id
-         ORDER BY revenue DESC, units_sold DESC
-         LIMIT 6'
     )->fetchAll();
 
     $creditRows = $pdo->query(
@@ -172,9 +185,7 @@ if ($dbReady && $pdo !== null) {
                 s.invoice_no,
                 s.total,
                 s.paid,
-                s.sale_date,
-                c.name AS customer_name,
-                c.phone AS customer_phone
+                c.name AS customer_name
          FROM sales s
          LEFT JOIN customers c ON c.id = s.customer_id
          WHERE s.total > s.paid
@@ -182,31 +193,25 @@ if ($dbReady && $pdo !== null) {
          LIMIT 6'
     )->fetchAll();
 
-    $returnRows = $pdo->query(
-        'SELECT sr.return_no,
-                sr.return_date,
-                sr.refund_amount,
-                s.invoice_no,
-                c.name AS customer_name
-         FROM sales_returns sr
-         INNER JOIN sales s ON s.id = sr.sale_id
-         LEFT JOIN customers c ON c.id = sr.customer_id
-         ORDER BY sr.return_date DESC, sr.id DESC
+    $supplierRows = $pdo->query(
+        'SELECT p.id,
+                p.invoice_no,
+                p.total,
+                p.paid,
+                p.purchase_date,
+                s.name AS supplier_name
+         FROM purchases p
+         LEFT JOIN suppliers s ON s.id = p.supplier_id
+         WHERE p.total > p.paid
+         ORDER BY (p.total - p.paid) DESC, p.purchase_date ASC
          LIMIT 6'
     )->fetchAll();
 
-    $warrantyRows = $pdo->query(
-        'SELECT wc.claim_no,
-                wc.status,
-                wc.received_date,
-                p.sku,
-                p.name AS product_name,
-                c.name AS customer_name
-         FROM warranty_claims wc
-         INNER JOIN products p ON p.id = wc.product_id
-         LEFT JOIN customers c ON c.id = wc.customer_id
-         WHERE wc.status IN ("received", "sent_to_supplier", "ready_for_pickup")
-         ORDER BY wc.received_date ASC, wc.id ASC
+    $recentExpenses = $pdo->query(
+        'SELECT expense_date, category, vendor, amount
+         FROM expenses
+         WHERE status = "active"
+         ORDER BY expense_date DESC, id DESC
          LIMIT 6'
     )->fetchAll();
 }
@@ -220,27 +225,26 @@ foreach ($monthlyTrend as $month) {
 
 <div class="page-heading">
     <div>
-        <p class="eyebrow">Stock management system</p>
-        <h1>Welcome back, <?php echo e($currentUser['name']); ?></h1>
+        <p class="eyebrow">Shop overview</p>
+        <h1>Dashboard</h1>
     </div>
-    <a class="top-action" href="<?php echo e(app_url('?page=reports')); ?>">
-        <i data-lucide="chart-no-axes-combined"></i>
-        Reports
-    </a>
+    <div class="heading-actions">
+        <a class="top-action" href="<?php echo e(app_url('?page=reports')); ?>">
+            <i data-lucide="chart-no-axes-combined"></i>
+            Reports
+        </a>
+    </div>
 </div>
 
-<section class="stats-grid" aria-label="Overview statistics">
-    <?php foreach ($stats as $stat): ?>
-        <article class="stat-card">
-            <div>
-                <span><?php echo e($stat['label']); ?></span>
-                <strong><?php echo e($stat['value']); ?></strong>
-            </div>
-            <div class="stat-icon">
-                <i data-lucide="<?php echo e($stat['icon']); ?>"></i>
-            </div>
-            <small><?php echo e($stat['meta']); ?></small>
-        </article>
+<section class="stats-grid" aria-label="Daily operations">
+    <?php foreach ($primaryStats as $stat): ?>
+        <?php dashboard_stat_card($stat); ?>
+    <?php endforeach; ?>
+</section>
+
+<section class="stats-grid compact-stats" aria-label="Monthly finance">
+    <?php foreach ($financeStats as $stat): ?>
+        <?php dashboard_stat_card($stat); ?>
     <?php endforeach; ?>
 </section>
 
@@ -251,7 +255,7 @@ foreach ($monthlyTrend as $month) {
                 <p class="panel-label">Sales Trend</p>
                 <h2><?php echo date('Y'); ?> revenue</h2>
             </div>
-            <span class="dashboard-pill"><?php echo e(format_money($summary['month_refunds'])); ?> refunds this month</span>
+            <span class="dashboard-pill"><?php echo e(format_money($metrics['month_net_profit'])); ?> est. net this month</span>
         </div>
 
         <div class="dashboard-bars" aria-label="Monthly sales chart">
@@ -274,7 +278,7 @@ foreach ($monthlyTrend as $month) {
     <aside class="panel alert-panel">
         <div class="panel-header compact">
             <div>
-                <p class="panel-label">Action Alerts</p>
+                <p class="panel-label">Action Center</p>
                 <h2>Needs attention</h2>
             </div>
         </div>
@@ -283,22 +287,32 @@ foreach ($monthlyTrend as $month) {
             <a href="<?php echo e(app_url('?page=products')); ?>">
                 <i data-lucide="triangle-alert"></i>
                 <span>Low stock</span>
-                <strong><?php echo (int) $summary['low_stock']; ?></strong>
+                <strong><?php echo (int) $metrics['low_stock']; ?></strong>
             </a>
             <a href="<?php echo e(app_url('?page=credit-sales')); ?>">
                 <i data-lucide="receipt-text"></i>
-                <span>Receivable</span>
-                <strong><?php echo e(format_money($summary['receivable'])); ?></strong>
+                <span>Customer due</span>
+                <strong><?php echo e(format_money($metrics['receivable'])); ?></strong>
+            </a>
+            <a href="<?php echo e(app_url('?page=supplier-credit')); ?>">
+                <i data-lucide="hand-coins"></i>
+                <span>Supplier due</span>
+                <strong><?php echo e(format_money($metrics['payable'])); ?></strong>
+            </a>
+            <a href="<?php echo e(app_url('?page=expenses')); ?>">
+                <i data-lucide="receipt"></i>
+                <span>Today paid out</span>
+                <strong><?php echo e(format_money($metrics['today_expenses'] + $metrics['today_supplier_paid'])); ?></strong>
             </a>
             <a href="<?php echo e(app_url('?page=warranty')); ?>">
                 <i data-lucide="shield-check"></i>
                 <span>Open warranty</span>
-                <strong><?php echo (int) $summary['open_warranty']; ?></strong>
+                <strong><?php echo (int) $metrics['open_warranty']; ?></strong>
             </a>
-            <a href="<?php echo e(app_url('?page=returns')); ?>">
-                <i data-lucide="rotate-ccw"></i>
-                <span>Refunds this month</span>
-                <strong><?php echo e(format_money($summary['month_refunds'])); ?></strong>
+            <a href="<?php echo e(app_url('?page=products')); ?>">
+                <i data-lucide="shield-alert"></i>
+                <span>Supplier warranty ending</span>
+                <strong><?php echo (int) $metrics['warranty_expiring']; ?></strong>
             </a>
         </div>
     </aside>
@@ -330,13 +344,13 @@ foreach ($monthlyTrend as $month) {
                         <tr><td colspan="5">No sales recorded yet.</td></tr>
                     <?php endif; ?>
                     <?php foreach ($recentInvoices as $sale): ?>
-                        <?php $balance = (float) $sale['total'] - (float) $sale['paid']; ?>
+                        <?php $balance = max(0.0, (float) $sale['total'] - (float) $sale['paid']); ?>
                         <tr>
                             <td>
                                 <a class="table-title" href="<?php echo e(app_url('?page=sale-view&id=' . (int) $sale['id'])); ?>"><?php echo e($sale['invoice_no']); ?></a>
                                 <span class="table-subtitle"><?php echo e(date('Y-m-d H:i', strtotime((string) $sale['sale_date']))); ?></span>
                             </td>
-                            <td><?php echo e($sale['customer_name'] ?: 'Walk-in Customer'); ?></td>
+                            <td><?php echo e($sale['customer_name'] ?: 'Walk-in'); ?></td>
                             <td><?php echo e(format_money($sale['total'])); ?></td>
                             <td class="<?php echo $balance > 0 ? 'text-danger' : 'text-good'; ?>"><?php echo e(format_money($balance)); ?></td>
                             <td><span class="status <?php echo e(dashboard_sale_status_class((string) $sale['status'], $balance)); ?>"><?php echo e($balance > 0 ? ucfirst((string) $sale['status']) : 'Closed'); ?></span></td>
@@ -350,10 +364,10 @@ foreach ($monthlyTrend as $month) {
     <article class="panel table-panel">
         <div class="panel-header">
             <div>
-                <p class="panel-label">Top Products</p>
-                <h2>This month</h2>
+                <p class="panel-label">Inventory</p>
+                <h2>Low stock</h2>
             </div>
-            <a class="muted-link" href="<?php echo e(app_url('?page=reports')); ?>">Reports</a>
+            <a class="muted-link" href="<?php echo e(app_url('?page=products')); ?>">Products</a>
         </div>
 
         <div class="table-wrap compact-table">
@@ -361,24 +375,22 @@ foreach ($monthlyTrend as $month) {
                 <thead>
                     <tr>
                         <th>Product</th>
-                        <th>Units</th>
-                        <th>Revenue</th>
                         <th>Stock</th>
+                        <th>Reorder</th>
                     </tr>
                 </thead>
                 <tbody>
-                    <?php if ($topProducts === []): ?>
-                        <tr><td colspan="4">No product sales this month.</td></tr>
+                    <?php if ($lowStockItems === []): ?>
+                        <tr><td colspan="3">No low-stock items.</td></tr>
                     <?php endif; ?>
-                    <?php foreach ($topProducts as $product): ?>
+                    <?php foreach ($lowStockItems as $item): ?>
                         <tr>
                             <td>
-                                <strong class="table-title"><?php echo e($product['sku']); ?></strong>
-                                <span class="table-subtitle"><?php echo e($product['name']); ?></span>
+                                <strong class="table-title"><?php echo e($item['sku']); ?></strong>
+                                <span class="table-subtitle"><?php echo e($item['name']); ?></span>
                             </td>
-                            <td><?php echo (int) $product['units_sold']; ?></td>
-                            <td><?php echo e(format_money($product['revenue'])); ?></td>
-                            <td><?php echo (int) $product['current_stock']; ?></td>
+                            <td class="text-danger"><?php echo (int) $item['current_stock']; ?></td>
+                            <td><?php echo (int) $item['reorder_level']; ?></td>
                         </tr>
                     <?php endforeach; ?>
                 </tbody>
@@ -387,49 +399,20 @@ foreach ($monthlyTrend as $month) {
     </article>
 </section>
 
-<section class="dashboard-four-grid">
+<section class="dashboard-three-grid">
     <article class="panel">
         <div class="panel-header compact">
             <div>
-                <p class="panel-label">Low Stock</p>
-                <h2>Reorder soon</h2>
+                <p class="panel-label">Customer Credit</p>
+                <h2>Largest balances</h2>
             </div>
-            <a class="icon-button" href="<?php echo e(app_url('?page=products')); ?>" aria-label="Open products">
-                <i data-lucide="arrow-up-right"></i>
-            </a>
-        </div>
-        <div class="stock-list">
-            <?php if ($lowStockItems === []): ?>
-                <p class="empty-state">No low-stock items.</p>
-            <?php endif; ?>
-            <?php foreach ($lowStockItems as $item): ?>
-                <div class="stock-item">
-                    <div>
-                        <strong><?php echo e($item['sku'] . ' - ' . $item['name']); ?></strong>
-                        <span><?php echo (int) $item['current_stock']; ?> left / reorder <?php echo (int) $item['reorder_level']; ?></span>
-                    </div>
-                    <meter min="0" max="<?php echo max(1, (int) $item['reorder_level']); ?>" value="<?php echo max(0, (int) $item['current_stock']); ?>"></meter>
-                </div>
-            <?php endforeach; ?>
-        </div>
-    </article>
-
-    <article class="panel">
-        <div class="panel-header compact">
-            <div>
-                <p class="panel-label">Credit Due</p>
-                <h2>Follow up</h2>
-            </div>
-            <a class="icon-button" href="<?php echo e(app_url('?page=credit-sales')); ?>" aria-label="Open credit sales">
-                <i data-lucide="arrow-up-right"></i>
-            </a>
         </div>
         <div class="dashboard-list">
             <?php if ($creditRows === []): ?>
-                <p class="empty-state">No open balances.</p>
+                <p class="empty-state">No open customer balances.</p>
             <?php endif; ?>
             <?php foreach ($creditRows as $row): ?>
-                <?php $balance = (float) $row['total'] - (float) $row['paid']; ?>
+                <?php $balance = max(0.0, (float) $row['total'] - (float) $row['paid']); ?>
                 <a href="<?php echo e(app_url('?page=sale-view&id=' . (int) $row['id'])); ?>">
                     <span><?php echo e($row['invoice_no'] . ' / ' . ($row['customer_name'] ?: 'Walk-in')); ?></span>
                     <strong><?php echo e(format_money($balance)); ?></strong>
@@ -441,21 +424,19 @@ foreach ($monthlyTrend as $month) {
     <article class="panel">
         <div class="panel-header compact">
             <div>
-                <p class="panel-label">Returns</p>
-                <h2>Recent refunds</h2>
+                <p class="panel-label">Supplier Credit</p>
+                <h2>Payables</h2>
             </div>
-            <a class="icon-button" href="<?php echo e(app_url('?page=returns')); ?>" aria-label="Open returns">
-                <i data-lucide="arrow-up-right"></i>
-            </a>
         </div>
         <div class="dashboard-list">
-            <?php if ($returnRows === []): ?>
-                <p class="empty-state">No returns recorded.</p>
+            <?php if ($supplierRows === []): ?>
+                <p class="empty-state">No supplier balances.</p>
             <?php endif; ?>
-            <?php foreach ($returnRows as $row): ?>
-                <a href="<?php echo e(app_url('?page=returns&q=' . rawurlencode((string) $row['return_no']))); ?>">
-                    <span><?php echo e($row['return_no'] . ' / ' . ($row['customer_name'] ?: 'Walk-in')); ?></span>
-                    <strong><?php echo e(format_money($row['refund_amount'])); ?></strong>
+            <?php foreach ($supplierRows as $row): ?>
+                <?php $balance = max(0.0, (float) $row['total'] - (float) $row['paid']); ?>
+                <a href="<?php echo e(app_url('?page=supplier-credit&collect=' . (int) $row['id'] . '#supplier-payment-form')); ?>">
+                    <span><?php echo e(($row['invoice_no'] ?: '#' . $row['id']) . ' / ' . ($row['supplier_name'] ?: 'Supplier')); ?></span>
+                    <strong><?php echo e(format_money($balance)); ?></strong>
                 </a>
             <?php endforeach; ?>
         </div>
@@ -464,21 +445,18 @@ foreach ($monthlyTrend as $month) {
     <article class="panel">
         <div class="panel-header compact">
             <div>
-                <p class="panel-label">Warranty</p>
-                <h2>Open claims</h2>
+                <p class="panel-label">Expenses</p>
+                <h2>Recent costs</h2>
             </div>
-            <a class="icon-button" href="<?php echo e(app_url('?page=warranty')); ?>" aria-label="Open warranty">
-                <i data-lucide="arrow-up-right"></i>
-            </a>
         </div>
         <div class="dashboard-list">
-            <?php if ($warrantyRows === []): ?>
-                <p class="empty-state">No open warranty claims.</p>
+            <?php if ($recentExpenses === []): ?>
+                <p class="empty-state">No active expenses recorded.</p>
             <?php endif; ?>
-            <?php foreach ($warrantyRows as $row): ?>
-                <a href="<?php echo e(app_url('?page=warranty&q=' . rawurlencode((string) $row['claim_no']))); ?>">
-                    <span><?php echo e($row['claim_no'] . ' / ' . $row['sku']); ?></span>
-                    <strong><?php echo e(dashboard_warranty_status_label((string) $row['status'])); ?></strong>
+            <?php foreach ($recentExpenses as $row): ?>
+                <a href="<?php echo e(app_url('?page=expenses')); ?>">
+                    <span><?php echo e($row['category'] . ($row['vendor'] ? ' / ' . $row['vendor'] : '')); ?></span>
+                    <strong><?php echo e(format_money($row['amount'])); ?></strong>
                 </a>
             <?php endforeach; ?>
         </div>
@@ -486,6 +464,85 @@ foreach ($monthlyTrend as $month) {
 </section>
 
 <?php
+function dashboard_fetch_one(PDO $pdo, string $sql): array
+{
+    $row = $pdo->query($sql)->fetch();
+
+    return is_array($row) ? $row : [];
+}
+
+function dashboard_warranty_expiring_lots(PDO $pdo): int
+{
+    $stockOutRows = $pdo->query(
+        'SELECT product_id, COALESCE(SUM(ABS(quantity_change)), 0) AS stock_out
+         FROM stock_movements
+         WHERE quantity_change < 0
+         GROUP BY product_id'
+    )->fetchAll();
+    $stockOutByProduct = [];
+
+    foreach ($stockOutRows as $row) {
+        $stockOutByProduct[(int) $row['product_id']] = (int) $row['stock_out'];
+    }
+
+    $lotRows = $pdo->query(
+        'SELECT sm.product_id,
+                sm.quantity_change,
+                sm.warranty_months,
+                COALESCE(pu.purchase_date, DATE(sm.created_at)) AS warranty_start,
+                DATE_ADD(COALESCE(pu.purchase_date, DATE(sm.created_at)), INTERVAL sm.warranty_months MONTH) AS warranty_ends_at
+         FROM stock_movements sm
+         INNER JOIN products p ON p.id = sm.product_id
+         LEFT JOIN purchases pu ON sm.reference_type = "purchase" AND pu.id = sm.reference_id
+         WHERE p.status = "active"
+           AND p.current_stock > 0
+           AND p.item_tracking = 1
+           AND sm.warranty_months > 0
+           AND sm.quantity_change > 0
+           AND sm.movement_type IN ("opening", "purchase", "return_in", "adjustment_in")
+         ORDER BY sm.product_id ASC, COALESCE(pu.purchase_date, DATE(sm.created_at)) ASC, sm.id ASC'
+    )->fetchAll();
+
+    $today = date('Y-m-d');
+    $warningCutoff = date('Y-m-d', strtotime('+30 days'));
+    $expiringLots = 0;
+
+    foreach ($lotRows as $lot) {
+        $productId = (int) $lot['product_id'];
+        $lotQuantity = (int) $lot['quantity_change'];
+        $remainingStockOut = $stockOutByProduct[$productId] ?? 0;
+        $deducted = min($lotQuantity, $remainingStockOut);
+        $stockOutByProduct[$productId] = max(0, $remainingStockOut - $deducted);
+
+        if (($lotQuantity - $deducted) <= 0) {
+            continue;
+        }
+
+        $warrantyEndsAt = (string) ($lot['warranty_ends_at'] ?? '');
+        if ($warrantyEndsAt >= $today && $warrantyEndsAt <= $warningCutoff) {
+            $expiringLots++;
+        }
+    }
+
+    return $expiringLots;
+}
+
+function dashboard_stat_card(array $stat): void
+{
+    ?>
+    <article class="stat-card">
+        <div>
+            <span><?php echo e($stat['label']); ?></span>
+            <strong><?php echo e($stat['value']); ?></strong>
+        </div>
+        <div class="stat-icon">
+            <i data-lucide="<?php echo e($stat['icon']); ?>"></i>
+        </div>
+        <small><?php echo e($stat['meta']); ?></small>
+    </article>
+    <?php
+}
+
 function dashboard_margin_label(float $profit, float $revenue): string
 {
     if ($revenue <= 0) {
@@ -505,14 +562,5 @@ function dashboard_sale_status_class(string $status, float $balance): string
         'partial' => 'status-warranty',
         'credit' => 'status-pending',
         default => 'status-inactive',
-    };
-}
-
-function dashboard_warranty_status_label(string $status): string
-{
-    return match ($status) {
-        'sent_to_supplier' => 'Supplier',
-        'ready_for_pickup' => 'Ready',
-        default => 'Received',
     };
 }

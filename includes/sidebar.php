@@ -47,7 +47,9 @@
                 </section>
             <?php else: ?>
                 <section class="nav-section">
-                    <h2><?php echo e($section); ?></h2>
+                    <?php if (! in_array($section, ['Main Menu', 'Customers'], true)): ?>
+                        <h2><?php echo e($section); ?></h2>
+                    <?php endif; ?>
                     <?php foreach ($items as $item): ?>
                         <?php
                         $isDisabled = ! empty($item['disabled']);

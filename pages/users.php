@@ -9,6 +9,28 @@ $users = [];
 $editingUser = null;
 $editingPermissions = [];
 $permissionDefinitions = auth_permission_definitions();
+$permissionGroups = [
+    'core' => [
+        'label' => 'Core Access',
+        'description' => 'Required starting point for every manager.',
+        'keys' => ['dashboard'],
+    ],
+    'inventory' => [
+        'label' => 'Inventory & Stock',
+        'description' => 'Products, setup records, purchasing, stock movements, and supplier credit.',
+        'keys' => ['products', 'inventory_setup', 'purchases', 'supplier_credit', 'stock'],
+    ],
+    'sales' => [
+        'label' => 'Sales & Customers',
+        'description' => 'Invoices, customer accounts, credit collection, returns, and warranty claims.',
+        'keys' => ['sales', 'customers', 'credit_sales', 'returns', 'warranty'],
+    ],
+    'management' => [
+        'label' => 'Management',
+        'description' => 'Expenses, reports, audit history, and shop configuration.',
+        'keys' => ['expenses', 'reports', 'activity_logs', 'settings'],
+    ],
+];
 $summary = [
     'owners' => 0,
     'managers' => 0,
@@ -141,25 +163,74 @@ $showUserForm = $canManageUsers && ($isEditing || (string) ($_GET['modal'] ?? ''
                         <input type="password" name="password_confirm" minlength="8" autocomplete="new-password" <?php echo $isEditing ? '' : 'required'; ?>>
                     </label>
 
-                    <div class="permission-panel span-2">
-                        <div>
-                            <strong>Module Permissions</strong>
-                            <span>Owner always has full access. These permissions apply to this manager only.</span>
+                    <div class="permission-panel span-2" data-permission-panel>
+                        <div class="permission-panel-header">
+                            <div>
+                                <strong>Module Permissions</strong>
+                                <span>Owner always has full access. These permissions apply to this manager only.</span>
+                            </div>
+
+                            <div class="permission-actions">
+                                <button class="ghost-button permission-action" type="button" data-permission-action="all">Allow All</button>
+                                <button class="ghost-button permission-action" type="button" data-permission-action="clear">Dashboard Only</button>
+                            </div>
                         </div>
 
-                        <div class="permission-grid">
-                            <?php foreach ($permissionDefinitions as $permissionKey => $permission): ?>
-                                <?php $checked = $editingPermissions === [] ? true : ($editingPermissions[$permissionKey] ?? false); ?>
-                                <label class="permission-card">
-                                    <input type="checkbox" name="permissions[]" value="<?php echo e($permissionKey); ?>" <?php echo $checked ? 'checked' : ''; ?> <?php echo $permissionKey === 'dashboard' ? 'disabled' : ''; ?>>
-                                    <?php if ($permissionKey === 'dashboard'): ?>
-                                        <input type="hidden" name="permissions[]" value="dashboard">
-                                    <?php endif; ?>
-                                    <span>
-                                        <strong><?php echo e($permission['label']); ?></strong>
-                                        <small><?php echo e($permission['description']); ?></small>
-                                    </span>
-                                </label>
+                        <div class="permission-groups">
+                            <?php foreach ($permissionGroups as $groupKey => $group): ?>
+                                <?php
+                                $groupPermissionKeys = array_values(array_filter(
+                                    $group['keys'],
+                                    static fn (string $permissionKey): bool => isset($permissionDefinitions[$permissionKey])
+                                ));
+                                $optionalGroupKeys = array_values(array_filter(
+                                    $groupPermissionKeys,
+                                    static fn (string $permissionKey): bool => $permissionKey !== 'dashboard'
+                                ));
+                                ?>
+                                <section class="permission-group">
+                                    <div class="permission-group-heading">
+                                        <div>
+                                            <strong><?php echo e($group['label']); ?></strong>
+                                            <span><?php echo e($group['description']); ?></span>
+                                        </div>
+
+                                        <?php if ($optionalGroupKeys !== []): ?>
+                                            <label class="permission-group-toggle">
+                                                <input type="checkbox" data-permission-group-toggle="<?php echo e($groupKey); ?>">
+                                                <span>Allow section</span>
+                                            </label>
+                                        <?php endif; ?>
+                                    </div>
+
+                                    <div class="permission-grid">
+                                        <?php foreach ($groupPermissionKeys as $permissionKey): ?>
+                                            <?php
+                                            $permission = $permissionDefinitions[$permissionKey];
+                                            $checked = $editingPermissions === [] ? true : ($editingPermissions[$permissionKey] ?? false);
+                                            $isRequired = $permissionKey === 'dashboard';
+                                            ?>
+                                            <label class="permission-card <?php echo $checked ? 'checked' : ''; ?> <?php echo $isRequired ? 'required' : ''; ?>">
+                                                <input
+                                                    type="checkbox"
+                                                    name="permissions[]"
+                                                    value="<?php echo e($permissionKey); ?>"
+                                                    data-permission-checkbox
+                                                    data-permission-group="<?php echo e($groupKey); ?>"
+                                                    <?php echo $checked ? 'checked' : ''; ?>
+                                                    <?php echo $isRequired ? 'disabled' : ''; ?>
+                                                >
+                                                <?php if ($isRequired): ?>
+                                                    <input type="hidden" name="permissions[]" value="dashboard">
+                                                <?php endif; ?>
+                                                <span>
+                                                    <strong><?php echo e($permission['label']); ?></strong>
+                                                    <small><?php echo e($permission['description']); ?></small>
+                                                </span>
+                                            </label>
+                                        <?php endforeach; ?>
+                                    </div>
+                                </section>
                             <?php endforeach; ?>
                         </div>
                     </div>

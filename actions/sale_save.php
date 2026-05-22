@@ -181,9 +181,9 @@ try {
     );
     $movementStatement = $pdo->prepare(
         'INSERT INTO stock_movements
-            (product_id, movement_type, quantity_change, stock_after, unit_cost, reference_type, reference_id, notes)
+            (product_id, movement_type, quantity_change, stock_after, unit_cost, reference_type, reference_id, notes, created_by)
          VALUES
-            (:product_id, "sale", :quantity_change, :stock_after, :unit_cost, "sale", :reference_id, :notes)'
+            (:product_id, "sale", :quantity_change, :stock_after, :unit_cost, "sale", :reference_id, :notes, :created_by)'
     );
 
     foreach ($items as $item) {
@@ -203,13 +203,14 @@ try {
 
         $lineTotal = ($quantity * $item['unit_price']) - $item['line_discount'];
         $newStock = $currentStock - $quantity;
+        $unitCost = sale_fifo_unit_cost($pdo, (int) $item['product_id'], $quantity, (float) $product['cost_price']);
 
         $itemStatement->execute([
             'sale_id' => $saleId,
             'product_id' => $item['product_id'],
             'quantity' => $quantity,
             'unit_price' => $item['unit_price'],
-            'unit_cost' => (float) $product['cost_price'],
+            'unit_cost' => $unitCost,
             'discount' => $item['line_discount'],
             'total' => $lineTotal,
         ]);
@@ -223,9 +224,10 @@ try {
             'product_id' => $item['product_id'],
             'quantity_change' => -$quantity,
             'stock_after' => $newStock,
-            'unit_cost' => (float) $product['cost_price'],
+            'unit_cost' => $unitCost,
             'reference_id' => $saleId,
             'notes' => 'Sold on invoice ' . $invoiceNo,
+            'created_by' => (int) ($currentUser['id'] ?? 0) ?: null,
         ]);
     }
 
@@ -256,4 +258,63 @@ function next_sale_invoice_no(PDO $pdo): string
     }
 
     return $prefix . str_pad((string) $nextNumber, 4, '0', STR_PAD_LEFT);
+}
+
+function sale_fifo_unit_cost(PDO $pdo, int $productId, int $quantity, float $fallbackCost): float
+{
+    if ($productId <= 0 || $quantity <= 0) {
+        return $fallbackCost;
+    }
+
+    $outboundStatement = $pdo->prepare(
+        'SELECT COALESCE(SUM(ABS(quantity_change)), 0)
+         FROM stock_movements
+         WHERE product_id = :product_id
+           AND quantity_change < 0'
+    );
+    $outboundStatement->execute(['product_id' => $productId]);
+    $outboundRemaining = (int) $outboundStatement->fetchColumn();
+
+    $lotStatement = $pdo->prepare(
+        'SELECT sm.quantity_change,
+                sm.unit_cost
+         FROM stock_movements sm
+         LEFT JOIN purchases pu ON sm.reference_type = "purchase" AND pu.id = sm.reference_id
+         WHERE sm.product_id = :product_id
+           AND sm.quantity_change > 0
+           AND sm.movement_type IN ("opening", "purchase", "return_in", "adjustment_in")
+         ORDER BY COALESCE(pu.purchase_date, DATE(sm.created_at)) ASC, sm.id ASC'
+    );
+    $lotStatement->execute(['product_id' => $productId]);
+
+    $quantityToAllocate = $quantity;
+    $allocatedQuantity = 0;
+    $allocatedCost = 0.0;
+
+    foreach ($lotStatement->fetchAll() as $lot) {
+        $lotQuantity = (int) $lot['quantity_change'];
+        $alreadyConsumed = min($lotQuantity, $outboundRemaining);
+        $outboundRemaining = max(0, $outboundRemaining - $alreadyConsumed);
+        $availableQuantity = $lotQuantity - $alreadyConsumed;
+
+        if ($availableQuantity <= 0) {
+            continue;
+        }
+
+        $usedQuantity = min($quantityToAllocate, $availableQuantity);
+        $allocatedQuantity += $usedQuantity;
+        $allocatedCost += $usedQuantity * (float) $lot['unit_cost'];
+        $quantityToAllocate -= $usedQuantity;
+
+        if ($quantityToAllocate <= 0) {
+            break;
+        }
+    }
+
+    if ($quantityToAllocate > 0) {
+        $allocatedQuantity += $quantityToAllocate;
+        $allocatedCost += $quantityToAllocate * $fallbackCost;
+    }
+
+    return $allocatedQuantity > 0 ? round($allocatedCost / $allocatedQuantity, 2) : $fallbackCost;
 }

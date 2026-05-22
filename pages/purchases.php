@@ -17,7 +17,7 @@ if ($dbReady && $pdo !== null) {
     $suppliers = app_fetch_options($pdo, 'suppliers');
 
     $products = $pdo->query(
-        'SELECT id, sku, name, model, current_stock, cost_price
+        'SELECT id, sku, name, model, current_stock, cost_price, warranty_months
          FROM products
          WHERE status = "active"
          ORDER BY name ASC'
@@ -72,7 +72,7 @@ foreach ($products as $product) {
         $label .= ' (' . $product['model'] . ')';
     }
 
-    $productOptions .= '<option value="' . (int) $product['id'] . '" data-cost="' . e($product['cost_price']) . '">'
+    $productOptions .= '<option value="' . (int) $product['id'] . '" data-cost="' . e($product['cost_price']) . '" data-warranty="' . (int) ($product['warranty_months'] ?? 0) . '">'
         . e($label)
         . '</option>';
 }
@@ -173,6 +173,7 @@ foreach ($products as $product) {
                 <div class="purchase-items">
                     <div class="purchase-row purchase-head">
                         <span>Product</span>
+                        <span>Warranty</span>
                         <span>Qty</span>
                         <span>Unit Cost</span>
                         <span>Line Total</span>
@@ -311,6 +312,10 @@ function render_purchase_row(string $productOptions): void
                 <option value="">Choose product</option>
                 <?php echo $productOptions; ?>
             </select>
+        </label>
+        <label class="field compact-field">
+            <span>Warranty Months</span>
+            <input type="number" name="warranty_months[]" value="0" min="0" step="1" data-purchase-warranty required>
         </label>
         <label class="field compact-field">
             <span>Qty</span>

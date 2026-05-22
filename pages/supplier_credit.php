@@ -5,14 +5,19 @@
 $creditSearch = trim((string) ($_GET['q'] ?? ''));
 $statusFilter = (string) ($_GET['purchase_status'] ?? 'open');
 $collectPurchaseId = (int) ($_GET['collect'] ?? 0);
+$supplierTab = (string) ($_GET['tab'] ?? 'outstanding');
 $allowedStatuses = ['open', 'partial', 'credit', 'all'];
+$allowedTabs = ['outstanding', 'payments'];
 
 if (! in_array($statusFilter, $allowedStatuses, true)) {
     $statusFilter = 'open';
 }
 
+if (! in_array($supplierTab, $allowedTabs, true)) {
+    $supplierTab = 'outstanding';
+}
+
 $creditPurchases = [];
-$topSuppliers = [];
 $openPurchases = [];
 $recentPayments = [];
 $collectingPurchase = null;
@@ -92,20 +97,6 @@ if ($dbReady && $pdo !== null) {
     $creditStatement = $pdo->prepare($creditSql);
     $creditStatement->execute($params);
     $creditPurchases = $creditStatement->fetchAll();
-
-    $topSuppliers = $pdo->query(
-        'SELECT s.id,
-                s.name,
-                s.phone,
-                COUNT(p.id) AS open_purchases,
-                COALESCE(SUM(p.total - p.paid), 0) AS balance
-         FROM suppliers s
-         INNER JOIN purchases p ON p.supplier_id = s.id
-         WHERE p.total > p.paid
-         GROUP BY s.id
-         ORDER BY balance DESC
-         LIMIT 8'
-    )->fetchAll();
 
     $recentPayments = $pdo->query(
         'SELECT sp.*,
@@ -251,15 +242,18 @@ if ($dbReady && $pdo !== null) {
         <?php endif; ?>
     </article>
 
-    <article class="panel table-panel">
-        <div class="panel-header">
-            <div>
-                <p class="panel-label">Supplier Ledger</p>
-                <h2>Outstanding purchases</h2>
-            </div>
+    <div class="ledger-tabs-block">
+        <div class="tab-row table-tabs-outside" role="tablist" aria-label="Supplier ledger sections">
+            <a class="<?php echo $supplierTab === 'outstanding' ? 'active' : ''; ?>" href="<?php echo e(app_url('?page=supplier-credit&tab=outstanding')); ?>">Outstanding Purchases</a>
+            <a class="<?php echo $supplierTab === 'payments' ? 'active' : ''; ?>" href="<?php echo e(app_url('?page=supplier-credit&tab=payments')); ?>">Payment History</a>
+        </div>
 
+        <article class="panel table-panel tabbed-table-panel">
+        <?php if ($supplierTab === 'outstanding'): ?>
+        <div class="table-action-header">
             <form class="filter-row movement-filter" method="get" action="<?php echo e(app_url('')); ?>">
                 <input type="hidden" name="page" value="supplier-credit">
+                <input type="hidden" name="tab" value="outstanding">
                 <input type="search" name="q" value="<?php echo e($creditSearch); ?>" placeholder="Invoice, supplier, phone">
                 <select name="purchase_status">
                     <option value="open" <?php echo $statusFilter === 'open' ? 'selected' : ''; ?>>Open</option>
@@ -323,56 +317,7 @@ if ($dbReady && $pdo !== null) {
                 </tbody>
             </table>
         </div>
-    </article>
-
-    <article class="panel table-panel">
-        <div class="panel-header">
-            <div>
-                <p class="panel-label">Highest Balances</p>
-                <h2>Suppliers to pay</h2>
-            </div>
-            <a class="muted-link" href="<?php echo e(app_url('?page=inventory-setup&section=suppliers')); ?>">Suppliers</a>
-        </div>
-
-        <div class="table-wrap">
-            <table>
-                <thead>
-                    <tr>
-                        <th>Supplier</th>
-                        <th>Open Purchases</th>
-                        <th>Balance</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php if ($topSuppliers === []): ?>
-                        <tr>
-                            <td colspan="3">No supplier balances yet.</td>
-                        </tr>
-                    <?php endif; ?>
-
-                    <?php foreach ($topSuppliers as $supplier): ?>
-                        <tr>
-                            <td>
-                                <strong class="table-title"><?php echo e($supplier['name']); ?></strong>
-                                <span class="table-subtitle"><?php echo e($supplier['phone'] ?? ''); ?></span>
-                            </td>
-                            <td><?php echo (int) $supplier['open_purchases']; ?></td>
-                            <td class="text-danger"><?php echo e(format_money($supplier['balance'])); ?></td>
-                        </tr>
-                    <?php endforeach; ?>
-                </tbody>
-            </table>
-        </div>
-    </article>
-
-    <article class="panel table-panel">
-        <div class="panel-header">
-            <div>
-                <p class="panel-label">Payment History</p>
-                <h2>Recent supplier payments</h2>
-            </div>
-        </div>
-
+        <?php else: ?>
         <div class="table-wrap">
             <table>
                 <thead>
@@ -408,7 +353,9 @@ if ($dbReady && $pdo !== null) {
                 </tbody>
             </table>
         </div>
-    </article>
+        <?php endif; ?>
+        </article>
+    </div>
 </section>
 
 <?php

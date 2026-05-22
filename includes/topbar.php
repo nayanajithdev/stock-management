@@ -5,22 +5,24 @@
 
     <?php if (isset($currentUser) && is_array($currentUser)): ?>
         <?php
+        $canOpenSales = isset($pdo) && $pdo instanceof PDO && auth_user_has_permission($pdo, $currentUser, 'sales');
         $profileName = trim((string) ($currentUser['full_name'] ?? 'User'));
         $profileRole = (string) ($currentUser['role_label'] ?? auth_role_label((string) ($currentUser['role'] ?? 'manager')));
-        $profileImage = trim((string) ($currentUser['profile_image'] ?? ''));
-        $profileImageUrl = $profileImage !== '' ? app_url($profileImage) : '';
         $profileInitial = strtoupper(substr($profileName !== '' ? $profileName : 'User', 0, 1));
         ?>
+        <?php if ($canOpenSales): ?>
+            <a class="top-action topbar-sales-link <?php echo $currentPage === 'sales' ? 'active' : ''; ?>" href="<?php echo e(app_url('?page=sales')); ?>">
+                <i data-lucide="scan-barcode"></i>
+                Sales POS
+            </a>
+        <?php endif; ?>
+
         <div class="topbar-account">
             <span class="online-pill">Online</span>
 
             <div class="user-menu" data-user-menu>
                 <button class="user-menu-toggle" type="button" aria-haspopup="true" aria-expanded="false" data-user-menu-toggle>
-                    <?php if ($profileImageUrl !== ''): ?>
-                        <img class="user-avatar" src="<?php echo e($profileImageUrl); ?>" alt="">
-                    <?php else: ?>
-                        <span class="user-avatar user-avatar-fallback"><?php echo e($profileInitial); ?></span>
-                    <?php endif; ?>
+                    <span class="user-avatar user-avatar-fallback"><?php echo e($profileInitial); ?></span>
                     <span class="user-menu-text">
                         <strong><?php echo e($profileName); ?></strong>
                         <small><?php echo e($profileRole); ?></small>

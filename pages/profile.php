@@ -8,9 +8,6 @@ $profileName = (string) ($profileUser['full_name'] ?? '');
 $profileEmail = (string) ($profileUser['email'] ?? '');
 $profileUsername = (string) ($profileUser['username'] ?? '');
 $profileRole = auth_role_label((string) ($profileUser['role'] ?? 'manager'));
-$profileImage = trim((string) ($profileUser['profile_image'] ?? ''));
-$profileImageUrl = $profileImage !== '' ? app_url($profileImage) : '';
-$profileInitial = strtoupper(substr($profileName !== '' ? $profileName : 'User', 0, 1));
 ?>
 
 <div class="page-heading">
@@ -30,22 +27,8 @@ $profileInitial = strtoupper(substr($profileName !== '' ? $profileName : 'User',
         <?php if (! $dbReady): ?>
             <p class="empty-state">Import <code>database/schema.sql</code> before updating your profile.</p>
         <?php else: ?>
-            <form class="profile-form" method="post" action="<?php echo e(app_url('actions/profile_save.php')); ?>" enctype="multipart/form-data">
+            <form class="profile-form" method="post" action="<?php echo e(app_url('actions/profile_save.php')); ?>">
                 <?php echo csrf_field(); ?>
-
-                <div class="profile-avatar-block">
-                    <?php if ($profileImageUrl !== ''): ?>
-                        <img class="profile-avatar-large" src="<?php echo e($profileImageUrl); ?>" alt="">
-                    <?php else: ?>
-                        <div class="profile-avatar-large profile-avatar-fallback"><?php echo e($profileInitial); ?></div>
-                    <?php endif; ?>
-
-                    <label class="field profile-upload-field">
-                        <span>Profile Image</span>
-                        <input type="file" name="profile_image" accept="image/jpeg,image/png,image/webp,image/gif">
-                        <small>JPG, PNG, WEBP or GIF. Max 5MB.</small>
-                    </label>
-                </div>
 
                 <label class="field">
                     <span>Name</span>

@@ -142,9 +142,9 @@ try {
 
         $movementStatement = $pdo->prepare(
             'INSERT INTO stock_movements
-                (product_id, movement_type, quantity_change, stock_after, unit_cost, reference_type, reference_id, notes)
+                (product_id, movement_type, quantity_change, stock_after, unit_cost, reference_type, reference_id, notes, created_by)
              VALUES
-                (:product_id, "return_in", :quantity_change, :stock_after, :unit_cost, "sales_return", :reference_id, :notes)'
+                (:product_id, "return_in", :quantity_change, :stock_after, :unit_cost, "sales_return", :reference_id, :notes, :created_by)'
         );
         $movementStatement->execute([
             'product_id' => (int) $saleItem['product_id'],
@@ -153,6 +153,7 @@ try {
             'unit_cost' => (float) $saleItem['unit_cost'],
             'reference_id' => $returnId,
             'notes' => 'Returned from invoice ' . $saleItem['invoice_no'] . ' / ' . $conditionStatus,
+            'created_by' => (int) ($currentUser['id'] ?? 0) ?: null,
         ]);
     }
 

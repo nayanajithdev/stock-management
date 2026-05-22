@@ -1,0 +1,192 @@
+<?php
+/** @var ?PDO $pdo */
+/** @var bool $dbReady */
+
+$productId = (int) ($_GET['id'] ?? 0);
+$product = null;
+$stockLots = [];
+$movementLabels = product_history_movement_labels();
+$summary = [
+    'lot_count' => 0,
+    'stock_in' => 0,
+    'stock_out' => 0,
+];
+
+if ($dbReady && $pdo !== null && $productId > 0) {
+    $productStatement = $pdo->prepare(
+        'SELECT p.*, c.name AS category_name, b.name AS brand_name, s.name AS supplier_name
+         FROM products p
+         LEFT JOIN categories c ON c.id = p.category_id
+         LEFT JOIN brands b ON b.id = p.brand_id
+         LEFT JOIN suppliers s ON s.id = p.supplier_id
+         WHERE p.id = :id
+         LIMIT 1'
+    );
+    $productStatement->execute(['id' => $productId]);
+    $product = $productStatement->fetch() ?: null;
+
+    if (is_array($product)) {
+        $summaryStatement = $pdo->prepare(
+            'SELECT COALESCE(SUM(CASE WHEN quantity_change > 0 THEN quantity_change ELSE 0 END), 0) AS stock_in,
+                    COALESCE(SUM(CASE WHEN quantity_change < 0 THEN ABS(quantity_change) ELSE 0 END), 0) AS stock_out
+             FROM stock_movements
+             WHERE product_id = :product_id'
+        );
+        $summaryStatement->execute(['product_id' => $productId]);
+        $summaryRow = $summaryStatement->fetch() ?: [];
+        $summary['stock_in'] = (int) ($summaryRow['stock_in'] ?? 0);
+        $summary['stock_out'] = (int) ($summaryRow['stock_out'] ?? 0);
+
+        $lotStatement = $pdo->prepare(
+            'SELECT sm.*,
+                    COALESCE(pu.purchase_date, DATE(sm.created_at)) AS history_date,
+                    sm.created_at AS history_created_at,
+                    CASE
+                        WHEN sm.warranty_months > 0 AND sm.movement_type IN ("opening", "purchase")
+                            THEN DATE_ADD(COALESCE(pu.purchase_date, DATE(sm.created_at)), INTERVAL sm.warranty_months MONTH)
+                        ELSE NULL
+                    END AS warranty_ends_at,
+                    u.full_name AS created_by_name
+             FROM stock_movements sm
+             LEFT JOIN purchases pu ON sm.reference_type = "purchase" AND pu.id = sm.reference_id
+             LEFT JOIN users u ON u.id = sm.created_by
+             WHERE sm.product_id = :product_id
+               AND sm.quantity_change > 0
+               AND sm.movement_type IN ("opening", "purchase", "return_in", "adjustment_in")
+             ORDER BY COALESCE(pu.purchase_date, DATE(sm.created_at)) ASC, sm.id ASC
+             LIMIT 200'
+        );
+        $lotStatement->execute(['product_id' => $productId]);
+        $stockLots = $lotStatement->fetchAll();
+        $summary['lot_count'] = count($stockLots);
+
+        $outboundRemaining = $summary['stock_out'];
+        foreach ($stockLots as $index => $lot) {
+            $lotQuantity = (int) $lot['quantity_change'];
+            $deducted = min($lotQuantity, $outboundRemaining);
+            $stockLots[$index]['current_lot_stock'] = max(0, $lotQuantity - $deducted);
+            $outboundRemaining = max(0, $outboundRemaining - $deducted);
+        }
+
+        $stockLots = array_reverse($stockLots);
+    }
+}
+?>
+
+<div class="page-heading">
+    <div>
+        <h1><?php echo e(is_array($product) ? $product['name'] : 'Product History'); ?></h1>
+        <?php if (is_array($product)): ?>
+            <div class="history-meta-row">
+                <span><?php echo e($product['sku']); ?></span>
+                <span><?php echo e($product['brand_name'] ?: 'No brand'); ?></span>
+                <span><?php echo e($product['category_name'] ?: 'Uncategorized'); ?></span>
+                <span>Current stock: <?php echo (int) $product['current_stock']; ?></span>
+                <span>Stock in: <?php echo (int) $summary['stock_in']; ?></span>
+                <span>Stock out: <?php echo (int) $summary['stock_out']; ?></span>
+            </div>
+        <?php endif; ?>
+    </div>
+    <a class="top-action" href="<?php echo e(app_url('?page=products')); ?>">
+        <i data-lucide="arrow-left"></i>
+        Product List
+    </a>
+</div>
+
+<?php if (! $dbReady): ?>
+    <section class="panel">
+        <p class="empty-state">Import <code>database/schema.sql</code> before viewing product history.</p>
+    </section>
+<?php elseif (! is_array($product)): ?>
+    <section class="panel">
+        <p class="empty-state">Product was not found.</p>
+    </section>
+<?php else: ?>
+    <section class="panel table-panel">
+        <div class="panel-header">
+            <div>
+                <h2>Stock history</h2>
+            </div>
+            <span class="dashboard-pill"><?php echo (int) $summary['lot_count']; ?> lot(s)</span>
+        </div>
+
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Received</th>
+                        <th>Current Stock</th>
+                        <th>Unit Cost</th>
+                        <th>Warranty</th>
+                        <th>Reference</th>
+                        <th>By</th>
+                        <th>Notes</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php if ($stockLots === []): ?>
+                        <tr><td colspan="8">No stock lots recorded for this product.</td></tr>
+                    <?php endif; ?>
+
+                    <?php foreach ($stockLots as $movement): ?>
+                        <?php
+                        $quantityChange = (int) $movement['quantity_change'];
+                        $currentLotStock = (int) ($movement['current_lot_stock'] ?? 0);
+                        $reference = trim((string) ($movement['reference_type'] ?? ''));
+                        if ($reference !== '' && $movement['reference_id'] !== null) {
+                            $reference .= ' #' . (int) $movement['reference_id'];
+                        }
+                        ?>
+                        <?php
+                        $historyDateTime = trim((string) $movement['history_date']) . ' ' . date('H:i', strtotime((string) $movement['history_created_at']));
+                        ?>
+                        <tr>
+                            <td><?php echo e($historyDateTime); ?></td>
+                            <td><?php echo $quantityChange; ?></td>
+                            <td class="<?php echo $currentLotStock <= 0 ? 'text-danger' : 'text-good'; ?>"><?php echo $currentLotStock; ?></td>
+                            <td><?php echo e(format_money($movement['unit_cost'])); ?></td>
+                            <td>
+                                <?php if ((int) $movement['warranty_months'] > 0 && $movement['warranty_ends_at'] !== null): ?>
+                                    <?php echo (int) $movement['warranty_months']; ?> mo
+                                    <span class="table-subtitle">Ends <?php echo e((string) $movement['warranty_ends_at']); ?></span>
+                                <?php else: ?>
+                                    -
+                                <?php endif; ?>
+                            </td>
+                            <td><?php echo e($reference !== '' ? $reference : 'Manual'); ?></td>
+                            <td><?php echo e($movement['created_by_name'] ?: '-'); ?></td>
+                            <td><?php echo e($movement['notes'] ?? ''); ?></td>
+                        </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+    </section>
+<?php endif; ?>
+
+<?php
+function product_history_movement_labels(): array
+{
+    return [
+        'opening' => 'Opening Stock',
+        'purchase' => 'Purchase',
+        'sale' => 'Sale',
+        'return_in' => 'Sales Return',
+        'return_out' => 'Purchase Return',
+        'adjustment_in' => 'Manual Increase',
+        'adjustment_out' => 'Manual Decrease',
+        'damage' => 'Damage / Loss',
+        'stock_count' => 'Stock Count',
+    ];
+}
+
+function product_history_movement_status_class(string $type): string
+{
+    return match ($type) {
+        'purchase', 'opening', 'return_in', 'adjustment_in' => 'status-active',
+        'damage', 'sale', 'return_out', 'adjustment_out' => 'status-pending',
+        'stock_count' => 'status-warranty',
+        default => 'status-inactive',
+    };
+}

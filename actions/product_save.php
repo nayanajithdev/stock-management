@@ -28,8 +28,10 @@ $costPrice = input_decimal('cost_price');
 $sellingPrice = input_decimal('selling_price');
 $wholesalePrice = input_decimal('wholesale_price');
 $warrantyMonths = input_int('warranty_months');
+$itemTracking = isset($_POST['item_tracking']) ? 1 : 0;
 $reorderLevel = input_int('reorder_level');
 $openingStock = input_int('opening_stock');
+$purchaseDate = trim((string) ($_POST['purchase_date'] ?? date('Y-m-d')));
 $formRedirect = '?page=products' . ($productId !== null ? '&edit=' . $productId : '&form=product');
 
 if ($name === '' || $sku === '') {
@@ -43,6 +45,10 @@ if ($sellingPrice < $costPrice) {
 }
 
 try {
+    if ($productId === null && ! preg_match('/^\d{4}-\d{2}-\d{2}$/', $purchaseDate)) {
+        throw new RuntimeException('Purchase date is not valid.');
+    }
+
     if ($productId !== null) {
         $statement = $pdo->prepare(
             'UPDATE products
@@ -58,6 +64,7 @@ try {
                  selling_price = :selling_price,
                  wholesale_price = :wholesale_price,
                  warranty_months = :warranty_months,
+                 item_tracking = :item_tracking,
                  reorder_level = :reorder_level,
                  status = "active",
                  updated_at = CURRENT_TIMESTAMP
@@ -76,6 +83,7 @@ try {
             'selling_price' => $sellingPrice,
             'wholesale_price' => $wholesalePrice,
             'warranty_months' => $warrantyMonths,
+            'item_tracking' => $itemTracking,
             'reorder_level' => $reorderLevel,
             'id' => $productId,
         ]);
@@ -89,9 +97,9 @@ try {
 
     $statement = $pdo->prepare(
         'INSERT INTO products
-            (category_id, brand_id, supplier_id, sku, barcode, name, model, description, cost_price, selling_price, wholesale_price, warranty_months, reorder_level, current_stock)
+            (category_id, brand_id, supplier_id, sku, barcode, name, model, description, cost_price, selling_price, wholesale_price, warranty_months, item_tracking, reorder_level, current_stock)
          VALUES
-            (:category_id, :brand_id, :supplier_id, :sku, :barcode, :name, :model, :description, :cost_price, :selling_price, :wholesale_price, :warranty_months, :reorder_level, :current_stock)'
+            (:category_id, :brand_id, :supplier_id, :sku, :barcode, :name, :model, :description, :cost_price, :selling_price, :wholesale_price, :warranty_months, :item_tracking, :reorder_level, :current_stock)'
     );
     $statement->execute([
         'category_id' => $categoryId,
@@ -106,6 +114,7 @@ try {
         'selling_price' => $sellingPrice,
         'wholesale_price' => $wholesalePrice,
         'warranty_months' => $warrantyMonths,
+        'item_tracking' => $itemTracking,
         'reorder_level' => $reorderLevel,
         'current_stock' => $openingStock,
     ]);
@@ -115,16 +124,19 @@ try {
     if ($openingStock > 0) {
         $movement = $pdo->prepare(
             'INSERT INTO stock_movements
-                (product_id, movement_type, quantity_change, stock_after, unit_cost, reference_type, reference_id, notes)
+                (product_id, movement_type, quantity_change, stock_after, unit_cost, warranty_months, reference_type, reference_id, notes, created_by, created_at)
              VALUES
-                (:product_id, "opening", :quantity_change, :stock_after, :unit_cost, "product", :reference_id, "Opening stock from product creation")'
+                (:product_id, "opening", :quantity_change, :stock_after, :unit_cost, :warranty_months, "product", :reference_id, "Opening stock from product creation", :created_by, :created_at)'
         );
         $movement->execute([
             'product_id' => $newProductId,
             'quantity_change' => $openingStock,
             'stock_after' => $openingStock,
             'unit_cost' => $costPrice,
+            'warranty_months' => $warrantyMonths,
             'reference_id' => $newProductId,
+            'created_by' => (int) ($currentUser['id'] ?? 0) ?: null,
+            'created_at' => $purchaseDate . ' 00:00:00',
         ]);
     }
 
@@ -144,5 +156,12 @@ try {
         set_flash('error', 'Product could not be saved. Please check the database and try again.');
     }
 
+    redirect($formRedirect);
+} catch (RuntimeException $exception) {
+    if ($pdo->inTransaction()) {
+        $pdo->rollBack();
+    }
+
+    set_flash('error', $exception->getMessage());
     redirect($formRedirect);
 }

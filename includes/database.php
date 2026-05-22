@@ -89,7 +89,10 @@ function app_database_ready(PDO $pdo): bool
         return false;
     }
 
-    return app_column_exists($pdo, 'users', 'email');
+    return app_column_exists($pdo, 'users', 'email')
+        && app_column_exists($pdo, 'products', 'item_tracking')
+        && app_column_exists($pdo, 'purchase_items', 'warranty_months')
+        && app_column_exists($pdo, 'stock_movements', 'warranty_months');
 }
 
 function app_fetch_settings(PDO $pdo): array

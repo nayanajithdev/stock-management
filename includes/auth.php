@@ -16,11 +16,6 @@ function auth_users_have_email_column(PDO $pdo): bool
     return (int) $statement->fetchColumn() > 0;
 }
 
-function auth_users_have_profile_image_column(PDO $pdo): bool
-{
-    return app_column_exists($pdo, 'users', 'profile_image');
-}
-
 function auth_configured_owner_exists(PDO $pdo): bool
 {
     if (! auth_users_have_email_column($pdo)) {
@@ -46,12 +41,8 @@ function auth_current_user(PDO $pdo): ?array
         return null;
     }
 
-    $profileImageSelect = auth_users_have_profile_image_column($pdo)
-        ? 'profile_image'
-        : 'NULL AS profile_image';
-
     $statement = $pdo->prepare(
-        'SELECT id, full_name, email, username, role, status, ' . $profileImageSelect . '
+        'SELECT id, full_name, email, username, role, status
          FROM users
          WHERE id = :id
          LIMIT 1'
@@ -99,7 +90,7 @@ function auth_permission_definitions(): array
         'products' => [
             'label' => 'Products',
             'description' => 'Create, update, archive, and view products.',
-            'pages' => ['products'],
+            'pages' => ['products', 'product-history'],
         ],
         'inventory_setup' => [
             'label' => 'Inventory Setup',

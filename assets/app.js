@@ -68,6 +68,60 @@ document.querySelectorAll('a[aria-disabled="true"]').forEach((link) => {
     link.addEventListener('click', (event) => event.preventDefault());
 });
 
+document.querySelectorAll('[data-permission-panel]').forEach((panel) => {
+    const checkboxes = Array.from(panel.querySelectorAll('[data-permission-checkbox]'));
+    const optionalCheckboxes = checkboxes.filter((checkbox) => !checkbox.disabled);
+    const groupToggles = Array.from(panel.querySelectorAll('[data-permission-group-toggle]'));
+    const actionButtons = Array.from(panel.querySelectorAll('[data-permission-action]'));
+
+    const syncPermissionState = () => {
+        checkboxes.forEach((checkbox) => {
+            checkbox.closest('.permission-card')?.classList.toggle('checked', checkbox.checked);
+        });
+
+        groupToggles.forEach((toggle) => {
+            const group = toggle.dataset.permissionGroupToggle;
+            const groupBoxes = optionalCheckboxes.filter((checkbox) => checkbox.dataset.permissionGroup === group);
+            const checkedCount = groupBoxes.filter((checkbox) => checkbox.checked).length;
+
+            toggle.checked = groupBoxes.length > 0 && checkedCount === groupBoxes.length;
+            toggle.indeterminate = checkedCount > 0 && checkedCount < groupBoxes.length;
+        });
+    };
+
+    checkboxes.forEach((checkbox) => {
+        checkbox.addEventListener('change', syncPermissionState);
+    });
+
+    groupToggles.forEach((toggle) => {
+        toggle.addEventListener('change', () => {
+            const group = toggle.dataset.permissionGroupToggle;
+
+            optionalCheckboxes
+                .filter((checkbox) => checkbox.dataset.permissionGroup === group)
+                .forEach((checkbox) => {
+                    checkbox.checked = toggle.checked;
+                });
+
+            syncPermissionState();
+        });
+    });
+
+    actionButtons.forEach((button) => {
+        button.addEventListener('click', () => {
+            const action = button.dataset.permissionAction;
+
+            optionalCheckboxes.forEach((checkbox) => {
+                checkbox.checked = action === 'all';
+            });
+
+            syncPermissionState();
+        });
+    });
+
+    syncPermissionState();
+});
+
 const purchaseForm = document.querySelector('[data-purchase-form]');
 
 if (purchaseForm) {
@@ -120,20 +174,26 @@ if (purchaseForm) {
     };
 
     const hydrateRow = (row) => {
+        const productSelect = row.querySelector('[data-purchase-product]');
+        const warrantyInput = row.querySelector('[data-purchase-warranty]');
+        const costInput = row.querySelector('[data-purchase-cost]');
+
         row.querySelectorAll('[data-purchase-quantity], [data-purchase-cost]').forEach((input) => {
             input.addEventListener('input', recalculate);
         });
-
-        const productSelect = row.querySelector('[data-purchase-product]');
-        const costInput = row.querySelector('[data-purchase-cost]');
 
         if (productSelect && costInput) {
             productSelect.addEventListener('change', () => {
                 const selected = productSelect.selectedOptions[0];
                 const cost = selected?.dataset.cost;
+                const warranty = selected?.dataset.warranty;
 
                 if (cost && Number.parseFloat(cost) > 0) {
                     costInput.value = Number.parseFloat(cost).toFixed(2);
+                }
+
+                if (warrantyInput && warranty !== undefined) {
+                    warrantyInput.value = String(Math.max(0, Number.parseInt(warranty || '0', 10) || 0));
                 }
 
                 recalculate();

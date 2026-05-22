@@ -199,10 +199,20 @@ $showProductForm = $editingProduct !== null || (string) ($_GET['form'] ?? '') ==
 
                 <?php if ($editingProduct === null): ?>
                     <label class="field">
+                        <span>Purchase Date</span>
+                        <input type="date" name="purchase_date" value="<?php echo e(date('Y-m-d')); ?>" required>
+                    </label>
+
+                    <label class="field">
                         <span>Opening Stock</span>
                         <input type="number" name="opening_stock" value="0" min="0" step="1">
                     </label>
                 <?php endif; ?>
+
+                <label class="checkbox-row span-4">
+                    <input type="checkbox" name="item_tracking" value="1" <?php echo (int) ($editingProduct['item_tracking'] ?? 0) === 1 ? 'checked' : ''; ?>>
+                    <span>Warranty Tracking</span>
+                </label>
 
                 <label class="field span-4">
                     <span>Description</span>
@@ -318,6 +328,9 @@ $showProductForm = $editingProduct !== null || (string) ($_GET['form'] ?? '') ==
                             <td><span class="status status-<?php echo e($product['status']); ?>"><?php echo e(ucfirst((string) $product['status'])); ?></span></td>
                             <td>
                                 <div class="table-actions">
+                                    <a class="icon-button" href="<?php echo e(app_url('?page=product-history&id=' . (int) $product['id'])); ?>" aria-label="View stock history">
+                                        <i data-lucide="history"></i>
+                                    </a>
                                     <a class="icon-button" href="<?php echo e(app_url('?page=products&edit=' . (int) $product['id'] . '#product-form')); ?>" aria-label="Edit product">
                                         <i data-lucide="pencil"></i>
                                     </a>

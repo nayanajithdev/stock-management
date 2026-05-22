@@ -85,7 +85,6 @@ $menuSections = [
         ['key' => 'supplier-credit', 'label' => 'Supplier Credit', 'icon' => 'hand-coins'],
         ['key' => 'expenses', 'label' => 'Expenses', 'icon' => 'receipt'],
         ['key' => 'stock', 'label' => 'Stock Movements', 'icon' => 'boxes'],
-        ['key' => 'sales', 'label' => 'Sales POS', 'icon' => 'scan-barcode'],
         ['key' => 'warranty', 'label' => 'Warranty / RMA', 'icon' => 'shield-check'],
     ],
     'Customers' => [
@@ -129,6 +128,11 @@ $pages = [
         'title' => 'Products',
         'description' => 'Create products, prices, warranty rules, and reorder levels',
         'view' => __DIR__ . '/../pages/products.php',
+    ],
+    'product-history' => [
+        'title' => 'Product History',
+        'description' => 'View stock movement history and warranty tracking for one product',
+        'view' => __DIR__ . '/../pages/product_history.php',
     ],
     'inventory-setup' => [
         'title' => 'Inventory Setup',

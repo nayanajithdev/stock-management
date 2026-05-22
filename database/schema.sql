@@ -12,7 +12,6 @@ CREATE TABLE IF NOT EXISTS users (
     password_hash VARCHAR(255) NOT NULL,
     role VARCHAR(40) NOT NULL DEFAULT 'owner',
     status VARCHAR(20) NOT NULL DEFAULT 'active',
-    profile_image VARCHAR(255) NULL,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -82,6 +81,7 @@ CREATE TABLE IF NOT EXISTS products (
     selling_price DECIMAL(12,2) NOT NULL DEFAULT 0.00,
     wholesale_price DECIMAL(12,2) NOT NULL DEFAULT 0.00,
     warranty_months INT UNSIGNED NOT NULL DEFAULT 0,
+    item_tracking TINYINT(1) NOT NULL DEFAULT 0,
     reorder_level INT UNSIGNED NOT NULL DEFAULT 0,
     current_stock INT NOT NULL DEFAULT 0,
     status VARCHAR(20) NOT NULL DEFAULT 'active',
@@ -99,12 +99,20 @@ CREATE TABLE IF NOT EXISTS product_serials (
     product_id INT UNSIGNED NOT NULL,
     serial_number VARCHAR(160) NOT NULL UNIQUE,
     status VARCHAR(30) NOT NULL DEFAULT 'in_stock',
-    purchase_item_id INT UNSIGNED NULL,
-    sale_item_id INT UNSIGNED NULL,
+    purchase_item_id BIGINT UNSIGNED NULL,
+    sale_item_id BIGINT UNSIGNED NULL,
+    purchase_date DATE NULL,
+    supplier_warranty_months INT UNSIGNED NOT NULL DEFAULT 0,
+    warranty_expires_at DATE NULL,
+    unit_cost DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+    source_type VARCHAR(40) NULL,
+    source_id BIGINT UNSIGNED NULL,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
     CONSTRAINT fk_product_serials_product FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
-    INDEX idx_product_serials_status (status)
+    INDEX idx_product_serials_status (status),
+    INDEX idx_product_serials_product_status (product_id, status),
+    INDEX idx_product_serials_warranty (warranty_expires_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS stock_movements (
@@ -114,6 +122,7 @@ CREATE TABLE IF NOT EXISTS stock_movements (
     quantity_change INT NOT NULL,
     stock_after INT NOT NULL,
     unit_cost DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+    warranty_months INT UNSIGNED NOT NULL DEFAULT 0,
     reference_type VARCHAR(40) NULL,
     reference_id BIGINT UNSIGNED NULL,
     notes VARCHAR(255) NULL,
@@ -148,6 +157,7 @@ CREATE TABLE IF NOT EXISTS purchase_items (
     product_id INT UNSIGNED NOT NULL,
     quantity INT UNSIGNED NOT NULL,
     unit_cost DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+    warranty_months INT UNSIGNED NOT NULL DEFAULT 0,
     total DECIMAL(12,2) NOT NULL DEFAULT 0.00,
     CONSTRAINT fk_purchase_items_purchase FOREIGN KEY (purchase_id) REFERENCES purchases(id) ON DELETE CASCADE,
     CONSTRAINT fk_purchase_items_product FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE RESTRICT

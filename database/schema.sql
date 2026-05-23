@@ -318,27 +318,6 @@ CREATE TABLE IF NOT EXISTS activity_logs (
     INDEX idx_activity_logs_created_at (created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-INSERT IGNORE INTO categories (id, name, description) VALUES
-(1, 'Mouse', 'Computer mouse and pointing devices'),
-(2, 'Keyboard', 'Keyboards and combos'),
-(3, 'Storage', 'SSD, hard drives, pen drives, and memory cards'),
-(4, 'Memory', 'RAM modules and related parts'),
-(5, 'Cables & Adapters', 'HDMI, USB, VGA, network, and power adapters'),
-(6, 'Networking', 'Routers, switches, and network accessories'),
-(7, 'Power', 'UPS, chargers, and power accessories');
-
-INSERT IGNORE INTO brands (id, name) VALUES
-(1, 'Logitech'),
-(2, 'HP'),
-(3, 'Dell'),
-(4, 'Kingston'),
-(5, 'Samsung'),
-(6, 'Adata'),
-(7, 'TP-Link');
-
-INSERT IGNORE INTO suppliers (id, name, contact_person, phone) VALUES
-(1, 'Default Supplier', 'Store Owner', '0770000000');
-
 INSERT IGNORE INTO settings (setting_key, setting_value) VALUES
 ('shop_name', 'Tech Accessories Hub'),
 ('shop_legal_name', ''),

@@ -133,6 +133,7 @@ if (purchaseForm) {
     const totalInput = purchaseForm.querySelector('[data-purchase-total]');
     const paidInput = purchaseForm.querySelector('[data-purchase-paid]');
     const balanceInput = purchaseForm.querySelector('[data-purchase-balance]');
+    const productSearchUrl = purchaseForm.dataset.productSearchUrl || '';
 
     const money = (value) => Number.isFinite(value) ? value.toFixed(2) : '0.00';
 
@@ -174,29 +175,148 @@ if (purchaseForm) {
     };
 
     const hydrateRow = (row) => {
-        const productSelect = row.querySelector('[data-purchase-product]');
+        const productInput = row.querySelector('[data-product-search]');
+        const productHidden = row.querySelector('[data-purchase-product]');
+        const suggestions = row.querySelector('[data-product-suggestions]');
         const warrantyInput = row.querySelector('[data-purchase-warranty]');
         const costInput = row.querySelector('[data-purchase-cost]');
+        let searchTimer = null;
+        let searchToken = 0;
 
         row.querySelectorAll('[data-purchase-quantity], [data-purchase-cost]').forEach((input) => {
             input.addEventListener('input', recalculate);
         });
 
-        if (productSelect && costInput) {
-            productSelect.addEventListener('change', () => {
-                const selected = productSelect.selectedOptions[0];
-                const cost = selected?.dataset.cost;
-                const warranty = selected?.dataset.warranty;
+        const closeSuggestions = () => {
+            if (!suggestions) {
+                return;
+            }
 
-                if (cost && Number.parseFloat(cost) > 0) {
-                    costInput.value = Number.parseFloat(cost).toFixed(2);
+            suggestions.hidden = true;
+            suggestions.innerHTML = '';
+        };
+
+        const showSuggestionMessage = (message) => {
+            if (!suggestions) {
+                return;
+            }
+
+            suggestions.innerHTML = `<div class="product-suggestion-empty">${message}</div>`;
+            suggestions.hidden = false;
+        };
+
+        const selectProduct = (product) => {
+            if (productHidden) {
+                productHidden.value = String(product.id || '');
+            }
+
+            if (productInput) {
+                productInput.value = product.label || '';
+            }
+
+            if (costInput) {
+                costInput.value = money(Number.parseFloat(product.cost || '0'));
+            }
+
+            if (warrantyInput) {
+                warrantyInput.value = String(Math.max(0, Number.parseInt(product.warranty || '0', 10) || 0));
+            }
+
+            closeSuggestions();
+            recalculate();
+        };
+
+        const renderSuggestions = (products) => {
+            if (!suggestions) {
+                return;
+            }
+
+            suggestions.innerHTML = '';
+
+            if (!products.length) {
+                showSuggestionMessage('No products found');
+                return;
+            }
+
+            products.forEach((product) => {
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.className = 'product-suggestion-item';
+                button.innerHTML = `
+                    <strong></strong>
+                    <span></span>
+                `;
+                button.querySelector('strong').textContent = product.label || '';
+                button.querySelector('span').textContent = `Stock ${product.stock ?? 0} / Cost ${money(Number.parseFloat(product.cost || '0'))} / Warranty ${product.warranty ?? 0} mo`;
+                button.addEventListener('mousedown', (event) => event.preventDefault());
+                button.addEventListener('click', () => selectProduct(product));
+                suggestions.appendChild(button);
+            });
+
+            suggestions.hidden = false;
+        };
+
+        const runProductSearch = () => {
+            if (!productInput || !productSearchUrl) {
+                return;
+            }
+
+            const query = productInput.value.trim();
+
+            if (productHidden) {
+                productHidden.value = '';
+            }
+
+            if (query.length < 2) {
+                closeSuggestions();
+                return;
+            }
+
+            const token = ++searchToken;
+            showSuggestionMessage('Searching...');
+
+            fetch(`${productSearchUrl}?q=${encodeURIComponent(query)}`, {
+                headers: { Accept: 'application/json' },
+            })
+                .then((response) => response.ok ? response.json() : { products: [] })
+                .then((data) => {
+                    if (token !== searchToken) {
+                        return;
+                    }
+
+                    renderSuggestions(Array.isArray(data.products) ? data.products : []);
+                })
+                .catch(() => {
+                    if (token === searchToken) {
+                        showSuggestionMessage('Search failed');
+                    }
+                });
+        };
+
+        if (productInput) {
+            productInput.addEventListener('input', () => {
+                if (productHidden) {
+                    productHidden.value = '';
                 }
 
-                if (warrantyInput && warranty !== undefined) {
-                    warrantyInput.value = String(Math.max(0, Number.parseInt(warranty || '0', 10) || 0));
-                }
+                window.clearTimeout(searchTimer);
+                searchTimer = window.setTimeout(runProductSearch, 180);
+            });
 
-                recalculate();
+            productInput.addEventListener('focus', () => {
+                if (productInput.value.trim().length >= 2) {
+                    runProductSearch();
+                }
+            });
+
+            productInput.addEventListener('keydown', (event) => {
+                if (event.key === 'Escape') {
+                    closeSuggestions();
+                }
+            });
+
+            productInput.addEventListener('blur', () => {
+                window.setTimeout(closeSuggestions, 120);
             });
         }
 
@@ -320,13 +440,13 @@ if (saleForm) {
     const rowsContainer = saleForm.querySelector('[data-sale-rows]');
     const template = document.querySelector('[data-sale-row-template]');
     const addButton = saleForm.querySelector('[data-add-sale-row]');
-    const barcodeInput = saleForm.querySelector('[data-sale-barcode]');
     const subtotalInput = saleForm.querySelector('[data-sale-subtotal]');
     const discountInput = saleForm.querySelector('[data-sale-discount]');
     const taxInput = saleForm.querySelector('[data-sale-tax]');
     const totalInput = saleForm.querySelector('[data-sale-total]');
     const paidInput = saleForm.querySelector('[data-sale-paid]');
     const balanceInput = saleForm.querySelector('[data-sale-balance]');
+    const saleProductSearchUrl = saleForm.dataset.saleProductSearchUrl || '';
 
     const money = (value) => Number.isFinite(value) ? value.toFixed(2) : '0.00';
 
@@ -337,7 +457,7 @@ if (saleForm) {
             const quantity = Math.max(0, Number.parseFloat(row.querySelector('[data-sale-quantity]')?.value || '0'));
             const price = Math.max(0, Number.parseFloat(row.querySelector('[data-sale-price]')?.value || '0'));
             const discount = Math.max(0, Number.parseFloat(row.querySelector('[data-sale-line-discount]')?.value || '0'));
-            const stock = Math.max(0, Number.parseInt(row.querySelector('[data-sale-product]')?.selectedOptions[0]?.dataset.stock || '0', 10));
+            const stock = Math.max(0, Number.parseInt(row.querySelector('[data-sale-product]')?.dataset.stock || '0', 10));
             const lineTotal = Math.max(0, (quantity * price) - discount);
             const lineTotalInput = row.querySelector('[data-sale-line-total]');
             const stockDisplay = row.querySelector('[data-sale-stock]');
@@ -377,29 +497,173 @@ if (saleForm) {
     };
 
     const hydrateSaleRow = (row) => {
+        const productInput = row.querySelector('[data-sale-product-search]');
+        const productHidden = row.querySelector('[data-sale-product]');
+        const suggestions = row.querySelector('[data-sale-product-suggestions]');
+        const priceInput = row.querySelector('[data-sale-price]');
+        const quantityInput = row.querySelector('[data-sale-quantity]');
+        const stockDisplay = row.querySelector('[data-sale-stock]');
+        let searchTimer = null;
+        let searchToken = 0;
+
         row.querySelectorAll('[data-sale-quantity], [data-sale-price], [data-sale-line-discount]').forEach((input) => {
             input.addEventListener('input', recalculateSale);
         });
 
-        const productSelect = row.querySelector('[data-sale-product]');
-        const priceInput = row.querySelector('[data-sale-price]');
-        const quantityInput = row.querySelector('[data-sale-quantity]');
+        const closeSuggestions = () => {
+            if (!suggestions) {
+                return;
+            }
 
-        if (productSelect && priceInput) {
-            productSelect.addEventListener('change', () => {
-                const selected = productSelect.selectedOptions[0];
-                const price = selected?.dataset.price;
-                const stock = Number.parseInt(selected?.dataset.stock || '0', 10);
+            suggestions.hidden = true;
+            suggestions.innerHTML = '';
+        };
 
-                if (price && Number.parseFloat(price) > 0) {
-                    priceInput.value = Number.parseFloat(price).toFixed(2);
-                }
+        const showSuggestionMessage = (message) => {
+            if (!suggestions) {
+                return;
+            }
 
-                if (quantityInput) {
-                    quantityInput.max = String(Math.max(0, stock));
-                }
+            suggestions.innerHTML = `<div class="product-suggestion-empty">${message}</div>`;
+            suggestions.hidden = false;
+        };
 
+        const clearSelectedProduct = () => {
+            if (productHidden) {
+                productHidden.value = '';
+                productHidden.dataset.stock = '0';
+                productHidden.dataset.price = '0';
+                productHidden.dataset.cost = '0';
+            }
+
+            if (quantityInput) {
+                quantityInput.removeAttribute('max');
+            }
+
+            if (stockDisplay) {
+                stockDisplay.textContent = '0';
+            }
+        };
+
+        const selectProduct = (product) => {
+            const stock = Math.max(0, Number.parseInt(product.stock || '0', 10) || 0);
+            const price = Math.max(0, Number.parseFloat(product.price || '0') || 0);
+
+            if (productHidden) {
+                productHidden.value = String(product.id || '');
+                productHidden.dataset.stock = String(stock);
+                productHidden.dataset.price = String(price);
+                productHidden.dataset.cost = String(Math.max(0, Number.parseFloat(product.cost || '0') || 0));
+            }
+
+            if (productInput) {
+                productInput.value = product.label || '';
+            }
+
+            if (priceInput) {
+                priceInput.value = money(price);
+            }
+
+            if (quantityInput) {
+                quantityInput.max = String(stock);
+            }
+
+            if (stockDisplay) {
+                stockDisplay.textContent = String(stock);
+                stockDisplay.classList.toggle('low', stock <= 0);
+            }
+
+            closeSuggestions();
+            recalculateSale();
+        };
+
+        const renderSuggestions = (products) => {
+            if (!suggestions) {
+                return;
+            }
+
+            suggestions.innerHTML = '';
+
+            if (!products.length) {
+                showSuggestionMessage('No products found');
+                return;
+            }
+
+            products.forEach((product) => {
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.className = 'product-suggestion-item';
+                button.innerHTML = `
+                    <strong></strong>
+                    <span></span>
+                `;
+                button.querySelector('strong').textContent = product.label || '';
+                button.querySelector('span').textContent = `Stock ${product.stock ?? 0} / Sell ${money(Number.parseFloat(product.price || '0'))}`;
+                button.addEventListener('mousedown', (event) => event.preventDefault());
+                button.addEventListener('click', () => selectProduct(product));
+                suggestions.appendChild(button);
+            });
+
+            suggestions.hidden = false;
+        };
+
+        const runProductSearch = () => {
+            if (!productInput || !saleProductSearchUrl) {
+                return;
+            }
+
+            const query = productInput.value.trim();
+            clearSelectedProduct();
+            recalculateSale();
+
+            if (query.length < 2) {
+                closeSuggestions();
+                return;
+            }
+
+            const token = ++searchToken;
+            showSuggestionMessage('Searching...');
+
+            fetch(`${saleProductSearchUrl}?q=${encodeURIComponent(query)}`, {
+                headers: { Accept: 'application/json' },
+            })
+                .then((response) => response.ok ? response.json() : { products: [] })
+                .then((data) => {
+                    if (token !== searchToken) {
+                        return;
+                    }
+
+                    renderSuggestions(Array.isArray(data.products) ? data.products : []);
+                })
+                .catch(() => {
+                    if (token === searchToken) {
+                        showSuggestionMessage('Search failed');
+                    }
+                });
+        };
+
+        if (productInput) {
+            productInput.addEventListener('input', () => {
+                clearSelectedProduct();
                 recalculateSale();
+                window.clearTimeout(searchTimer);
+                searchTimer = window.setTimeout(runProductSearch, 180);
+            });
+
+            productInput.addEventListener('focus', () => {
+                if (productInput.value.trim().length >= 2) {
+                    runProductSearch();
+                }
+            });
+
+            productInput.addEventListener('keydown', (event) => {
+                if (event.key === 'Escape') {
+                    closeSuggestions();
+                }
+            });
+
+            productInput.addEventListener('blur', () => {
+                window.setTimeout(closeSuggestions, 120);
             });
         }
 
@@ -444,45 +708,6 @@ if (saleForm) {
 
     if (addButton) {
         addButton.addEventListener('click', createSaleRow);
-    }
-
-    if (barcodeInput) {
-        barcodeInput.addEventListener('keydown', (event) => {
-            if (event.key !== 'Enter') {
-                return;
-            }
-
-            event.preventDefault();
-
-            const query = barcodeInput.value.trim().toLowerCase();
-            if (!query) {
-                return;
-            }
-
-            const rows = Array.from(rowsContainer.querySelectorAll('[data-sale-row]'));
-            let targetRow = rows.find((row) => !row.querySelector('[data-sale-product]')?.value) || null;
-
-            if (!targetRow) {
-                targetRow = createSaleRow();
-            }
-
-            const select = targetRow?.querySelector('[data-sale-product]');
-            if (!select) {
-                return;
-            }
-
-            const option = Array.from(select.options).find((item) => {
-                const text = item.textContent?.toLowerCase() || '';
-                const barcode = item.dataset.barcode?.toLowerCase() || '';
-                return item.value && (barcode === query || text.includes(query));
-            });
-
-            if (option) {
-                select.value = option.value;
-                select.dispatchEvent(new Event('change'));
-                barcodeInput.value = '';
-            }
-        });
     }
 
     [discountInput, taxInput, paidInput].forEach((input) => {

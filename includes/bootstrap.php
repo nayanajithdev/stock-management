@@ -144,6 +144,11 @@ $pages = [
         'description' => 'Receive supplier stock and update inventory',
         'view' => __DIR__ . '/../pages/purchases.php',
     ],
+    'purchase-history' => [
+        'title' => 'Purchase History',
+        'description' => 'View received stock and supplier purchase history',
+        'view' => __DIR__ . '/../pages/purchase_history.php',
+    ],
     'supplier-credit' => [
         'title' => 'Supplier Credit',
         'description' => 'Track purchase balances and supplier payments',

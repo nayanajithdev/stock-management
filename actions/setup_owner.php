@@ -21,13 +21,14 @@ if (auth_configured_owner_exists($pdo)) {
 }
 
 $fullName = trim((string) ($_POST['full_name'] ?? ''));
-$email = trim((string) ($_POST['email'] ?? ''));
 $username = trim((string) ($_POST['username'] ?? ''));
+$email = trim((string) ($_POST['email'] ?? ''));
+$shopName = trim((string) ($_POST['shop_name'] ?? ''));
 $password = (string) ($_POST['password'] ?? '');
 $passwordConfirm = (string) ($_POST['password_confirm'] ?? '');
 
 try {
-    validate_owner_setup_input($fullName, $email, $username, $password, $passwordConfirm);
+    validate_owner_setup_input($fullName, $username, $email, $shopName, $password, $passwordConfirm);
 
     $passwordHash = password_hash($password, PASSWORD_DEFAULT);
     $pdo->beginTransaction();
@@ -72,6 +73,10 @@ try {
     $cleanupOwners = $pdo->prepare('UPDATE users SET role = "manager" WHERE role = "owner" AND id <> :owner_id');
     $cleanupOwners->execute(['owner_id' => $ownerId]);
 
+    app_save_settings($pdo, [
+        'shop_name' => $shopName,
+    ]);
+
     $pdo->commit();
 
     app_log_activity($pdo, ['id' => $ownerId], 'owner_create', 'Created the first owner account for ' . $fullName . '.');
@@ -92,14 +97,18 @@ try {
     redirect('?page=setup-owner');
 }
 
-function validate_owner_setup_input(string $fullName, string $email, string $username, string $password, string $passwordConfirm): void
+function validate_owner_setup_input(string $fullName, string $username, string $email, string $shopName, string $password, string $passwordConfirm): void
 {
-    if ($fullName === '' || $email === '' || $username === '') {
-        throw new RuntimeException('Full name, email, and username are required.');
+    if ($fullName === '' || $username === '' || $email === '' || $shopName === '') {
+        throw new RuntimeException('Your name, username, email, and shop name are required.');
     }
 
     if (! filter_var($email, FILTER_VALIDATE_EMAIL)) {
         throw new RuntimeException('Enter a valid email address.');
+    }
+
+    if (strlen($shopName) > 120) {
+        throw new RuntimeException('Shop name is too long.');
     }
 
     if (! preg_match('/^[a-zA-Z0-9_.-]{3,80}$/', $username)) {

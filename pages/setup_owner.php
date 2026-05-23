@@ -12,8 +12,13 @@
         <?php echo csrf_field(); ?>
 
         <label class="field">
-            <span>Full Name</span>
+            <span>Your Name</span>
             <input type="text" name="full_name" autocomplete="name" required autofocus>
+        </label>
+
+        <label class="field">
+            <span>Username</span>
+            <input type="text" name="username" autocomplete="username" required>
         </label>
 
         <label class="field">
@@ -22,8 +27,8 @@
         </label>
 
         <label class="field">
-            <span>Username</span>
-            <input type="text" name="username" autocomplete="username" required>
+            <span>Shop Name</span>
+            <input type="text" name="shop_name" maxlength="120" required>
         </label>
 
         <label class="field">

@@ -184,7 +184,7 @@ if ($dbReady && $pdo !== null) {
 
                 <label class="field">
                     <span>Category Name</span>
-                    <input type="text" name="name" value="<?php echo e($editingCategory['name'] ?? ''); ?>" placeholder="Printers, Storage, Cables" required>
+                    <input type="text" name="name" value="<?php echo e($editingCategory['name'] ?? ''); ?>" placeholder="Category name" required>
                 </label>
                 <label class="field">
                     <span>Description</span>
@@ -260,7 +260,7 @@ if ($dbReady && $pdo !== null) {
 
                 <label class="field">
                     <span>Brand Name</span>
-                    <input type="text" name="name" value="<?php echo e($editingBrand['name'] ?? ''); ?>" placeholder="Logitech, Kingston, TP-Link" required>
+                    <input type="text" name="name" value="<?php echo e($editingBrand['name'] ?? ''); ?>" placeholder="Brand name" required>
                 </label>
                 <div class="form-actions">
                     <button class="top-action" type="submit">

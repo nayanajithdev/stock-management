@@ -16,11 +16,6 @@ $financeStats = [
     ['label' => 'Est. Net Profit', 'value' => format_money(0), 'meta' => 'After expenses/refunds', 'icon' => 'banknote'],
 ];
 $monthlyTrend = [];
-$lowStockItems = [];
-$recentInvoices = [];
-$creditRows = [];
-$supplierRows = [];
-$recentExpenses = [];
 $metrics = [
     'today_sales' => 0.0,
     'today_orders' => 0,
@@ -156,64 +151,6 @@ if ($dbReady && $pdo !== null) {
         ];
     }
 
-    $lowStockItems = $pdo->query(
-        'SELECT sku, name, current_stock, reorder_level
-         FROM products
-         WHERE status = "active"
-           AND reorder_level > 0
-           AND current_stock <= reorder_level
-         ORDER BY current_stock ASC, name ASC
-         LIMIT 8'
-    )->fetchAll();
-
-    $recentInvoices = $pdo->query(
-        'SELECT s.id,
-                s.invoice_no,
-                s.sale_date,
-                s.total,
-                s.paid,
-                s.status,
-                c.name AS customer_name
-         FROM sales s
-         LEFT JOIN customers c ON c.id = s.customer_id
-         ORDER BY s.sale_date DESC, s.id DESC
-         LIMIT 8'
-    )->fetchAll();
-
-    $creditRows = $pdo->query(
-        'SELECT s.id,
-                s.invoice_no,
-                s.total,
-                s.paid,
-                c.name AS customer_name
-         FROM sales s
-         LEFT JOIN customers c ON c.id = s.customer_id
-         WHERE s.total > s.paid
-         ORDER BY (s.total - s.paid) DESC, s.sale_date ASC
-         LIMIT 6'
-    )->fetchAll();
-
-    $supplierRows = $pdo->query(
-        'SELECT p.id,
-                p.invoice_no,
-                p.total,
-                p.paid,
-                p.purchase_date,
-                s.name AS supplier_name
-         FROM purchases p
-         LEFT JOIN suppliers s ON s.id = p.supplier_id
-         WHERE p.total > p.paid
-         ORDER BY (p.total - p.paid) DESC, p.purchase_date ASC
-         LIMIT 6'
-    )->fetchAll();
-
-    $recentExpenses = $pdo->query(
-        'SELECT expense_date, category, vendor, amount
-         FROM expenses
-         WHERE status = "active"
-         ORDER BY expense_date DESC, id DESC
-         LIMIT 6'
-    )->fetchAll();
 }
 
 $maxRevenue = 0.0;
@@ -318,151 +255,6 @@ foreach ($monthlyTrend as $month) {
     </aside>
 </section>
 
-<section class="dashboard-two-grid">
-    <article class="panel table-panel">
-        <div class="panel-header">
-            <div>
-                <p class="panel-label">Recent Sales</p>
-                <h2>Latest invoices</h2>
-            </div>
-            <a class="muted-link" href="<?php echo e(app_url('?page=sales')); ?>">Sales</a>
-        </div>
-
-        <div class="table-wrap compact-table">
-            <table>
-                <thead>
-                    <tr>
-                        <th>Invoice</th>
-                        <th>Customer</th>
-                        <th>Total</th>
-                        <th>Balance</th>
-                        <th>Status</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php if ($recentInvoices === []): ?>
-                        <tr><td colspan="5">No sales recorded yet.</td></tr>
-                    <?php endif; ?>
-                    <?php foreach ($recentInvoices as $sale): ?>
-                        <?php $balance = max(0.0, (float) $sale['total'] - (float) $sale['paid']); ?>
-                        <tr>
-                            <td>
-                                <a class="table-title" href="<?php echo e(app_url('?page=sale-view&id=' . (int) $sale['id'])); ?>"><?php echo e($sale['invoice_no']); ?></a>
-                                <span class="table-subtitle"><?php echo e(date('Y-m-d H:i', strtotime((string) $sale['sale_date']))); ?></span>
-                            </td>
-                            <td><?php echo e($sale['customer_name'] ?: 'Walk-in'); ?></td>
-                            <td><?php echo e(format_money($sale['total'])); ?></td>
-                            <td class="<?php echo $balance > 0 ? 'text-danger' : 'text-good'; ?>"><?php echo e(format_money($balance)); ?></td>
-                            <td><span class="status <?php echo e(dashboard_sale_status_class((string) $sale['status'], $balance)); ?>"><?php echo e($balance > 0 ? ucfirst((string) $sale['status']) : 'Closed'); ?></span></td>
-                        </tr>
-                    <?php endforeach; ?>
-                </tbody>
-            </table>
-        </div>
-    </article>
-
-    <article class="panel table-panel">
-        <div class="panel-header">
-            <div>
-                <p class="panel-label">Inventory</p>
-                <h2>Low stock</h2>
-            </div>
-            <a class="muted-link" href="<?php echo e(app_url('?page=products')); ?>">Products</a>
-        </div>
-
-        <div class="table-wrap compact-table">
-            <table>
-                <thead>
-                    <tr>
-                        <th>Product</th>
-                        <th>Stock</th>
-                        <th>Reorder</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php if ($lowStockItems === []): ?>
-                        <tr><td colspan="3">No low-stock items.</td></tr>
-                    <?php endif; ?>
-                    <?php foreach ($lowStockItems as $item): ?>
-                        <tr>
-                            <td>
-                                <strong class="table-title"><?php echo e($item['sku']); ?></strong>
-                                <span class="table-subtitle"><?php echo e($item['name']); ?></span>
-                            </td>
-                            <td class="text-danger"><?php echo (int) $item['current_stock']; ?></td>
-                            <td><?php echo (int) $item['reorder_level']; ?></td>
-                        </tr>
-                    <?php endforeach; ?>
-                </tbody>
-            </table>
-        </div>
-    </article>
-</section>
-
-<section class="dashboard-three-grid">
-    <article class="panel">
-        <div class="panel-header compact">
-            <div>
-                <p class="panel-label">Customer Credit</p>
-                <h2>Largest balances</h2>
-            </div>
-        </div>
-        <div class="dashboard-list">
-            <?php if ($creditRows === []): ?>
-                <p class="empty-state">No open customer balances.</p>
-            <?php endif; ?>
-            <?php foreach ($creditRows as $row): ?>
-                <?php $balance = max(0.0, (float) $row['total'] - (float) $row['paid']); ?>
-                <a href="<?php echo e(app_url('?page=sale-view&id=' . (int) $row['id'])); ?>">
-                    <span><?php echo e($row['invoice_no'] . ' / ' . ($row['customer_name'] ?: 'Walk-in')); ?></span>
-                    <strong><?php echo e(format_money($balance)); ?></strong>
-                </a>
-            <?php endforeach; ?>
-        </div>
-    </article>
-
-    <article class="panel">
-        <div class="panel-header compact">
-            <div>
-                <p class="panel-label">Supplier Credit</p>
-                <h2>Payables</h2>
-            </div>
-        </div>
-        <div class="dashboard-list">
-            <?php if ($supplierRows === []): ?>
-                <p class="empty-state">No supplier balances.</p>
-            <?php endif; ?>
-            <?php foreach ($supplierRows as $row): ?>
-                <?php $balance = max(0.0, (float) $row['total'] - (float) $row['paid']); ?>
-                <a href="<?php echo e(app_url('?page=supplier-credit&collect=' . (int) $row['id'] . '#supplier-payment-form')); ?>">
-                    <span><?php echo e(($row['invoice_no'] ?: '#' . $row['id']) . ' / ' . ($row['supplier_name'] ?: 'Supplier')); ?></span>
-                    <strong><?php echo e(format_money($balance)); ?></strong>
-                </a>
-            <?php endforeach; ?>
-        </div>
-    </article>
-
-    <article class="panel">
-        <div class="panel-header compact">
-            <div>
-                <p class="panel-label">Expenses</p>
-                <h2>Recent costs</h2>
-            </div>
-        </div>
-        <div class="dashboard-list">
-            <?php if ($recentExpenses === []): ?>
-                <p class="empty-state">No active expenses recorded.</p>
-            <?php endif; ?>
-            <?php foreach ($recentExpenses as $row): ?>
-                <a href="<?php echo e(app_url('?page=expenses')); ?>">
-                    <span><?php echo e($row['category'] . ($row['vendor'] ? ' / ' . $row['vendor'] : '')); ?></span>
-                    <strong><?php echo e(format_money($row['amount'])); ?></strong>
-                </a>
-            <?php endforeach; ?>
-        </div>
-    </article>
-</section>
-
 <?php
 function dashboard_fetch_one(PDO $pdo, string $sql): array
 {
@@ -550,17 +342,4 @@ function dashboard_margin_label(float $profit, float $revenue): string
     }
 
     return number_format(($profit / $revenue) * 100, 2) . '% margin';
-}
-
-function dashboard_sale_status_class(string $status, float $balance): string
-{
-    if ($balance <= 0) {
-        return 'status-active';
-    }
-
-    return match ($status) {
-        'partial' => 'status-warranty',
-        'credit' => 'status-pending',
-        default => 'status-inactive',
-    };
 }

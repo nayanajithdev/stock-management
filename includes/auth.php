@@ -100,7 +100,7 @@ function auth_permission_definitions(): array
         'purchases' => [
             'label' => 'Purchases',
             'description' => 'Receive supplier stock and view purchase history.',
-            'pages' => ['purchases'],
+            'pages' => ['purchases', 'purchase-history'],
         ],
         'supplier_credit' => [
             'label' => 'Supplier Credit',
@@ -181,11 +181,11 @@ function auth_action_permission(string $scriptName): ?string
     return match ($scriptName) {
         'product_save.php', 'product_delete.php' => 'products',
         'master_save.php', 'master_archive.php' => 'inventory_setup',
-        'purchase_save.php' => 'purchases',
+        'purchase_save.php', 'product_search.php' => 'purchases',
         'supplier_payment_collect.php' => 'supplier_credit',
         'expense_save.php', 'expense_void.php' => 'expenses',
         'stock_adjust.php' => 'stock',
-        'sale_save.php' => 'sales',
+        'sale_save.php', 'sale_product_search.php' => 'sales',
         'warranty_save.php' => 'warranty',
         'customer_save.php', 'customer_archive.php' => 'customers',
         'payment_collect.php' => 'credit_sales',

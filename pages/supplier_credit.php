@@ -117,10 +117,6 @@ if ($dbReady && $pdo !== null) {
         <p class="eyebrow">Payables</p>
         <h1>Supplier Credit</h1>
     </div>
-    <a class="top-action" href="#supplier-payment-form">
-        <i data-lucide="hand-coins"></i>
-        Pay Supplier
-    </a>
 </div>
 
 <section class="stats-grid compact-stats" aria-label="Supplier credit summary">

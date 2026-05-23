@@ -2,7 +2,7 @@
 /** @var ?PDO $pdo */
 /** @var bool $dbReady */
 
-$products = [];
+$hasSaleProducts = false;
 $customers = [];
 $sales = [];
 $saleSearch = trim((string) ($_GET['q'] ?? ''));
@@ -14,12 +14,12 @@ $summary = [
 ];
 
 if ($dbReady && $pdo !== null) {
-    $products = $pdo->query(
-        'SELECT id, sku, barcode, name, model, current_stock, cost_price, selling_price, warranty_months
+    $hasSaleProducts = (int) $pdo->query(
+        'SELECT COUNT(*)
          FROM products
          WHERE status = "active"
-         ORDER BY name ASC'
-    )->fetchAll();
+           AND current_stock > 0'
+    )->fetchColumn() > 0;
 
     $customers = $pdo->query(
         'SELECT id, name, phone
@@ -63,24 +63,6 @@ if ($dbReady && $pdo !== null) {
     $saleStatement = $pdo->prepare($saleSql);
     $saleStatement->execute($saleParams);
     $sales = $saleStatement->fetchAll();
-}
-
-$productOptions = '';
-
-foreach ($products as $product) {
-    $label = $product['sku'] . ' - ' . $product['name'];
-    if ((string) ($product['model'] ?? '') !== '') {
-        $label .= ' (' . $product['model'] . ')';
-    }
-
-    $productOptions .= '<option value="' . (int) $product['id'] . '"'
-        . ' data-price="' . e($product['selling_price']) . '"'
-        . ' data-cost="' . e($product['cost_price']) . '"'
-        . ' data-stock="' . (int) $product['current_stock'] . '"'
-        . ' data-barcode="' . e($product['barcode'] ?? '') . '"'
-        . '>'
-        . e($label . ' / Stock: ' . (int) $product['current_stock'])
-        . '</option>';
 }
 ?>
 
@@ -138,10 +120,10 @@ foreach ($products as $product) {
 
         <?php if (! $dbReady): ?>
             <p class="empty-state">Import <code>database/schema.sql</code> before selling.</p>
-        <?php elseif ($products === []): ?>
+        <?php elseif (! $hasSaleProducts): ?>
             <p class="empty-state">Add products and stock before creating invoices.</p>
         <?php else: ?>
-            <form class="sale-form" method="post" action="<?php echo e(app_url('actions/sale_save.php')); ?>" data-sale-form>
+            <form class="sale-form" method="post" action="<?php echo e(app_url('actions/sale_save.php')); ?>" data-sale-form data-sale-product-search-url="<?php echo e(app_url('actions/sale_product_search.php')); ?>">
                 <?php echo csrf_field(); ?>
 
                 <div class="sale-meta">
@@ -168,13 +150,6 @@ foreach ($products as $product) {
                     </label>
                 </div>
 
-                <div class="barcode-row">
-                    <label class="field">
-                        <span>Barcode / SKU Quick Add</span>
-                        <input type="text" placeholder="Scan barcode or type SKU, then press Enter" data-sale-barcode>
-                    </label>
-                </div>
-
                 <div class="sale-items">
                     <div class="sale-row sale-head">
                         <span>Product</span>
@@ -187,7 +162,7 @@ foreach ($products as $product) {
                     </div>
 
                     <div data-sale-rows>
-                        <?php render_sale_row($productOptions); ?>
+                        <?php render_sale_row(); ?>
                     </div>
 
                     <button class="ghost-button" type="button" data-add-sale-row>
@@ -248,7 +223,7 @@ foreach ($products as $product) {
             </form>
 
             <template data-sale-row-template>
-                <?php render_sale_row($productOptions); ?>
+                <?php render_sale_row(); ?>
             </template>
         <?php endif; ?>
     </article>
@@ -322,17 +297,16 @@ foreach ($products as $product) {
 </section>
 
 <?php
-function render_sale_row(string $productOptions): void
+function render_sale_row(): void
 {
     ?>
     <div class="sale-row" data-sale-row>
-        <label class="field compact-field">
+        <div class="field compact-field product-picker" data-sale-product-picker>
             <span>Product</span>
-            <select name="product_id[]" data-sale-product required>
-                <option value="">Choose product</option>
-                <?php echo $productOptions; ?>
-            </select>
-        </label>
+            <input type="hidden" name="product_id[]" data-sale-product required>
+            <input type="search" placeholder="Search product, SKU, barcode" autocomplete="off" data-sale-product-search>
+            <div class="product-suggestions" data-sale-product-suggestions hidden></div>
+        </div>
         <div class="stock-pill" data-sale-stock>0</div>
         <label class="field compact-field">
             <span>Qty</span>

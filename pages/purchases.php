@@ -3,9 +3,7 @@
 /** @var bool $dbReady */
 
 $suppliers = [];
-$products = [];
-$purchases = [];
-$purchaseSearch = trim((string) ($_GET['q'] ?? ''));
+$hasProducts = false;
 $summary = [
     'month_total' => 0.0,
     'month_paid' => 0.0,
@@ -15,13 +13,7 @@ $summary = [
 
 if ($dbReady && $pdo !== null) {
     $suppliers = app_fetch_options($pdo, 'suppliers');
-
-    $products = $pdo->query(
-        'SELECT id, sku, name, model, current_stock, cost_price, warranty_months
-         FROM products
-         WHERE status = "active"
-         ORDER BY name ASC'
-    )->fetchAll();
+    $hasProducts = (int) $pdo->query('SELECT COUNT(*) FROM products WHERE status = "active"')->fetchColumn() > 0;
 
     $summaryStatement = $pdo->query(
         'SELECT
@@ -44,37 +36,6 @@ if ($dbReady && $pdo !== null) {
            AND p.purchase_date <= CURRENT_DATE'
     )->fetchColumn();
 
-    $purchaseSql = 'SELECT p.*,
-                           s.name AS supplier_name,
-                           COUNT(pi.id) AS item_count,
-                           COALESCE(SUM(pi.quantity), 0) AS total_units
-                    FROM purchases p
-                    LEFT JOIN suppliers s ON s.id = p.supplier_id
-                    LEFT JOIN purchase_items pi ON pi.purchase_id = p.id';
-    $purchaseParams = [];
-
-    if ($purchaseSearch !== '') {
-        $purchaseSql .= ' WHERE p.invoice_no LIKE :search OR s.name LIKE :search';
-        $purchaseParams['search'] = '%' . $purchaseSearch . '%';
-    }
-
-    $purchaseSql .= ' GROUP BY p.id ORDER BY p.purchase_date DESC, p.id DESC LIMIT 20';
-    $purchaseStatement = $pdo->prepare($purchaseSql);
-    $purchaseStatement->execute($purchaseParams);
-    $purchases = $purchaseStatement->fetchAll();
-}
-
-$productOptions = '';
-
-foreach ($products as $product) {
-    $label = $product['sku'] . ' - ' . $product['name'];
-    if ((string) ($product['model'] ?? '') !== '') {
-        $label .= ' (' . $product['model'] . ')';
-    }
-
-    $productOptions .= '<option value="' . (int) $product['id'] . '" data-cost="' . e($product['cost_price']) . '" data-warranty="' . (int) ($product['warranty_months'] ?? 0) . '">'
-        . e($label)
-        . '</option>';
 }
 ?>
 
@@ -84,9 +45,9 @@ foreach ($products as $product) {
         <h1>Purchases</h1>
     </div>
     <div class="heading-actions">
-        <a class="top-action" href="#purchase-form">
-            <i data-lucide="truck"></i>
-            Receive Stock
+        <a class="top-action" href="<?php echo e(app_url('?page=purchase-history')); ?>">
+            <i data-lucide="history"></i>
+            View Stock History
         </a>
         <a class="top-action" href="<?php echo e(app_url('?page=supplier-credit')); ?>">
             <i data-lucide="hand-coins"></i>
@@ -142,10 +103,10 @@ foreach ($products as $product) {
 
         <?php if (! $dbReady): ?>
             <p class="empty-state">Import <code>database/schema.sql</code> before receiving stock.</p>
-        <?php elseif ($products === []): ?>
+        <?php elseif (! $hasProducts): ?>
             <p class="empty-state">Add products first, then return here to receive stock.</p>
         <?php else: ?>
-            <form class="purchase-form" method="post" action="<?php echo e(app_url('actions/purchase_save.php')); ?>" data-purchase-form>
+            <form class="purchase-form" method="post" action="<?php echo e(app_url('actions/purchase_save.php')); ?>" data-purchase-form data-product-search-url="<?php echo e(app_url('actions/product_search.php')); ?>">
                 <?php echo csrf_field(); ?>
 
                 <div class="purchase-meta">
@@ -181,7 +142,7 @@ foreach ($products as $product) {
                     </div>
 
                     <div data-purchase-rows>
-                        <?php render_purchase_row($productOptions); ?>
+                        <?php render_purchase_row(); ?>
                     </div>
 
                     <button class="ghost-button" type="button" data-add-purchase-row>
@@ -229,90 +190,24 @@ foreach ($products as $product) {
             </form>
 
             <template data-purchase-row-template>
-                <?php render_purchase_row($productOptions); ?>
+                <?php render_purchase_row(); ?>
             </template>
         <?php endif; ?>
     </article>
 
-    <article class="panel table-panel">
-        <div class="panel-header">
-            <div>
-                <p class="panel-label">Purchase History</p>
-                <h2>Recent stock received</h2>
-            </div>
-            <?php if ($purchaseSearch !== ''): ?>
-                <a class="muted-link" href="<?php echo e(app_url('?page=purchases')); ?>">Clear search</a>
-            <?php endif; ?>
-        </div>
-
-        <?php if ($purchaseSearch !== ''): ?>
-            <p class="search-note">Showing purchases matching <strong><?php echo e($purchaseSearch); ?></strong>.</p>
-        <?php endif; ?>
-
-        <div class="table-wrap">
-            <table>
-                <thead>
-                    <tr>
-                        <th>Date</th>
-                        <th>Invoice</th>
-                        <th>Supplier</th>
-                        <th>Items</th>
-                        <th>Units</th>
-                        <th>Total</th>
-                        <th>Paid</th>
-                        <th>Balance</th>
-                        <th>Status</th>
-                        <th>Action</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php if ($purchases === []): ?>
-                        <tr>
-                            <td colspan="10">No purchases recorded yet.</td>
-                        </tr>
-                    <?php endif; ?>
-
-                    <?php foreach ($purchases as $purchase): ?>
-                        <?php $balance = (float) $purchase['total'] - (float) $purchase['paid']; ?>
-                        <tr>
-                            <td><?php echo e(date('Y-m-d', strtotime((string) $purchase['purchase_date']))); ?></td>
-                            <td><?php echo e($purchase['invoice_no'] ?: 'No invoice'); ?></td>
-                            <td><?php echo e($purchase['supplier_name'] ?: 'No supplier'); ?></td>
-                            <td><?php echo (int) $purchase['item_count']; ?></td>
-                            <td><?php echo (int) $purchase['total_units']; ?></td>
-                            <td><?php echo e(format_money($purchase['total'])); ?></td>
-                            <td><?php echo e(format_money($purchase['paid'])); ?></td>
-                            <td class="<?php echo $balance > 0 ? 'text-danger' : ''; ?>"><?php echo e(format_money($balance)); ?></td>
-                            <td><span class="status <?php echo e(purchase_payment_status_class((string) $purchase['status'], $balance)); ?>"><?php echo e($balance > 0 ? ucfirst((string) $purchase['status']) : 'Closed'); ?></span></td>
-                            <td>
-                                <?php if ($balance > 0): ?>
-                                    <a class="icon-button" href="<?php echo e(app_url('?page=supplier-credit&collect=' . (int) $purchase['id'] . '#supplier-payment-form')); ?>" aria-label="Pay supplier">
-                                        <i data-lucide="hand-coins"></i>
-                                    </a>
-                                <?php else: ?>
-                                    <span class="muted-link">Closed</span>
-                                <?php endif; ?>
-                            </td>
-                        </tr>
-                    <?php endforeach; ?>
-                </tbody>
-            </table>
-        </div>
-    </article>
 </section>
 
 <?php
-function render_purchase_row(string $productOptions): void
+function render_purchase_row(): void
 {
     ?>
     <div class="purchase-row" data-purchase-row>
-        <label class="field compact-field">
+        <div class="field compact-field product-picker" data-product-picker>
             <span>Product</span>
-            <select name="product_id[]" data-purchase-product required>
-                <option value="">Choose product</option>
-                <?php echo $productOptions; ?>
-            </select>
-        </label>
+            <input type="hidden" name="product_id[]" data-purchase-product>
+            <input type="search" placeholder="Search product, SKU, barcode" autocomplete="off" data-product-search>
+            <div class="product-suggestions" data-product-suggestions hidden></div>
+        </div>
         <label class="field compact-field">
             <span>Warranty Months</span>
             <input type="number" name="warranty_months[]" value="0" min="0" step="1" data-purchase-warranty required>
@@ -334,17 +229,4 @@ function render_purchase_row(string $productOptions): void
         </button>
     </div>
     <?php
-}
-
-function purchase_payment_status_class(string $status, float $balance): string
-{
-    if ($balance <= 0) {
-        return 'status-active';
-    }
-
-    return match ($status) {
-        'partial' => 'status-warranty',
-        'credit' => 'status-pending',
-        default => 'status-inactive',
-    };
 }

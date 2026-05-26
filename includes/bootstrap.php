@@ -28,9 +28,11 @@ if (empty($config['app_debug'])) {
     ini_set('display_errors', '0');
     ini_set('display_startup_errors', '0');
     ini_set('log_errors', '1');
+    ini_set('expose_php', '0');
 }
 
 if (! headers_sent()) {
+    header_remove('X-Powered-By');
     header('X-Robots-Tag: noindex, nofollow, noarchive');
     header('X-Frame-Options: SAMEORIGIN');
     header('X-Content-Type-Options: nosniff');

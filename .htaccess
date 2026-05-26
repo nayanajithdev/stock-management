@@ -2,12 +2,16 @@ Options -Indexes
 DirectoryIndex index.php
 
 <IfModule mod_headers.c>
-    Header always set X-Robots-Tag "noindex, nofollow, noarchive"
-    Header always set X-Frame-Options "SAMEORIGIN"
-    Header always set X-Content-Type-Options "nosniff"
-    Header always set Referrer-Policy "strict-origin-when-cross-origin"
-    Header always set Permissions-Policy "camera=(), microphone=(), geolocation=()"
+    Header unset X-Powered-By
     Header always unset X-Powered-By
+
+    <FilesMatch "\.(css|js|png|jpe?g|gif|webp|svg|ico|txt)$">
+        Header always set X-Robots-Tag "noindex, nofollow, noarchive"
+        Header always set X-Frame-Options "SAMEORIGIN"
+        Header always set X-Content-Type-Options "nosniff"
+        Header always set Referrer-Policy "strict-origin-when-cross-origin"
+        Header always set Permissions-Policy "camera=(), microphone=(), geolocation=()"
+    </FilesMatch>
 </IfModule>
 
 <IfModule mod_rewrite.c>

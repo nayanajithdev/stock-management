@@ -251,7 +251,7 @@ $balance = is_array($sale) ? (float) $sale['total'] - (float) $sale['paid'] : 0.
                     <?php foreach ($payments as $payment): ?>
                         <div>
                             <span><?php echo e(date('Y-m-d H:i', strtotime((string) $payment['payment_date']))); ?></span>
-                            <strong><?php echo e(format_money($payment['amount'])); ?></strong>
+                            <a class="table-title" href="<?php echo e(app_url('?page=payment-receipt&id=' . (int) $payment['id'])); ?>"><?php echo e(format_money($payment['amount'])); ?></a>
                         </div>
                     <?php endforeach; ?>
                 </div>

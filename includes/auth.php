@@ -135,7 +135,7 @@ function auth_permission_definitions(): array
         'credit_sales' => [
             'label' => 'Credit Sales',
             'description' => 'View receivables and collect customer payments.',
-            'pages' => ['credit-sales'],
+            'pages' => ['credit-sales', 'payment-receipt'],
         ],
         'returns' => [
             'label' => 'Returns',
@@ -185,7 +185,7 @@ function auth_action_permission(string $scriptName): ?string
         'supplier_payment_collect.php' => 'supplier_credit',
         'expense_save.php', 'expense_void.php' => 'expenses',
         'stock_adjust.php' => 'stock',
-        'sale_save.php', 'sale_product_search.php' => 'sales',
+        'sale_save.php', 'sale_product_search.php', 'customer_search.php' => 'sales',
         'warranty_save.php' => 'warranty',
         'customer_save.php', 'customer_archive.php' => 'customers',
         'payment_collect.php' => 'credit_sales',

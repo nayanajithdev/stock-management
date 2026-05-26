@@ -80,6 +80,7 @@ try {
         'payment_method' => $paymentMethod,
         'notes' => $notes,
     ]);
+    $paymentId = (int) $pdo->lastInsertId();
 
     $updateStatement = $pdo->prepare(
         'UPDATE sales
@@ -100,7 +101,7 @@ try {
 
     app_log_activity($pdo, $currentUser, 'payment_collect', 'Collected ' . format_money($amount) . ' for invoice ' . $sale['invoice_no'] . '.');
     set_flash('success', 'Payment collected for invoice ' . $sale['invoice_no'] . '.');
-    redirect('?page=credit-sales');
+    redirect('?page=payment-receipt&id=' . $paymentId);
 } catch (Throwable $exception) {
     if ($pdo->inTransaction()) {
         $pdo->rollBack();

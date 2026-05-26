@@ -7,13 +7,20 @@
 /** @var ?string $dbError */
 /** @var string $currentPage */
 $isAuthPage = in_array($currentPage, ['login', 'setup-owner'], true);
+$faviconPath = trim((string) ($config['shop_logo'] ?? ''));
+$faviconUrl = $faviconPath !== '' ? app_url($faviconPath) : '';
 ?>
 <!doctype html>
 <html lang="en">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex, nofollow, noarchive">
     <title><?php echo e($pageTitle); ?> | <?php echo e($config['app_name']); ?></title>
+    <?php if ($faviconUrl !== ''): ?>
+        <link rel="icon" href="<?php echo e($faviconUrl); ?>">
+        <link rel="apple-touch-icon" href="<?php echo e($faviconUrl); ?>">
+    <?php endif; ?>
     <link rel="preconnect" href="https://unpkg.com">
     <link rel="stylesheet" href="<?php echo e(app_url('assets/app.css')); ?>">
 </head>

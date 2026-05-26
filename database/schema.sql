@@ -325,6 +325,7 @@ INSERT IGNORE INTO settings (setting_key, setting_value) VALUES
 ('shop_email', ''),
 ('shop_address', ''),
 ('shop_website', ''),
+('shop_logo', ''),
 ('currency', 'Rs.'),
 ('timezone', 'Asia/Colombo'),
 ('default_tax_percent', '0'),

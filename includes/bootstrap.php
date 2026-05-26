@@ -24,6 +24,24 @@ require_once __DIR__ . '/auth.php';
 
 $config = require __DIR__ . '/../config/app.php';
 
+if (empty($config['app_debug'])) {
+    ini_set('display_errors', '0');
+    ini_set('display_startup_errors', '0');
+    ini_set('log_errors', '1');
+}
+
+if (! headers_sent()) {
+    header('X-Robots-Tag: noindex, nofollow, noarchive');
+    header('X-Frame-Options: SAMEORIGIN');
+    header('X-Content-Type-Options: nosniff');
+    header('Referrer-Policy: strict-origin-when-cross-origin');
+    header('Permissions-Policy: camera=(), microphone=(), geolocation=()');
+
+    if (! empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') {
+        header('Strict-Transport-Security: max-age=31536000; includeSubDomains');
+    }
+}
+
 $dbError = null;
 $pdo = app_pdo($dbError);
 $dbReady = $pdo !== null && app_database_ready($pdo);
@@ -188,6 +206,11 @@ $pages = [
         'title' => 'Credit Sales',
         'description' => 'Track unpaid and partially paid invoices',
         'view' => __DIR__ . '/../pages/credit_sales.php',
+    ],
+    'payment-receipt' => [
+        'title' => 'Payment Receipt',
+        'description' => 'View and print customer payment receipt',
+        'view' => __DIR__ . '/../pages/payment_receipt.php',
     ],
     'returns' => [
         'title' => 'Returns',

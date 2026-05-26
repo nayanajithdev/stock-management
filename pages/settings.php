@@ -19,10 +19,13 @@ $settings = [
     'shop_email' => (string) ($config['shop_email'] ?? ''),
     'shop_address' => (string) ($config['shop_address'] ?? ''),
     'shop_website' => (string) ($config['shop_website'] ?? ''),
+    'shop_logo' => (string) ($config['shop_logo'] ?? ''),
     'currency' => (string) ($config['currency'] ?? 'Rs.'),
     'timezone' => (string) ($config['timezone'] ?? 'Asia/Colombo'),
     'default_reorder_level' => (string) ($config['default_reorder_level'] ?? '5'),
 ];
+$shopLogoUrl = $settings['shop_logo'] !== '' ? app_url($settings['shop_logo']) : '';
+$shopInitial = strtoupper(substr(trim($settings['shop_name']) !== '' ? trim($settings['shop_name']) : 'S', 0, 1));
 ?>
 
 <div class="page-heading">
@@ -44,11 +47,28 @@ $settings = [
         <?php if (! $dbReady): ?>
             <p class="empty-state">Import <code>database/schema.sql</code> before saving settings.</p>
         <?php else: ?>
-            <form class="settings-form" method="post" action="<?php echo e(app_url('actions/settings_save.php')); ?>">
+            <form class="settings-form" method="post" action="<?php echo e(app_url('actions/settings_save.php')); ?>" enctype="multipart/form-data">
                 <?php echo csrf_field(); ?>
 
                 <section class="settings-section span-2">
                     <div class="settings-section-grid settings-section-grid-three">
+                        <label class="field shop-logo-field span-3">
+                            <span>Shop Profile Image</span>
+                            <div class="shop-logo-upload">
+                                <div class="shop-logo-preview">
+                                    <?php if ($shopLogoUrl !== ''): ?>
+                                        <img src="<?php echo e($shopLogoUrl); ?>" alt="">
+                                    <?php else: ?>
+                                        <span><?php echo e($shopInitial); ?></span>
+                                    <?php endif; ?>
+                                </div>
+                                <div class="shop-logo-control">
+                                    <input type="file" name="shop_logo" accept="image/png,image/jpeg,image/webp,image/gif">
+                                    <small>PNG, JPG, WEBP, or GIF. Max 2MB. Used for sidebar logo and favicon.</small>
+                                </div>
+                            </div>
+                        </label>
+
                         <label class="field">
                             <span>Shop Name</span>
                             <input type="text" name="shop_name" value="<?php echo e($settings['shop_name']); ?>" maxlength="120" required>

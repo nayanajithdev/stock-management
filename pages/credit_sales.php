@@ -389,12 +389,13 @@ if ($dbReady && $pdo !== null) {
                         <th>Method</th>
                         <th>Amount</th>
                         <th>Notes</th>
+                        <th>Action</th>
                     </tr>
                 </thead>
                 <tbody>
                     <?php if ($recentPayments === []): ?>
                         <tr>
-                            <td colspan="6">No payment collections recorded yet.</td>
+                            <td colspan="7">No payment collections recorded yet.</td>
                         </tr>
                     <?php endif; ?>
 
@@ -409,6 +410,11 @@ if ($dbReady && $pdo !== null) {
                             <td><?php echo e(ucfirst((string) $payment['payment_method'])); ?></td>
                             <td class="text-good"><?php echo e(format_money($payment['amount'])); ?></td>
                             <td><?php echo e($payment['notes'] ?? ''); ?></td>
+                            <td>
+                                <a class="icon-button" href="<?php echo e(app_url('?page=payment-receipt&id=' . (int) $payment['id'])); ?>" aria-label="View payment receipt">
+                                    <i data-lucide="receipt-text"></i>
+                                </a>
+                            </td>
                         </tr>
                     <?php endforeach; ?>
                 </tbody>

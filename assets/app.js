@@ -447,8 +447,138 @@ if (saleForm) {
     const paidInput = saleForm.querySelector('[data-sale-paid]');
     const balanceInput = saleForm.querySelector('[data-sale-balance]');
     const saleProductSearchUrl = saleForm.dataset.saleProductSearchUrl || '';
+    const saleCustomerSearchUrl = saleForm.dataset.saleCustomerSearchUrl || '';
+    const customerInput = saleForm.querySelector('[data-sale-customer-search]');
+    const customerHidden = saleForm.querySelector('[data-sale-customer]');
+    const customerSuggestions = saleForm.querySelector('[data-sale-customer-suggestions]');
+    let customerSearchTimer = null;
+    let customerSearchToken = 0;
 
     const money = (value) => Number.isFinite(value) ? value.toFixed(2) : '0.00';
+
+    const closeCustomerSuggestions = () => {
+        if (!customerSuggestions) {
+            return;
+        }
+
+        customerSuggestions.hidden = true;
+        customerSuggestions.innerHTML = '';
+    };
+
+    const showCustomerSuggestionMessage = (message) => {
+        if (!customerSuggestions) {
+            return;
+        }
+
+        customerSuggestions.innerHTML = `<div class="product-suggestion-empty">${message}</div>`;
+        customerSuggestions.hidden = false;
+    };
+
+    const selectCustomer = (customer) => {
+        if (customerHidden) {
+            customerHidden.value = String(customer.id || '');
+        }
+
+        if (customerInput) {
+            customerInput.value = customer.label || '';
+        }
+
+        closeCustomerSuggestions();
+    };
+
+    const renderCustomerSuggestions = (customers) => {
+        if (!customerSuggestions) {
+            return;
+        }
+
+        customerSuggestions.innerHTML = '';
+
+        if (!customers.length) {
+            showCustomerSuggestionMessage('No customers found');
+            return;
+        }
+
+        customers.forEach((customer) => {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'product-suggestion-item';
+            button.innerHTML = `
+                <strong></strong>
+                <span></span>
+            `;
+            button.querySelector('strong').textContent = customer.name || customer.label || '';
+            button.querySelector('span').textContent = [customer.phone, customer.email].filter(Boolean).join(' / ') || 'Customer account';
+            button.addEventListener('mousedown', (event) => event.preventDefault());
+            button.addEventListener('click', () => selectCustomer(customer));
+            customerSuggestions.appendChild(button);
+        });
+
+        customerSuggestions.hidden = false;
+    };
+
+    const runCustomerSearch = () => {
+        if (!customerInput || !saleCustomerSearchUrl) {
+            return;
+        }
+
+        const query = customerInput.value.trim();
+
+        if (customerHidden) {
+            customerHidden.value = '';
+        }
+
+        if (query.length < 2) {
+            closeCustomerSuggestions();
+            return;
+        }
+
+        const token = ++customerSearchToken;
+        showCustomerSuggestionMessage('Searching...');
+
+        fetch(`${saleCustomerSearchUrl}?q=${encodeURIComponent(query)}`, {
+            headers: { Accept: 'application/json' },
+        })
+            .then((response) => response.ok ? response.json() : { customers: [] })
+            .then((data) => {
+                if (token !== customerSearchToken) {
+                    return;
+                }
+
+                renderCustomerSuggestions(Array.isArray(data.customers) ? data.customers : []);
+            })
+            .catch(() => {
+                if (token === customerSearchToken) {
+                    showCustomerSuggestionMessage('Search failed');
+                }
+            });
+    };
+
+    if (customerInput) {
+        customerInput.addEventListener('input', () => {
+            if (customerHidden) {
+                customerHidden.value = '';
+            }
+
+            window.clearTimeout(customerSearchTimer);
+            customerSearchTimer = window.setTimeout(runCustomerSearch, 180);
+        });
+
+        customerInput.addEventListener('focus', () => {
+            if (customerInput.value.trim().length >= 2) {
+                runCustomerSearch();
+            }
+        });
+
+        customerInput.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape') {
+                closeCustomerSuggestions();
+            }
+        });
+
+        customerInput.addEventListener('blur', () => {
+            window.setTimeout(closeCustomerSuggestions, 120);
+        });
+    }
 
     const recalculateSale = () => {
         let subtotal = 0;

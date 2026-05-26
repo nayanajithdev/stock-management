@@ -1,9 +1,20 @@
+<?php
+$shopLogoPath = trim((string) ($config['shop_logo'] ?? ''));
+$shopLogoUrl = $shopLogoPath !== '' ? app_url($shopLogoPath) : '';
+$shopName = trim((string) ($config['shop_name'] ?? ''));
+$shopInitial = strtoupper(substr($shopName !== '' ? $shopName : 'S', 0, 1));
+?>
 <aside class="sidebar" id="sidebar">
     <div class="brand-card">
-        <div class="brand-mark">S</div>
+        <div class="brand-mark">
+            <?php if ($shopLogoUrl !== ''): ?>
+                <img src="<?php echo e($shopLogoUrl); ?>" alt="">
+            <?php else: ?>
+                <?php echo e($shopInitial); ?>
+            <?php endif; ?>
+        </div>
         <div>
-            <span class="brand-kicker">Computer Shop</span>
-            <strong><?php echo e($config['shop_name']); ?></strong>
+            <strong><?php echo e($shopName); ?></strong>
         </div>
     </div>
 

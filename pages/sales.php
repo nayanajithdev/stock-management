@@ -3,7 +3,6 @@
 /** @var bool $dbReady */
 
 $hasSaleProducts = false;
-$customers = [];
 $sales = [];
 $saleSearch = trim((string) ($_GET['q'] ?? ''));
 $summary = [
@@ -20,14 +19,6 @@ if ($dbReady && $pdo !== null) {
          WHERE status = "active"
            AND current_stock > 0'
     )->fetchColumn() > 0;
-
-    $customers = $pdo->query(
-        'SELECT id, name, phone
-         FROM customers
-         WHERE is_active = 1
-         ORDER BY name ASC
-         LIMIT 200'
-    )->fetchAll();
 
     $summaryStatement = $pdo->query(
         'SELECT
@@ -123,19 +114,16 @@ if ($dbReady && $pdo !== null) {
         <?php elseif (! $hasSaleProducts): ?>
             <p class="empty-state">Add products and stock before creating invoices.</p>
         <?php else: ?>
-            <form class="sale-form" method="post" action="<?php echo e(app_url('actions/sale_save.php')); ?>" data-sale-form data-sale-product-search-url="<?php echo e(app_url('actions/sale_product_search.php')); ?>">
+            <form class="sale-form" method="post" action="<?php echo e(app_url('actions/sale_save.php')); ?>" data-sale-form data-sale-product-search-url="<?php echo e(app_url('actions/sale_product_search.php')); ?>" data-sale-customer-search-url="<?php echo e(app_url('actions/customer_search.php')); ?>">
                 <?php echo csrf_field(); ?>
 
                 <div class="sale-meta">
-                    <label class="field">
+                    <div class="field product-picker" data-sale-customer-picker>
                         <span>Existing Customer</span>
-                        <select name="customer_id">
-                            <option value="">Walk-in / New customer</option>
-                            <?php foreach ($customers as $customer): ?>
-                                <option value="<?php echo (int) $customer['id']; ?>"><?php echo e($customer['name'] . (($customer['phone'] ?? '') !== '' ? ' / ' . $customer['phone'] : '')); ?></option>
-                            <?php endforeach; ?>
-                        </select>
-                    </label>
+                        <input type="hidden" name="customer_id" data-sale-customer>
+                        <input type="search" placeholder="Search customer, phone, email" autocomplete="off" data-sale-customer-search>
+                        <div class="product-suggestions" data-sale-customer-suggestions hidden></div>
+                    </div>
                     <label class="field">
                         <span>New Customer Name</span>
                         <input type="text" name="customer_name" placeholder="Optional">

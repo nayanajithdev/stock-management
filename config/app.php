@@ -4,12 +4,14 @@ declare(strict_types=1);
 
 return [
     'app_name' => 'StockPilot',
+    'app_debug' => false,
     'shop_name' => 'Tech Accessories Hub',
     'shop_legal_name' => '',
     'shop_phone' => '',
     'shop_email' => '',
     'shop_address' => '',
     'shop_website' => '',
+    'shop_logo' => '',
     'timezone' => 'Asia/Colombo',
     'currency' => 'Rs.',
     'default_tax_percent' => '0',

@@ -9,6 +9,8 @@ config/database.local.php
 logs/
 tmp/
 temp/
+uploads/shop/*
+!uploads/shop/.gitkeep
 
 # Database dumps and backups
 *.sql.gz

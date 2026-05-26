@@ -35,8 +35,6 @@
                     <a class="user-menu-logout" href="<?php echo e(app_url('actions/logout.php')); ?>" role="menuitem">Logout</a>
                 </div>
             </div>
-
-            <span class="date-pill"><?php echo e(date('d M Y')); ?></span>
         </div>
     <?php endif; ?>
 </header>

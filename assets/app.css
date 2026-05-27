@@ -871,7 +871,11 @@ h2 {
     padding: 4px;
 }
 
-.segmented button {
+.segmented button,
+.segmented a {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     min-width: 82px;
     height: 36px;
     border: 0;
@@ -879,11 +883,62 @@ h2 {
     background: transparent;
     color: var(--muted);
     cursor: pointer;
+    padding: 0 14px;
+    text-decoration: none;
 }
 
-.segmented button.active {
+.segmented button.active,
+.segmented a.active {
     background: var(--surface-3);
     color: var(--text);
+}
+
+.trend-range {
+    margin: 8px 0 0;
+    color: var(--muted);
+    font-size: 13px;
+}
+
+.trend-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 10px;
+}
+
+.trend-segmented {
+    padding: 3px;
+}
+
+.trend-segmented a {
+    min-width: 72px;
+    height: 32px;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.trend-week-form {
+    margin: 0;
+}
+
+.trend-week-input {
+    width: 142px;
+    height: 32px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: #111820;
+    color: var(--text);
+    color-scheme: dark;
+    font-size: 13px;
+    font-weight: 600;
+    outline: none;
+    padding: 0 12px;
+}
+
+.trend-week-input:focus {
+    border-color: rgba(14, 165, 233, .72);
+    box-shadow: 0 0 0 3px rgba(14, 165, 233, .14);
 }
 
 .chart {
@@ -925,6 +980,10 @@ h2 {
         linear-gradient(rgba(255, 255, 255, .05) 1px, transparent 1px),
         linear-gradient(90deg, rgba(255, 255, 255, .05) 1px, transparent 1px);
     background-size: 34px 34px;
+}
+
+.dashboard-bars.weekly-bars {
+    grid-template-columns: repeat(7, minmax(0, 1fr));
 }
 
 .dashboard-bar-item {
@@ -1141,7 +1200,7 @@ meter {
 
 .sale-meta {
     display: grid;
-    grid-template-columns: minmax(220px, 1fr) minmax(180px, .7fr) minmax(150px, .55fr) 190px;
+    grid-template-columns: minmax(360px, 720px) minmax(150px, 1fr) minmax(230px, 280px);
     gap: 14px;
 }
 
@@ -1164,7 +1223,7 @@ meter {
 
 .sale-row {
     display: grid;
-    grid-template-columns: minmax(260px, 1fr) 68px 78px 120px 110px 120px 40px;
+    grid-template-columns: minmax(360px, 720px) 68px 78px minmax(130px, 1fr) minmax(130px, 1fr) minmax(130px, 1fr) 40px;
     align-items: end;
     gap: 10px;
 }
@@ -2605,6 +2664,10 @@ td {
 
     .dashboard-bars {
         grid-template-columns: repeat(6, minmax(0, 1fr));
+    }
+
+    .dashboard-bars.weekly-bars {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
     .permission-grid {

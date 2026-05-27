@@ -120,7 +120,7 @@ function auth_permission_definitions(): array
         'sales' => [
             'label' => 'Sales & Invoices',
             'description' => 'Create sales, view invoices, and print bills.',
-            'pages' => ['sales', 'sale-view'],
+            'pages' => ['sales', 'sales-history', 'sale-view'],
         ],
         'warranty' => [
             'label' => 'Warranty / RMA',

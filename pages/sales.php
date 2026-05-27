@@ -3,14 +3,6 @@
 /** @var bool $dbReady */
 
 $hasSaleProducts = false;
-$sales = [];
-$saleSearch = trim((string) ($_GET['q'] ?? ''));
-$summary = [
-    'today_sales' => 0.0,
-    'today_paid' => 0.0,
-    'today_balance' => 0.0,
-    'today_orders' => 0,
-];
 
 if ($dbReady && $pdo !== null) {
     $hasSaleProducts = (int) $pdo->query(
@@ -19,85 +11,19 @@ if ($dbReady && $pdo !== null) {
          WHERE status = "active"
            AND current_stock > 0'
     )->fetchColumn() > 0;
-
-    $summaryStatement = $pdo->query(
-        'SELECT
-            COALESCE(SUM(total), 0) AS today_sales,
-            COALESCE(SUM(paid), 0) AS today_paid,
-            COALESCE(SUM(total - paid), 0) AS today_balance,
-            COUNT(*) AS today_orders
-         FROM sales
-         WHERE DATE(sale_date) = CURRENT_DATE'
-    );
-    $summaryRow = $summaryStatement->fetch() ?: [];
-    $summary['today_sales'] = (float) ($summaryRow['today_sales'] ?? 0);
-    $summary['today_paid'] = (float) ($summaryRow['today_paid'] ?? 0);
-    $summary['today_balance'] = (float) ($summaryRow['today_balance'] ?? 0);
-    $summary['today_orders'] = (int) ($summaryRow['today_orders'] ?? 0);
-
-    $saleSql = 'SELECT s.*,
-                       c.name AS customer_name,
-                       c.phone AS customer_phone,
-                       COUNT(si.id) AS item_count,
-                       COALESCE(SUM(si.quantity), 0) AS total_units
-                FROM sales s
-                LEFT JOIN customers c ON c.id = s.customer_id
-                LEFT JOIN sale_items si ON si.sale_id = s.id';
-    $saleParams = [];
-
-    if ($saleSearch !== '') {
-        $saleSql .= ' WHERE s.invoice_no LIKE :search OR c.name LIKE :search OR c.phone LIKE :search';
-        $saleParams['search'] = '%' . $saleSearch . '%';
-    }
-
-    $saleSql .= ' GROUP BY s.id ORDER BY s.sale_date DESC, s.id DESC LIMIT 30';
-    $saleStatement = $pdo->prepare($saleSql);
-    $saleStatement->execute($saleParams);
-    $sales = $saleStatement->fetchAll();
 }
 ?>
 
 <div class="page-heading">
     <div>
-        <p class="eyebrow">Point of sale</p>
-        <h1>Sales POS</h1>
+        <p class="eyebrow">Point of Sale</p>
+        <h1>Sales</h1>
     </div>
+    <a class="top-action" href="<?php echo e(app_url('?page=sales-history')); ?>">
+        <i data-lucide="file-text"></i>
+        Sales History
+    </a>
 </div>
-
-<section class="stats-grid compact-stats" aria-label="Sales summary">
-    <article class="stat-card">
-        <div>
-            <span>Today Sales</span>
-            <strong><?php echo e(format_money($summary['today_sales'])); ?></strong>
-        </div>
-        <div class="stat-icon"><i data-lucide="badge-dollar-sign"></i></div>
-        <small>Total invoiced today</small>
-    </article>
-    <article class="stat-card">
-        <div>
-            <span>Today Paid</span>
-            <strong><?php echo e(format_money($summary['today_paid'])); ?></strong>
-        </div>
-        <div class="stat-icon"><i data-lucide="wallet-cards"></i></div>
-        <small>Cash received</small>
-    </article>
-    <article class="stat-card">
-        <div>
-            <span>Receivable</span>
-            <strong><?php echo e(format_money($summary['today_balance'])); ?></strong>
-        </div>
-        <div class="stat-icon"><i data-lucide="receipt-text"></i></div>
-        <small>Pending today</small>
-    </article>
-    <article class="stat-card">
-        <div>
-            <span>Orders</span>
-            <strong><?php echo (int) $summary['today_orders']; ?></strong>
-        </div>
-        <div class="stat-icon"><i data-lucide="shopping-bag"></i></div>
-        <small>Invoices today</small>
-    </article>
-</section>
 
 <section class="sales-layout">
     <article class="panel" id="sales-pos-form">
@@ -119,18 +45,14 @@ if ($dbReady && $pdo !== null) {
 
                 <div class="sale-meta">
                     <div class="field product-picker" data-sale-customer-picker>
-                        <span>Existing Customer</span>
+                        <span>Customer</span>
                         <input type="hidden" name="customer_id" data-sale-customer>
-                        <input type="search" placeholder="Search customer, phone, email" autocomplete="off" data-sale-customer-search>
+                        <input type="search" name="customer_name" placeholder="Search customer, phone, email or type new customer" autocomplete="off" data-sale-customer-search>
                         <div class="product-suggestions" data-sale-customer-suggestions hidden></div>
                     </div>
                     <label class="field">
-                        <span>New Customer Name</span>
-                        <input type="text" name="customer_name" placeholder="Optional">
-                    </label>
-                    <label class="field">
                         <span>Phone</span>
-                        <input type="text" name="customer_phone" placeholder="Optional">
+                        <input type="text" name="customer_phone" placeholder="Optional" data-sale-customer-phone>
                     </label>
                     <label class="field">
                         <span>Sale Date</span>
@@ -216,72 +138,6 @@ if ($dbReady && $pdo !== null) {
         <?php endif; ?>
     </article>
 
-    <article class="panel table-panel">
-        <div class="panel-header">
-            <div>
-                <p class="panel-label">Sales History</p>
-                <h2>Recent invoices</h2>
-            </div>
-            <?php if ($saleSearch !== ''): ?>
-                <a class="muted-link" href="<?php echo e(app_url('?page=sales')); ?>">Clear search</a>
-            <?php endif; ?>
-        </div>
-
-        <?php if ($saleSearch !== ''): ?>
-            <p class="search-note">Showing sales matching <strong><?php echo e($saleSearch); ?></strong>.</p>
-        <?php endif; ?>
-
-        <div class="table-wrap">
-            <table>
-                <thead>
-                    <tr>
-                        <th>Date</th>
-                        <th>Invoice</th>
-                        <th>Customer</th>
-                        <th>Items</th>
-                        <th>Units</th>
-                        <th>Total</th>
-                        <th>Paid</th>
-                        <th>Balance</th>
-                        <th>Status</th>
-                        <th>Action</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php if ($sales === []): ?>
-                        <tr>
-                            <td colspan="10">No sales recorded yet.</td>
-                        </tr>
-                    <?php endif; ?>
-
-                    <?php foreach ($sales as $sale): ?>
-                        <?php $balance = (float) $sale['total'] - (float) $sale['paid']; ?>
-                        <tr>
-                            <td><?php echo e(date('Y-m-d H:i', strtotime((string) $sale['sale_date']))); ?></td>
-                            <td>
-                                <a class="table-title" href="<?php echo e(app_url('?page=sale-view&id=' . (int) $sale['id'])); ?>"><?php echo e($sale['invoice_no']); ?></a>
-                            </td>
-                            <td>
-                                <strong class="table-title"><?php echo e($sale['customer_name'] ?: 'Walk-in Customer'); ?></strong>
-                                <span class="table-subtitle"><?php echo e($sale['customer_phone'] ?? ''); ?></span>
-                            </td>
-                            <td><?php echo (int) $sale['item_count']; ?></td>
-                            <td><?php echo (int) $sale['total_units']; ?></td>
-                            <td><?php echo e(format_money($sale['total'])); ?></td>
-                            <td><?php echo e(format_money($sale['paid'])); ?></td>
-                            <td class="<?php echo $balance > 0 ? 'text-danger' : ''; ?>"><?php echo e(format_money($balance)); ?></td>
-                            <td><span class="status <?php echo e(sale_status_class((string) $sale['status'])); ?>"><?php echo e(ucfirst((string) $sale['status'])); ?></span></td>
-                            <td>
-                                <a class="icon-button" href="<?php echo e(app_url('?page=sale-view&id=' . (int) $sale['id'])); ?>" aria-label="View invoice">
-                                    <i data-lucide="file-text"></i>
-                                </a>
-                            </td>
-                        </tr>
-                    <?php endforeach; ?>
-                </tbody>
-            </table>
-        </div>
-    </article>
 </section>
 
 <?php
@@ -317,14 +173,4 @@ function render_sale_row(): void
         </button>
     </div>
     <?php
-}
-
-function sale_status_class(string $status): string
-{
-    return match ($status) {
-        'paid' => 'status-active',
-        'partial' => 'status-warranty',
-        'credit' => 'status-pending',
-        default => 'status-inactive',
-    };
 }

@@ -9,13 +9,14 @@ $primaryStats = [
     ['label' => 'Customer Due', 'value' => format_money(0), 'meta' => 'Open receivables', 'icon' => 'receipt-text'],
     ['label' => 'Supplier Due', 'value' => format_money(0), 'meta' => 'Open payables', 'icon' => 'hand-coins'],
 ];
-$financeStats = [
-    ['label' => 'Month Revenue', 'value' => format_money(0), 'meta' => '0 invoice(s)', 'icon' => 'chart-no-axes-combined'],
-    ['label' => 'Gross Profit', 'value' => format_money(0), 'meta' => '0.00% margin', 'icon' => 'trending-up'],
-    ['label' => 'Month Expenses', 'value' => format_money(0), 'meta' => 'Active expenses', 'icon' => 'receipt'],
-    ['label' => 'Est. Net Profit', 'value' => format_money(0), 'meta' => 'After expenses/refunds', 'icon' => 'banknote'],
-];
-$monthlyTrend = [];
+$currentYear = (int) date('Y');
+$trendMode = (string) ($_GET['trend'] ?? '') === 'weekly' ? 'weekly' : 'monthly';
+$selectedWeekStart = dashboard_week_start((string) ($_GET['week'] ?? ''));
+$selectedWeekEnd = $selectedWeekStart->modify('+7 days');
+$selectedWeekInput = $selectedWeekStart->format('o-\WW');
+$selectedWeekRange = dashboard_week_range_label($selectedWeekStart, $selectedWeekEnd->modify('-1 day'));
+$monthlyTrend = dashboard_empty_month_trend();
+$weeklyTrend = dashboard_empty_week_trend($selectedWeekStart);
 $metrics = [
     'today_sales' => 0.0,
     'today_orders' => 0,
@@ -103,33 +104,6 @@ if ($dbReady && $pdo !== null) {
             'icon' => 'hand-coins',
         ],
     ];
-    $financeStats = [
-        [
-            'label' => 'Month Revenue',
-            'value' => format_money($metrics['month_revenue']),
-            'meta' => $metrics['month_orders'] . ' invoice(s)',
-            'icon' => 'chart-no-axes-combined',
-        ],
-        [
-            'label' => 'Gross Profit',
-            'value' => format_money($metrics['month_profit']),
-            'meta' => dashboard_margin_label($metrics['month_profit'], $metrics['month_revenue']),
-            'icon' => 'trending-up',
-        ],
-        [
-            'label' => 'Month Expenses',
-            'value' => format_money($metrics['month_expenses']),
-            'meta' => format_money($metrics['month_refunds']) . ' refunds',
-            'icon' => 'receipt',
-        ],
-        [
-            'label' => 'Est. Net Profit',
-            'value' => format_money($metrics['month_net_profit']),
-            'meta' => 'After expenses/refunds',
-            'icon' => 'banknote',
-        ],
-    ];
-
     $trendRows = [];
     $trendStatement = $pdo->query(
         'SELECT MONTH(sale_date) AS sale_month,
@@ -144,20 +118,46 @@ if ($dbReady && $pdo !== null) {
     }
 
     for ($month = 1; $month <= 12; $month++) {
-        $monthlyTrend[] = [
-            'month' => $month,
-            'label' => date('M', mktime(0, 0, 0, $month, 1)),
-            'revenue' => $trendRows[$month] ?? 0.0,
-        ];
+        $monthlyTrend[$month - 1]['revenue'] = $trendRows[$month] ?? 0.0;
+    }
+
+    $weeklyRows = [];
+    $weeklyStatement = $pdo->prepare(
+        'SELECT DATE(sale_date) AS sale_day,
+                COALESCE(SUM(total), 0) AS revenue
+         FROM sales
+         WHERE sale_date >= :week_start
+           AND sale_date < :week_end
+         GROUP BY DATE(sale_date)'
+    );
+    $weeklyStatement->execute([
+        ':week_start' => $selectedWeekStart->format('Y-m-d 00:00:00'),
+        ':week_end' => $selectedWeekEnd->format('Y-m-d 00:00:00'),
+    ]);
+
+    foreach ($weeklyStatement->fetchAll() as $row) {
+        $weeklyRows[(string) $row['sale_day']] = (float) $row['revenue'];
+    }
+
+    foreach ($weeklyTrend as $index => $day) {
+        $weeklyTrend[$index]['revenue'] = $weeklyRows[$day['date']] ?? 0.0;
     }
 
 }
 
 $maxRevenue = 0.0;
+$trendData = $trendMode === 'weekly' ? $weeklyTrend : $monthlyTrend;
+$trendTotal = 0.0;
 
-foreach ($monthlyTrend as $month) {
-    $maxRevenue = max($maxRevenue, (float) $month['revenue']);
+foreach ($trendData as $point) {
+    $maxRevenue = max($maxRevenue, (float) $point['revenue']);
+    $trendTotal += (float) $point['revenue'];
 }
+
+$trendTitle = $trendMode === 'weekly' ? 'Weekly revenue' : $currentYear . ' revenue';
+$trendBadge = $trendMode === 'weekly'
+    ? format_money($trendTotal) . ' selected week'
+    : format_money($metrics['month_net_profit']) . ' est. net this month';
 ?>
 
 <div class="page-heading">
@@ -179,34 +179,46 @@ foreach ($monthlyTrend as $month) {
     <?php endforeach; ?>
 </section>
 
-<section class="stats-grid compact-stats" aria-label="Monthly finance">
-    <?php foreach ($financeStats as $stat): ?>
-        <?php dashboard_stat_card($stat); ?>
-    <?php endforeach; ?>
-</section>
-
 <section class="dashboard-grid">
     <article class="panel sales-panel">
         <div class="panel-header">
             <div>
                 <p class="panel-label">Sales Trend</p>
-                <h2><?php echo date('Y'); ?> revenue</h2>
+                <h2><?php echo e($trendTitle); ?></h2>
+                <?php if ($trendMode === 'weekly'): ?>
+                    <p class="trend-range"><?php echo e($selectedWeekRange); ?></p>
+                <?php endif; ?>
             </div>
-            <span class="dashboard-pill"><?php echo e(format_money($metrics['month_net_profit'])); ?> est. net this month</span>
+            <div class="trend-toolbar">
+                <span class="dashboard-pill"><?php echo e($trendBadge); ?></span>
+                <nav class="segmented trend-segmented" aria-label="Revenue view">
+                    <a class="<?php echo $trendMode === 'monthly' ? 'active' : ''; ?>" href="<?php echo e(app_url('?page=dashboard&trend=monthly')); ?>">Monthly</a>
+                    <a class="<?php echo $trendMode === 'weekly' ? 'active' : ''; ?>" href="<?php echo e(app_url('?page=dashboard&trend=weekly&week=' . rawurlencode($selectedWeekInput))); ?>">Weekly</a>
+                </nav>
+                <?php if ($trendMode === 'weekly'): ?>
+                    <form class="trend-week-form" method="get">
+                        <input type="hidden" name="page" value="dashboard">
+                        <input type="hidden" name="trend" value="weekly">
+                        <input class="trend-week-input" type="week" name="week" value="<?php echo e($selectedWeekInput); ?>" aria-label="Select revenue week" onchange="this.form.submit()">
+                    </form>
+                <?php endif; ?>
+            </div>
         </div>
 
-        <div class="dashboard-bars" aria-label="Monthly sales chart">
-            <?php foreach ($monthlyTrend as $month): ?>
+        <div class="dashboard-bars <?php echo $trendMode === 'weekly' ? 'weekly-bars' : ''; ?>" aria-label="<?php echo $trendMode === 'weekly' ? 'Weekly sales chart' : 'Monthly sales chart'; ?>">
+            <?php foreach ($trendData as $point): ?>
                 <?php
-                $height = $maxRevenue > 0 ? max(8, ((float) $month['revenue'] / $maxRevenue) * 100) : 0;
-                $isCurrentMonth = (int) date('n') === (int) $month['month'];
+                $height = $maxRevenue > 0 ? max(8, ((float) $point['revenue'] / $maxRevenue) * 100) : 0;
+                $isCurrentPoint = $trendMode === 'weekly'
+                    ? (string) ($point['date'] ?? '') === date('Y-m-d')
+                    : (int) date('n') === (int) ($point['month'] ?? 0);
                 ?>
-                <div class="dashboard-bar-item <?php echo $isCurrentMonth ? 'active' : ''; ?>">
+                <div class="dashboard-bar-item <?php echo $isCurrentPoint ? 'active' : ''; ?>">
                     <div class="dashboard-bar-track">
                         <span style="height: <?php echo e(number_format($height, 2, '.', '')); ?>%"></span>
                     </div>
-                    <strong><?php echo e($month['label']); ?></strong>
-                    <small><?php echo e(format_money($month['revenue'])); ?></small>
+                    <strong><?php echo e($point['label']); ?></strong>
+                    <small><?php echo e(format_money((float) $point['revenue'])); ?></small>
                 </div>
             <?php endforeach; ?>
         </div>
@@ -261,6 +273,59 @@ function dashboard_fetch_one(PDO $pdo, string $sql): array
     $row = $pdo->query($sql)->fetch();
 
     return is_array($row) ? $row : [];
+}
+
+function dashboard_empty_month_trend(): array
+{
+    $trend = [];
+
+    for ($month = 1; $month <= 12; $month++) {
+        $trend[] = [
+            'month' => $month,
+            'label' => date('M', mktime(0, 0, 0, $month, 1)),
+            'revenue' => 0.0,
+        ];
+    }
+
+    return $trend;
+}
+
+function dashboard_week_start(string $weekValue): DateTimeImmutable
+{
+    if (preg_match('/^(\d{4})-W(\d{2})$/', $weekValue, $matches) === 1) {
+        $week = (int) $matches[2];
+
+        if ($week >= 1 && $week <= 53) {
+            return (new DateTimeImmutable('now'))->setISODate((int) $matches[1], $week)->setTime(0, 0);
+        }
+    }
+
+    return (new DateTimeImmutable('monday this week'))->setTime(0, 0);
+}
+
+function dashboard_empty_week_trend(DateTimeImmutable $weekStart): array
+{
+    $trend = [];
+
+    for ($dayIndex = 0; $dayIndex < 7; $dayIndex++) {
+        $day = $weekStart->modify('+' . $dayIndex . ' days');
+        $trend[] = [
+            'date' => $day->format('Y-m-d'),
+            'label' => $day->format('D'),
+            'revenue' => 0.0,
+        ];
+    }
+
+    return $trend;
+}
+
+function dashboard_week_range_label(DateTimeImmutable $weekStart, DateTimeImmutable $weekEnd): string
+{
+    if ($weekStart->format('Y') === $weekEnd->format('Y')) {
+        return $weekStart->format('M j') . ' - ' . $weekEnd->format('M j, Y');
+    }
+
+    return $weekStart->format('M j, Y') . ' - ' . $weekEnd->format('M j, Y');
 }
 
 function dashboard_warranty_expiring_lots(PDO $pdo): int
@@ -333,13 +398,4 @@ function dashboard_stat_card(array $stat): void
         <small><?php echo e($stat['meta']); ?></small>
     </article>
     <?php
-}
-
-function dashboard_margin_label(float $profit, float $revenue): string
-{
-    if ($revenue <= 0) {
-        return '0.00% margin';
-    }
-
-    return number_format(($profit / $revenue) * 100, 2) . '% margin';
 }

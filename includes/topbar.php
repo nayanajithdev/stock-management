@@ -13,7 +13,7 @@
         <?php if ($canOpenSales): ?>
             <a class="top-action topbar-sales-link <?php echo $currentPage === 'sales' ? 'active' : ''; ?>" href="<?php echo e(app_url('?page=sales')); ?>">
                 <i data-lucide="scan-barcode"></i>
-                Sales POS
+                Sales
             </a>
         <?php endif; ?>
 

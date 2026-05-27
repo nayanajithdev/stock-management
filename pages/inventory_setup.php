@@ -169,7 +169,6 @@ if ($dbReady && $pdo !== null) {
         <article class="panel form-panel">
             <div class="panel-header">
                 <div>
-                    <p class="panel-label">Category</p>
                     <h2><?php echo $editingCategory === null ? 'Add Category' : 'Edit Category'; ?></h2>
                 </div>
                 <?php if ($editingCategory !== null): ?>
@@ -229,7 +228,7 @@ if ($dbReady && $pdo !== null) {
                                 <td><strong class="table-title"><?php echo e($category['name']); ?></strong></td>
                                 <td><?php echo e($category['description'] ?? ''); ?></td>
                                 <td><?php echo (int) $category['product_count']; ?></td>
-                                <td><span class="status status-<?php echo (int) $category['is_active'] === 1 ? 'active' : 'inactive'; ?>"><?php echo (int) $category['is_active'] === 1 ? 'Active' : 'Archived'; ?></span></td>
+                                <td><span class="status status-<?php echo (int) $category['is_active'] === 1 ? 'active' : 'inactive'; ?>"><?php echo (int) $category['is_active'] === 1 ? 'Active' : 'Inactive'; ?></span></td>
                                 <td><?php render_master_actions('category', (int) $category['id'], (int) $category['is_active'], 'categories'); ?></td>
                             </tr>
                         <?php endforeach; ?>
@@ -245,7 +244,6 @@ if ($dbReady && $pdo !== null) {
         <article class="panel form-panel">
             <div class="panel-header">
                 <div>
-                    <p class="panel-label">Brand</p>
                     <h2><?php echo $editingBrand === null ? 'Add Brand' : 'Edit Brand'; ?></h2>
                 </div>
                 <?php if ($editingBrand !== null): ?>
@@ -299,7 +297,7 @@ if ($dbReady && $pdo !== null) {
                             <tr>
                                 <td><strong class="table-title"><?php echo e($brand['name']); ?></strong></td>
                                 <td><?php echo (int) $brand['product_count']; ?></td>
-                                <td><span class="status status-<?php echo (int) $brand['is_active'] === 1 ? 'active' : 'inactive'; ?>"><?php echo (int) $brand['is_active'] === 1 ? 'Active' : 'Archived'; ?></span></td>
+                                <td><span class="status status-<?php echo (int) $brand['is_active'] === 1 ? 'active' : 'inactive'; ?>"><?php echo (int) $brand['is_active'] === 1 ? 'Active' : 'Inactive'; ?></span></td>
                                 <td><?php render_master_actions('brand', (int) $brand['id'], (int) $brand['is_active'], 'brands'); ?></td>
                             </tr>
                         <?php endforeach; ?>
@@ -315,7 +313,6 @@ if ($dbReady && $pdo !== null) {
         <article class="panel form-panel">
             <div class="panel-header">
                 <div>
-                    <p class="panel-label">Supplier</p>
                     <h2><?php echo $editingSupplier === null ? 'Add Supplier' : 'Edit Supplier'; ?></h2>
                 </div>
                 <?php if ($editingSupplier !== null): ?>
@@ -391,7 +388,7 @@ if ($dbReady && $pdo !== null) {
                                 <td><?php echo e($supplier['phone'] ?? ''); ?></td>
                                 <td><?php echo e($supplier['email'] ?? ''); ?></td>
                                 <td><?php echo (int) $supplier['product_count']; ?></td>
-                                <td><span class="status status-<?php echo (int) $supplier['is_active'] === 1 ? 'active' : 'inactive'; ?>"><?php echo (int) $supplier['is_active'] === 1 ? 'Active' : 'Archived'; ?></span></td>
+                                <td><span class="status status-<?php echo (int) $supplier['is_active'] === 1 ? 'active' : 'inactive'; ?>"><?php echo (int) $supplier['is_active'] === 1 ? 'Active' : 'Inactive'; ?></span></td>
                                 <td><?php render_master_actions('supplier', (int) $supplier['id'], (int) $supplier['is_active'], 'suppliers'); ?></td>
                             </tr>
                         <?php endforeach; ?>
@@ -410,16 +407,14 @@ function render_master_actions(string $entity, int $id, int $isActive, string $s
         <a class="icon-button" href="<?php echo e(app_url('?page=inventory-setup&section=' . $section . '&edit_type=' . $entity . '&edit_id=' . $id)); ?>" aria-label="Edit">
             <i data-lucide="pencil"></i>
         </a>
-        <?php if ($isActive === 1): ?>
-            <form method="post" action="<?php echo e(app_url('actions/master_archive.php')); ?>" data-confirm="Archive this record? Products will keep their history.">
-                <?php echo csrf_field(); ?>
-                <input type="hidden" name="entity" value="<?php echo e($entity); ?>">
-                <input type="hidden" name="id" value="<?php echo $id; ?>">
-                <button class="icon-button danger-button" type="submit" aria-label="Archive">
-                    <i data-lucide="archive"></i>
-                </button>
-            </form>
-        <?php endif; ?>
+        <form method="post" action="<?php echo e(app_url('actions/master_archive.php')); ?>" data-confirm="Delete this record permanently? Linked products and history will keep working, but this setup label will be removed.">
+            <?php echo csrf_field(); ?>
+            <input type="hidden" name="entity" value="<?php echo e($entity); ?>">
+            <input type="hidden" name="id" value="<?php echo $id; ?>">
+            <button class="icon-button danger-button" type="submit" aria-label="Delete">
+                <i data-lucide="trash-2"></i>
+            </button>
+        </form>
     </div>
     <?php
 }

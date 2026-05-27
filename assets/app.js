@@ -450,6 +450,7 @@ if (saleForm) {
     const saleCustomerSearchUrl = saleForm.dataset.saleCustomerSearchUrl || '';
     const customerInput = saleForm.querySelector('[data-sale-customer-search]');
     const customerHidden = saleForm.querySelector('[data-sale-customer]');
+    const customerPhoneInput = saleForm.querySelector('[data-sale-customer-phone]');
     const customerSuggestions = saleForm.querySelector('[data-sale-customer-suggestions]');
     let customerSearchTimer = null;
     let customerSearchToken = 0;
@@ -480,7 +481,11 @@ if (saleForm) {
         }
 
         if (customerInput) {
-            customerInput.value = customer.label || '';
+            customerInput.value = customer.name || customer.label || '';
+        }
+
+        if (customerPhoneInput) {
+            customerPhoneInput.value = customer.phone || '';
         }
 
         closeCustomerSuggestions();

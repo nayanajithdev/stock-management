@@ -185,9 +185,14 @@ $pages = [
         'view' => __DIR__ . '/../pages/stock.php',
     ],
     'sales' => [
-        'title' => 'Sales POS',
+        'title' => 'Sales',
         'description' => 'Create invoices and reduce stock',
         'view' => __DIR__ . '/../pages/sales.php',
+    ],
+    'sales-history' => [
+        'title' => 'Sales History',
+        'description' => 'View and search customer invoices',
+        'view' => __DIR__ . '/../pages/sales_history.php',
     ],
     'sale-view' => [
         'title' => 'Invoice Details',

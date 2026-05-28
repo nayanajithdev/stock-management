@@ -76,7 +76,6 @@ $receiptNo = $paymentId > 0 ? 'RCPT-' . str_pad((string) $paymentId, 6, '0', STR
 <?php else: ?>
     <div class="page-heading no-print">
         <div>
-            <p class="eyebrow">Payment Receipt</p>
             <h1><?php echo e($receiptNo); ?></h1>
         </div>
         <div class="invoice-actions">

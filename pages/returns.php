@@ -3,8 +3,7 @@
 /** @var bool $dbReady */
 
 $returnSearch = trim((string) ($_GET['q'] ?? ''));
-$selectedSaleItemId = (int) ($_GET['sale_item'] ?? 0);
-$returnableItems = [];
+$hasReturnableItems = false;
 $returns = [];
 $summary = [
     'month_returns' => 0,
@@ -37,32 +36,16 @@ if ($dbReady && $pdo !== null) {
            AND sr.return_date >= DATE_FORMAT(CURRENT_DATE, "%Y-%m-01")'
     )->fetchColumn();
 
-    $returnableStatement = $pdo->query(
-        'SELECT si.id AS sale_item_id,
-                si.sale_id,
-                si.product_id,
-                si.quantity AS sold_quantity,
-                si.unit_price,
-                si.unit_cost,
-                s.invoice_no,
-                s.sale_date,
-                c.name AS customer_name,
-                c.phone AS customer_phone,
-                p.sku,
-                p.name AS product_name,
-                p.model,
-                COALESCE(SUM(sri.quantity), 0) AS returned_quantity,
-                si.quantity - COALESCE(SUM(sri.quantity), 0) AS available_quantity
+    $hasReturnableItems = (int) $pdo->query(
+        'SELECT COUNT(*)
          FROM sale_items si
-         INNER JOIN sales s ON s.id = si.sale_id
-         LEFT JOIN customers c ON c.id = s.customer_id
-         INNER JOIN products p ON p.id = si.product_id
-         LEFT JOIN sales_return_items sri ON sri.sale_item_id = si.id
-         GROUP BY si.id
-         HAVING available_quantity > 0
-         ORDER BY s.sale_date DESC, si.id DESC'
-    );
-    $returnableItems = $returnableStatement->fetchAll();
+         LEFT JOIN (
+            SELECT sale_item_id, COALESCE(SUM(quantity), 0) AS returned_quantity
+            FROM sales_return_items
+            GROUP BY sale_item_id
+         ) r ON r.sale_item_id = si.id
+         WHERE si.quantity - COALESCE(r.returned_quantity, 0) > 0'
+    )->fetchColumn() > 0;
 
     $returnSql = 'SELECT sr.*,
                          s.invoice_no,
@@ -91,7 +74,6 @@ if ($dbReady && $pdo !== null) {
 
 <div class="page-heading">
     <div>
-        <p class="eyebrow">Customer returns</p>
         <h1>Returns</h1>
     </div>
     <a class="top-action" href="#sales-return-form">
@@ -117,22 +99,6 @@ if ($dbReady && $pdo !== null) {
         <div class="stat-icon"><i data-lucide="wallet"></i></div>
         <small>This month</small>
     </article>
-    <article class="stat-card">
-        <div>
-            <span>Returned Units</span>
-            <strong><?php echo (int) $summary['month_units']; ?></strong>
-        </div>
-        <div class="stat-icon"><i data-lucide="package-open"></i></div>
-        <small>All conditions</small>
-    </article>
-    <article class="stat-card">
-        <div>
-            <span>Restocked Units</span>
-            <strong><?php echo (int) $summary['restocked_units']; ?></strong>
-        </div>
-        <div class="stat-icon"><i data-lucide="boxes"></i></div>
-        <small>Returned to inventory</small>
-    </article>
 </section>
 
 <section class="return-layout">
@@ -147,31 +113,41 @@ if ($dbReady && $pdo !== null) {
 
         <?php if (! $dbReady): ?>
             <p class="empty-state">Import <code>database/schema.sql</code> before saving returns.</p>
-        <?php elseif ($returnableItems === []): ?>
+        <?php elseif (! $hasReturnableItems): ?>
             <p class="empty-state">No sold items are available to return yet.</p>
         <?php else: ?>
-            <form class="return-form" method="post" action="<?php echo e(app_url('actions/sales_return_save.php')); ?>" data-return-form>
+            <form class="return-form" method="post" action="<?php echo e(app_url('actions/sales_return_save.php')); ?>" data-return-form data-return-lookup-url="<?php echo e(app_url('actions/return_lookup.php')); ?>">
                 <?php echo csrf_field(); ?>
 
-                <label class="field span-2">
-                    <span>Sold Item</span>
-                    <select name="sale_item_id" data-return-item required>
-                        <option value="">Choose invoice item</option>
-                        <?php foreach ($returnableItems as $item): ?>
-                            <?php
-                            $label = $item['invoice_no'] . ' / ' . ($item['customer_name'] ?: 'Walk-in Customer') . ' / ' . $item['sku'] . ' - ' . $item['product_name'] . ' / Available ' . (int) $item['available_quantity'];
-                            ?>
-                            <option
-                                value="<?php echo (int) $item['sale_item_id']; ?>"
-                                data-available="<?php echo (int) $item['available_quantity']; ?>"
-                                data-price="<?php echo e($item['unit_price']); ?>"
-                                <?php echo $selectedSaleItemId === (int) $item['sale_item_id'] ? 'selected' : ''; ?>
-                            >
-                                <?php echo e($label); ?>
-                            </option>
-                        <?php endforeach; ?>
-                    </select>
-                </label>
+                <div class="field product-picker span-2">
+                    <span>Customer or Invoice</span>
+                    <input type="search" placeholder="Search customer, phone, email, or invoice" autocomplete="off" data-return-search>
+                    <div class="product-suggestions" data-return-suggestions hidden></div>
+                </div>
+
+                <div class="return-picker-grid span-2">
+                    <section class="return-picker-panel">
+                        <div class="return-picker-heading">
+                            <strong>Invoices</strong>
+                            <span data-return-customer-label>Search and select a customer or invoice.</span>
+                        </div>
+                        <div class="return-choice-list" data-return-invoices>
+                            <p class="return-choice-empty">No customer selected.</p>
+                        </div>
+                    </section>
+
+                    <section class="return-picker-panel">
+                        <div class="return-picker-heading">
+                            <strong>Invoice Items</strong>
+                            <span data-return-invoice-label>Select an invoice to view returnable items.</span>
+                        </div>
+                        <div class="return-choice-list" data-return-items>
+                            <p class="return-choice-empty">No invoice selected.</p>
+                        </div>
+                    </section>
+                </div>
+
+                <input type="hidden" name="sale_item_id" data-return-item>
 
                 <div class="collection-balance">
                     <span>Available to Return</span>

@@ -114,7 +114,6 @@ if ($dbReady && $pdo !== null) {
 
 <div class="page-heading">
     <div>
-        <p class="eyebrow">Payables</p>
         <h1>Supplier Credit</h1>
     </div>
 </div>
@@ -135,22 +134,6 @@ if ($dbReady && $pdo !== null) {
         </div>
         <div class="stat-icon"><i data-lucide="wallet"></i></div>
         <small>Total supplier balance</small>
-    </article>
-    <article class="stat-card">
-        <div>
-            <span>Partial Paid</span>
-            <strong><?php echo (int) $summary['partial_purchases']; ?></strong>
-        </div>
-        <div class="stat-icon"><i data-lucide="circle-dollar-sign"></i></div>
-        <small>Some payment made</small>
-    </article>
-    <article class="stat-card">
-        <div>
-            <span>Paid Today</span>
-            <strong><?php echo e(format_money($summary['paid_today'])); ?></strong>
-        </div>
-        <div class="stat-icon"><i data-lucide="hand-coins"></i></div>
-        <small>Supplier payments</small>
     </article>
 </section>
 

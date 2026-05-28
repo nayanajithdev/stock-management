@@ -22,6 +22,7 @@ $summary = [
     'stock_value' => 0.0,
     'receivable' => 0.0,
     'refunds' => 0.0,
+    'supplier_refunds' => 0.0,
     'expenses' => 0.0,
     'net_profit' => 0.0,
     'open_warranty' => 0,
@@ -79,6 +80,15 @@ if ($dbReady && $pdo !== null) {
         'start_date' => $startDate,
         'end_date' => $endDate,
     ]);
+    $supplierRefundSummary = $pdo->prepare(
+        'SELECT COALESCE(SUM(supplier_refund_amount), 0)
+         FROM warranty_claims
+         WHERE supplier_refund_date BETWEEN :start_date AND :end_date'
+    );
+    $supplierRefundSummary->execute([
+        'start_date' => $startDate,
+        'end_date' => $endDate,
+    ]);
 
     $summary['revenue'] = (float) ($salesRow['revenue'] ?? 0);
     $summary['gross_profit'] = (float) ($profitRow['gross_profit'] ?? 0);
@@ -87,8 +97,9 @@ if ($dbReady && $pdo !== null) {
     $summary['stock_value'] = (float) $pdo->query('SELECT COALESCE(SUM(current_stock * cost_price), 0) FROM products WHERE status = "active"')->fetchColumn();
     $summary['receivable'] = (float) $pdo->query('SELECT COALESCE(SUM(total - paid), 0) FROM sales WHERE total > paid')->fetchColumn();
     $summary['refunds'] = (float) $returnSummary->fetchColumn();
+    $summary['supplier_refunds'] = (float) $supplierRefundSummary->fetchColumn();
     $summary['expenses'] = (float) $expenseSummary->fetchColumn();
-    $summary['net_profit'] = $summary['gross_profit'] - $summary['expenses'];
+    $summary['net_profit'] = $summary['gross_profit'] - $summary['expenses'] - $summary['refunds'] + $summary['supplier_refunds'];
     $summary['open_warranty'] = (int) $pdo->query('SELECT COUNT(*) FROM warranty_claims WHERE status IN ("received", "sent_to_supplier", "ready_for_pickup")')->fetchColumn();
 
     $dailyStatement = $pdo->prepare(
@@ -201,6 +212,8 @@ if ($dbReady && $pdo !== null) {
     $warrantySql = 'SELECT wc.claim_no,
                            wc.received_date,
                            wc.resolved_date,
+                           wc.supplier_refund_amount,
+                           wc.supplier_refund_date,
                            wc.status,
                            p.sku,
                            p.name AS product_name,
@@ -255,7 +268,6 @@ foreach ($dailySales as $day) {
 
 <div class="page-heading">
     <div>
-        <p class="eyebrow">Business reports</p>
         <h1>Reports</h1>
     </div>
     <a class="top-action" href="<?php echo e(app_url('?page=sales')); ?>">
@@ -317,47 +329,7 @@ foreach ($dailySales as $day) {
             <strong><?php echo e(format_money($summary['net_profit'])); ?></strong>
         </div>
         <div class="stat-icon"><i data-lucide="chart-line"></i></div>
-        <small>Gross profit minus expenses</small>
-    </article>
-    <article class="stat-card">
-        <div>
-            <span>Units Sold</span>
-            <strong><?php echo (int) $summary['units_sold']; ?></strong>
-        </div>
-        <div class="stat-icon"><i data-lucide="package-check"></i></div>
-        <small>Selected date range</small>
-    </article>
-    <article class="stat-card">
-        <div>
-            <span>Stock Value</span>
-            <strong><?php echo e(format_money($summary['stock_value'])); ?></strong>
-        </div>
-        <div class="stat-icon"><i data-lucide="boxes"></i></div>
-        <small>Cost value on hand</small>
-    </article>
-    <article class="stat-card">
-        <div>
-            <span>Receivable</span>
-            <strong><?php echo e(format_money($summary['receivable'])); ?></strong>
-        </div>
-        <div class="stat-icon"><i data-lucide="receipt-text"></i></div>
-        <small>Open customer balance</small>
-    </article>
-    <article class="stat-card">
-        <div>
-            <span>Refunds</span>
-            <strong><?php echo e(format_money($summary['refunds'])); ?></strong>
-        </div>
-        <div class="stat-icon"><i data-lucide="rotate-ccw"></i></div>
-        <small>Sales returns</small>
-    </article>
-    <article class="stat-card">
-        <div>
-            <span>Warranty Open</span>
-            <strong><?php echo (int) $summary['open_warranty']; ?></strong>
-        </div>
-        <div class="stat-icon"><i data-lucide="shield-check"></i></div>
-        <small>Active RMA claims</small>
+        <small>After expenses, customer refunds, supplier refunds</small>
     </article>
 </section>
 
@@ -612,13 +584,14 @@ foreach ($dailySales as $day) {
                             <th>Product</th>
                             <th>Customer</th>
                             <th>Status</th>
+                            <th>Supplier Refund</th>
                             <th>Resolved</th>
                         </tr>
                     </thead>
                     <tbody>
                         <?php if ($warrantyRows === []): ?>
                             <tr>
-                                <td colspan="6">No warranty claims found.</td>
+                                <td colspan="7">No warranty claims found.</td>
                             </tr>
                         <?php endif; ?>
 
@@ -632,6 +605,12 @@ foreach ($dailySales as $day) {
                                 </td>
                                 <td><?php echo e($claim['customer_name'] ?: 'Walk-in Customer'); ?></td>
                                 <td><span class="status <?php echo e(report_warranty_status_class((string) $claim['status'])); ?>"><?php echo e(report_warranty_status_label((string) $claim['status'])); ?></span></td>
+                                <td>
+                                    <?php echo e(format_money($claim['supplier_refund_amount'] ?? 0)); ?>
+                                    <?php if (! empty($claim['supplier_refund_date'])): ?>
+                                        <span class="table-subtitle"><?php echo e($claim['supplier_refund_date']); ?></span>
+                                    <?php endif; ?>
+                                </td>
                                 <td><?php echo e($claim['resolved_date'] ?? ''); ?></td>
                             </tr>
                         <?php endforeach; ?>

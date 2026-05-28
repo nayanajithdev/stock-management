@@ -68,6 +68,37 @@ document.querySelectorAll('a[aria-disabled="true"]').forEach((link) => {
     link.addEventListener('click', (event) => event.preventDefault());
 });
 
+const headerFilterMenus = Array.from(document.querySelectorAll('.th-filter-menu'));
+
+if (headerFilterMenus.length) {
+    const closeHeaderFilterMenus = (except = null) => {
+        headerFilterMenus.forEach((menu) => {
+            if (menu !== except) {
+                menu.open = false;
+            }
+        });
+    };
+
+    headerFilterMenus.forEach((menu) => {
+        menu.addEventListener('toggle', () => {
+            if (menu.open) {
+                closeHeaderFilterMenus(menu);
+            }
+        });
+
+        menu.addEventListener('click', (event) => {
+            event.stopPropagation();
+        });
+    });
+
+    document.addEventListener('click', () => closeHeaderFilterMenus());
+    document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape') {
+            closeHeaderFilterMenus();
+        }
+    });
+}
+
 document.querySelectorAll('[data-permission-panel]').forEach((panel) => {
     const checkboxes = Array.from(panel.querySelectorAll('[data-permission-checkbox]'));
     const optionalCheckboxes = checkboxes.filter((checkbox) => !checkbox.disabled);
@@ -914,30 +945,84 @@ if (collectionForm) {
 const returnForm = document.querySelector('[data-return-form]');
 
 if (returnForm) {
-    const itemSelect = returnForm.querySelector('[data-return-item]');
+    const lookupUrl = returnForm.dataset.returnLookupUrl || '';
+    const searchInput = returnForm.querySelector('[data-return-search]');
+    const suggestions = returnForm.querySelector('[data-return-suggestions]');
+    const invoiceList = returnForm.querySelector('[data-return-invoices]');
+    const itemList = returnForm.querySelector('[data-return-items]');
+    const customerLabel = returnForm.querySelector('[data-return-customer-label]');
+    const invoiceLabel = returnForm.querySelector('[data-return-invoice-label]');
+    const itemHidden = returnForm.querySelector('[data-return-item]');
     const quantityInput = returnForm.querySelector('[data-return-quantity]');
     const refundInput = returnForm.querySelector('[data-return-refund]');
     const availableDisplay = returnForm.querySelector('[data-return-available]');
     const preview = returnForm.querySelector('[data-return-preview]');
+    let searchTimer = null;
+    let searchToken = 0;
+    let invoiceToken = 0;
+    let itemToken = 0;
 
     const money = (value) => Number.isFinite(value) ? value.toFixed(2) : '0.00';
 
+    const setListMessage = (container, message) => {
+        if (!container) {
+            return;
+        }
+
+        container.innerHTML = `<p class="return-choice-empty">${message}</p>`;
+    };
+
+    const closeSuggestions = () => {
+        if (!suggestions) {
+            return;
+        }
+
+        suggestions.hidden = true;
+        suggestions.innerHTML = '';
+    };
+
+    const showSuggestionMessage = (message) => {
+        if (!suggestions) {
+            return;
+        }
+
+        suggestions.innerHTML = `<div class="product-suggestion-empty">${message}</div>`;
+        suggestions.hidden = false;
+    };
+
+    const clearSelectedItem = () => {
+        if (itemHidden) {
+            itemHidden.value = '';
+            itemHidden.dataset.available = '0';
+            itemHidden.dataset.price = '0';
+        }
+
+        if (quantityInput) {
+            quantityInput.value = '1';
+            quantityInput.removeAttribute('max');
+        }
+
+        if (refundInput) {
+            refundInput.value = '0.00';
+        }
+    };
+
     const renderReturnPreview = () => {
-        const selected = itemSelect?.selectedOptions[0];
-        const available = Number.parseInt(selected?.dataset.available || '0', 10);
-        const price = Number.parseFloat(selected?.dataset.price || '0');
+        const hasItem = Boolean(itemHidden?.value);
+        const available = Number.parseInt(itemHidden?.dataset.available || '0', 10);
+        const price = Number.parseFloat(itemHidden?.dataset.price || '0');
         const quantity = Math.max(0, Number.parseInt(quantityInput?.value || '0', 10));
         const maxRefund = Math.max(0, quantity * price);
 
         if (availableDisplay) {
-            availableDisplay.textContent = selected?.value ? String(available) : 'Choose item';
+            availableDisplay.textContent = hasItem ? String(available) : 'Choose item';
         }
 
-        if (quantityInput && selected?.value) {
+        if (quantityInput && hasItem) {
             quantityInput.max = String(Math.max(1, available));
         }
 
-        if (refundInput && selected?.value && Number.parseFloat(refundInput.value || '0') === 0) {
+        if (refundInput && hasItem && Number.parseFloat(refundInput.value || '0') === 0) {
             refundInput.value = money(maxRefund);
         }
 
@@ -945,8 +1030,8 @@ if (returnForm) {
             return;
         }
 
-        if (!selected?.value) {
-            preview.textContent = 'Select an item to preview the return.';
+        if (!hasItem) {
+            preview.textContent = 'Search customer, select invoice, then select the item to return.';
             return;
         }
 
@@ -958,12 +1043,269 @@ if (returnForm) {
         preview.textContent = `Return ${quantity} unit(s). Maximum refund for this quantity: ${money(maxRefund)}.`;
     };
 
-    if (itemSelect) {
-        itemSelect.addEventListener('change', () => {
-            if (refundInput) {
-                refundInput.value = '0.00';
-            }
+    const selectItem = (item, button) => {
+        if (itemHidden) {
+            itemHidden.value = String(item.sale_item_id || '');
+            itemHidden.dataset.available = String(item.available || 0);
+            itemHidden.dataset.price = String(item.price || '0');
+        }
+
+        if (quantityInput) {
+            quantityInput.value = '1';
+            quantityInput.max = String(Math.max(1, Number.parseInt(item.available || '0', 10) || 1));
+        }
+
+        if (refundInput) {
+            refundInput.value = money(Number.parseFloat(item.price || '0') || 0);
+        }
+
+        itemList?.querySelectorAll('.return-choice-card').forEach((card) => card.classList.remove('active'));
+        button?.classList.add('active');
+        renderReturnPreview();
+    };
+
+    const renderItems = (items) => {
+        if (!itemList) {
+            return;
+        }
+
+        clearSelectedItem();
+
+        if (!items.length) {
+            setListMessage(itemList, 'No returnable items found for this invoice.');
             renderReturnPreview();
+            return;
+        }
+
+        itemList.innerHTML = '';
+
+        items.forEach((item) => {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'return-choice-card';
+            button.innerHTML = `
+                <strong></strong>
+                <span></span>
+                <small></small>
+            `;
+            button.querySelector('strong').textContent = item.label || '';
+            button.querySelector('span').textContent = `Sold ${item.sold ?? 0} / Returned ${item.returned ?? 0} / Available ${item.available ?? 0}`;
+            button.querySelector('small').textContent = `Price ${money(Number.parseFloat(item.price || '0'))}`;
+            button.addEventListener('click', () => selectItem(item, button));
+            itemList.appendChild(button);
+        });
+    };
+
+    const loadItems = (invoice) => {
+        if (!lookupUrl || !invoice?.sale_id) {
+            return;
+        }
+
+        const token = ++itemToken;
+        clearSelectedItem();
+        setListMessage(itemList, 'Loading invoice items...');
+
+        if (invoiceLabel) {
+            invoiceLabel.textContent = `${invoice.invoice_no || invoice.label} / ${invoice.customer || 'Walk-in Customer'}`;
+        }
+
+        fetch(`${lookupUrl}?type=items&sale_id=${encodeURIComponent(invoice.sale_id)}`, {
+            headers: { Accept: 'application/json' },
+        })
+            .then((response) => response.ok ? response.json() : { items: [] })
+            .then((data) => {
+                if (token !== itemToken) {
+                    return;
+                }
+
+                renderItems(Array.isArray(data.items) ? data.items : []);
+            })
+            .catch(() => {
+                if (token === itemToken) {
+                    setListMessage(itemList, 'Could not load invoice items.');
+                }
+            });
+    };
+
+    const renderInvoices = (invoices) => {
+        if (!invoiceList) {
+            return;
+        }
+
+        clearSelectedItem();
+        setListMessage(itemList, 'Select an invoice to view returnable items.');
+
+        if (!invoices.length) {
+            setListMessage(invoiceList, 'No returnable invoices found.');
+            return;
+        }
+
+        invoiceList.innerHTML = '';
+
+        invoices.forEach((invoice) => {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'return-choice-card';
+            button.innerHTML = `
+                <strong></strong>
+                <span></span>
+                <small></small>
+            `;
+            button.querySelector('strong').textContent = invoice.invoice_no || invoice.label || '';
+            button.querySelector('span').textContent = `${invoice.date || ''} / ${invoice.customer || 'Walk-in Customer'}`;
+            button.querySelector('small').textContent = `${invoice.items ?? 0} item(s), ${invoice.available ?? 0} returnable unit(s), ${money(Number.parseFloat(invoice.total || '0'))}`;
+            button.addEventListener('click', () => {
+                invoiceList.querySelectorAll('.return-choice-card').forEach((card) => card.classList.remove('active'));
+                button.classList.add('active');
+                loadItems(invoice);
+            });
+            invoiceList.appendChild(button);
+        });
+    };
+
+    const loadInvoices = (customer) => {
+        if (!lookupUrl || !customer?.id) {
+            return;
+        }
+
+        const token = ++invoiceToken;
+        clearSelectedItem();
+        setListMessage(invoiceList, 'Loading invoices...');
+        setListMessage(itemList, 'Select an invoice to view returnable items.');
+
+        if (customerLabel) {
+            customerLabel.textContent = customer.label || 'Selected customer';
+        }
+
+        if (invoiceLabel) {
+            invoiceLabel.textContent = 'Select an invoice to view returnable items.';
+        }
+
+        fetch(`${lookupUrl}?type=invoices&customer_id=${encodeURIComponent(customer.id)}`, {
+            headers: { Accept: 'application/json' },
+        })
+            .then((response) => response.ok ? response.json() : { invoices: [] })
+            .then((data) => {
+                if (token !== invoiceToken) {
+                    return;
+                }
+
+                renderInvoices(Array.isArray(data.invoices) ? data.invoices : []);
+            })
+            .catch(() => {
+                if (token === invoiceToken) {
+                    setListMessage(invoiceList, 'Could not load invoices.');
+                }
+            });
+    };
+
+    const selectSearchMatch = (match) => {
+        closeSuggestions();
+
+        if (searchInput) {
+            searchInput.value = match.type === 'invoice'
+                ? `${match.invoice_no || match.label} / ${match.customer || 'Walk-in Customer'}`
+                : match.label || '';
+        }
+
+        if (match.type === 'invoice') {
+            if (customerLabel) {
+                customerLabel.textContent = match.customer || 'Selected invoice';
+            }
+
+            renderInvoices([match]);
+            loadItems(match);
+            return;
+        }
+
+        loadInvoices(match);
+    };
+
+    const renderSearchMatches = (matches) => {
+        if (!suggestions) {
+            return;
+        }
+
+        suggestions.innerHTML = '';
+
+        if (!matches.length) {
+            showSuggestionMessage('No returnable invoices found');
+            return;
+        }
+
+        matches.forEach((match) => {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'product-suggestion-item';
+            button.innerHTML = `
+                <strong></strong>
+                <span></span>
+            `;
+            button.querySelector('strong').textContent = match.type === 'invoice'
+                ? `Invoice ${match.invoice_no || match.label}`
+                : match.label || '';
+            button.querySelector('span').textContent = `${match.type === 'invoice' ? 'Invoice' : 'Customer'} / ${match.meta || ''}`;
+            button.addEventListener('mousedown', (event) => event.preventDefault());
+            button.addEventListener('click', () => selectSearchMatch(match));
+            suggestions.appendChild(button);
+        });
+
+        suggestions.hidden = false;
+    };
+
+    const runSearch = () => {
+        if (!searchInput || !lookupUrl) {
+            return;
+        }
+
+        const query = searchInput.value.trim();
+
+        if (query.length < 2) {
+            closeSuggestions();
+            return;
+        }
+
+        const token = ++searchToken;
+        showSuggestionMessage('Searching...');
+
+        fetch(`${lookupUrl}?type=search&q=${encodeURIComponent(query)}`, {
+            headers: { Accept: 'application/json' },
+        })
+            .then((response) => response.ok ? response.json() : { matches: [] })
+            .then((data) => {
+                if (token !== searchToken) {
+                    return;
+                }
+
+                renderSearchMatches(Array.isArray(data.matches) ? data.matches : []);
+            })
+            .catch(() => {
+                if (token === searchToken) {
+                    showSuggestionMessage('Search failed');
+                }
+            });
+    };
+
+    if (searchInput) {
+        searchInput.addEventListener('input', () => {
+            window.clearTimeout(searchTimer);
+            searchTimer = window.setTimeout(runSearch, 180);
+        });
+
+        searchInput.addEventListener('focus', () => {
+            if (searchInput.value.trim().length >= 2) {
+                runSearch();
+            }
+        });
+
+        searchInput.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape') {
+                closeSuggestions();
+            }
+        });
+
+        searchInput.addEventListener('blur', () => {
+            window.setTimeout(closeSuggestions, 120);
         });
     }
 
@@ -974,4 +1316,407 @@ if (returnForm) {
     });
 
     renderReturnPreview();
+}
+
+const warrantyForm = document.querySelector('[data-warranty-form]');
+
+if (warrantyForm) {
+    const lookupUrl = warrantyForm.dataset.warrantyLookupUrl || '';
+    const searchInput = warrantyForm.querySelector('[data-warranty-search]');
+    const suggestions = warrantyForm.querySelector('[data-warranty-suggestions]');
+    const invoiceList = warrantyForm.querySelector('[data-warranty-invoices]');
+    const itemList = warrantyForm.querySelector('[data-warranty-items]');
+    const customerLabel = warrantyForm.querySelector('[data-warranty-customer-label]');
+    const invoiceLabel = warrantyForm.querySelector('[data-warranty-invoice-label]');
+    const itemHidden = warrantyForm.querySelector('[data-warranty-item]');
+    const preview = warrantyForm.querySelector('[data-warranty-preview]');
+    let searchTimer = null;
+    let searchToken = 0;
+    let invoiceToken = 0;
+    let itemToken = 0;
+
+    const money = (value) => Number.isFinite(value) ? value.toFixed(2) : '0.00';
+
+    const setListMessage = (container, message) => {
+        if (!container) {
+            return;
+        }
+
+        container.innerHTML = `<p class="return-choice-empty">${message}</p>`;
+    };
+
+    const closeSuggestions = () => {
+        if (!suggestions) {
+            return;
+        }
+
+        suggestions.hidden = true;
+        suggestions.innerHTML = '';
+    };
+
+    const showSuggestionMessage = (message) => {
+        if (!suggestions) {
+            return;
+        }
+
+        suggestions.innerHTML = `<div class="product-suggestion-empty">${message}</div>`;
+        suggestions.hidden = false;
+    };
+
+    const clearSelectedItem = () => {
+        if (itemHidden) {
+            itemHidden.value = '';
+            itemHidden.dataset.label = '';
+            itemHidden.dataset.until = '';
+        }
+
+        if (preview) {
+            preview.textContent = 'Search customer, select invoice, then select the warranty item.';
+        }
+    };
+
+    const renderWarrantyPreview = () => {
+        if (!preview) {
+            return;
+        }
+
+        const label = itemHidden?.dataset.label || '';
+        const until = itemHidden?.dataset.until || '';
+
+        preview.textContent = itemHidden?.value
+            ? `${label} is covered until ${until}.`
+            : 'Search customer, select invoice, then select the warranty item.';
+    };
+
+    const selectItem = (item, button) => {
+        if (itemHidden) {
+            itemHidden.value = String(item.sale_item_id || '');
+            itemHidden.dataset.label = item.label || '';
+            itemHidden.dataset.until = item.warranty_until || '';
+        }
+
+        itemList?.querySelectorAll('.return-choice-card').forEach((card) => card.classList.remove('active'));
+        button?.classList.add('active');
+        renderWarrantyPreview();
+    };
+
+    const renderItems = (items) => {
+        if (!itemList) {
+            return;
+        }
+
+        clearSelectedItem();
+
+        if (!items.length) {
+            setListMessage(itemList, 'No warranty items found for this invoice.');
+            renderWarrantyPreview();
+            return;
+        }
+
+        itemList.innerHTML = '';
+
+        items.forEach((item) => {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'return-choice-card';
+            button.innerHTML = `
+                <strong></strong>
+                <span></span>
+                <small></small>
+            `;
+            button.querySelector('strong').textContent = item.label || '';
+            button.querySelector('span').textContent = `Sold ${item.sold ?? 0} / Warranty ${item.warranty_months ?? 0} mo / Until ${item.warranty_until || ''}`;
+            button.querySelector('small').textContent = `Price ${money(Number.parseFloat(item.price || '0'))}`;
+            button.addEventListener('click', () => selectItem(item, button));
+            itemList.appendChild(button);
+        });
+    };
+
+    const loadItems = (invoice) => {
+        if (!lookupUrl || !invoice?.sale_id) {
+            return;
+        }
+
+        const token = ++itemToken;
+        clearSelectedItem();
+        setListMessage(itemList, 'Loading warranty items...');
+
+        if (invoiceLabel) {
+            invoiceLabel.textContent = `${invoice.invoice_no || invoice.label} / ${invoice.customer || 'Walk-in Customer'}`;
+        }
+
+        fetch(`${lookupUrl}?type=items&sale_id=${encodeURIComponent(invoice.sale_id)}`, {
+            headers: { Accept: 'application/json' },
+        })
+            .then((response) => response.ok ? response.json() : { items: [] })
+            .then((data) => {
+                if (token !== itemToken) {
+                    return;
+                }
+
+                renderItems(Array.isArray(data.items) ? data.items : []);
+            })
+            .catch(() => {
+                if (token === itemToken) {
+                    setListMessage(itemList, 'Could not load warranty items.');
+                }
+            });
+    };
+
+    const renderInvoices = (invoices) => {
+        if (!invoiceList) {
+            return;
+        }
+
+        clearSelectedItem();
+        setListMessage(itemList, 'Select an invoice to view warranty items.');
+
+        if (!invoices.length) {
+            setListMessage(invoiceList, 'No warranty invoices found.');
+            return;
+        }
+
+        invoiceList.innerHTML = '';
+
+        invoices.forEach((invoice) => {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'return-choice-card';
+            button.innerHTML = `
+                <strong></strong>
+                <span></span>
+                <small></small>
+            `;
+            button.querySelector('strong').textContent = invoice.invoice_no || invoice.label || '';
+            button.querySelector('span').textContent = `${invoice.date || ''} / ${invoice.customer || 'Walk-in Customer'}`;
+            button.querySelector('small').textContent = `${invoice.items ?? 0} warranty item(s), ${invoice.available ?? 0} unit(s), ${money(Number.parseFloat(invoice.total || '0'))}`;
+            button.addEventListener('click', () => {
+                invoiceList.querySelectorAll('.return-choice-card').forEach((card) => card.classList.remove('active'));
+                button.classList.add('active');
+                loadItems(invoice);
+            });
+            invoiceList.appendChild(button);
+        });
+    };
+
+    const loadInvoices = (customer) => {
+        if (!lookupUrl || !customer?.id) {
+            return;
+        }
+
+        const token = ++invoiceToken;
+        clearSelectedItem();
+        setListMessage(invoiceList, 'Loading invoices...');
+        setListMessage(itemList, 'Select an invoice to view warranty items.');
+
+        if (customerLabel) {
+            customerLabel.textContent = customer.label || 'Selected customer';
+        }
+
+        if (invoiceLabel) {
+            invoiceLabel.textContent = 'Select an invoice to view warranty items.';
+        }
+
+        fetch(`${lookupUrl}?type=invoices&customer_id=${encodeURIComponent(customer.id)}`, {
+            headers: { Accept: 'application/json' },
+        })
+            .then((response) => response.ok ? response.json() : { invoices: [] })
+            .then((data) => {
+                if (token !== invoiceToken) {
+                    return;
+                }
+
+                renderInvoices(Array.isArray(data.invoices) ? data.invoices : []);
+            })
+            .catch(() => {
+                if (token === invoiceToken) {
+                    setListMessage(invoiceList, 'Could not load invoices.');
+                }
+            });
+    };
+
+    const selectSearchMatch = (match) => {
+        closeSuggestions();
+
+        if (searchInput) {
+            searchInput.value = match.type === 'invoice'
+                ? `${match.invoice_no || match.label} / ${match.customer || 'Walk-in Customer'}`
+                : match.label || '';
+        }
+
+        if (match.type === 'invoice') {
+            if (customerLabel) {
+                customerLabel.textContent = match.customer || 'Selected invoice';
+            }
+
+            renderInvoices([match]);
+            loadItems(match);
+            return;
+        }
+
+        loadInvoices(match);
+    };
+
+    const renderSearchMatches = (matches) => {
+        if (!suggestions) {
+            return;
+        }
+
+        suggestions.innerHTML = '';
+
+        if (!matches.length) {
+            showSuggestionMessage('No warranty invoices found');
+            return;
+        }
+
+        matches.forEach((match) => {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'product-suggestion-item';
+            button.innerHTML = `
+                <strong></strong>
+                <span></span>
+            `;
+            button.querySelector('strong').textContent = match.type === 'invoice'
+                ? `Invoice ${match.invoice_no || match.label}`
+                : match.label || '';
+            button.querySelector('span').textContent = `${match.type === 'invoice' ? 'Invoice' : 'Customer'} / ${match.meta || ''}`;
+            button.addEventListener('mousedown', (event) => event.preventDefault());
+            button.addEventListener('click', () => selectSearchMatch(match));
+            suggestions.appendChild(button);
+        });
+
+        suggestions.hidden = false;
+    };
+
+    const runSearch = () => {
+        if (!searchInput || !lookupUrl) {
+            return;
+        }
+
+        const query = searchInput.value.trim();
+
+        if (query.length < 2) {
+            closeSuggestions();
+            return;
+        }
+
+        const token = ++searchToken;
+        showSuggestionMessage('Searching...');
+
+        fetch(`${lookupUrl}?type=search&q=${encodeURIComponent(query)}`, {
+            headers: { Accept: 'application/json' },
+        })
+            .then((response) => response.ok ? response.json() : { matches: [] })
+            .then((data) => {
+                if (token !== searchToken) {
+                    return;
+                }
+
+                renderSearchMatches(Array.isArray(data.matches) ? data.matches : []);
+            })
+            .catch(() => {
+                if (token === searchToken) {
+                    showSuggestionMessage('Search failed');
+                }
+            });
+    };
+
+    if (searchInput) {
+        searchInput.addEventListener('input', () => {
+            window.clearTimeout(searchTimer);
+            searchTimer = window.setTimeout(runSearch, 180);
+        });
+
+        searchInput.addEventListener('focus', () => {
+            if (searchInput.value.trim().length >= 2) {
+                runSearch();
+            }
+        });
+
+        searchInput.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape') {
+                closeSuggestions();
+            }
+        });
+
+        searchInput.addEventListener('blur', () => {
+            window.setTimeout(closeSuggestions, 120);
+        });
+    }
+
+    renderWarrantyPreview();
+}
+
+const warrantyClaimModal = document.querySelector('[data-warranty-claim-modal]');
+
+if (warrantyClaimModal) {
+    const claimIdInput = warrantyClaimModal.querySelector('[data-warranty-claim-id]');
+    const statusSelect = warrantyClaimModal.querySelector('[data-warranty-claim-status]');
+    const summary = warrantyClaimModal.querySelector('[data-warranty-claim-summary]');
+    const closeButton = warrantyClaimModal.querySelector('[data-warranty-claim-close]');
+    const supplierRefundInput = warrantyClaimModal.querySelector('[data-warranty-supplier-refund]');
+    const supplierRefundDateInput = warrantyClaimModal.querySelector('[data-warranty-supplier-refund-date]');
+
+    const closeWarrantyModal = () => {
+        warrantyClaimModal.hidden = true;
+        document.body.classList.remove('modal-open');
+    };
+
+    const openWarrantyModal = (row) => {
+        const claimId = row.dataset.claimId || '';
+        const claimNo = row.dataset.claimNo || 'Claim';
+        const status = row.dataset.claimStatus || 'received';
+        const customer = row.dataset.claimCustomer || 'Walk-in Customer';
+        const product = row.dataset.claimProduct || '';
+        const refundAmount = row.dataset.claimRefundAmount || '0.00';
+        const refundDate = row.dataset.claimRefundDate || new Date().toISOString().slice(0, 10);
+
+        if (claimIdInput) {
+            claimIdInput.value = claimId;
+        }
+
+        if (statusSelect) {
+            statusSelect.value = status;
+        }
+
+        if (summary) {
+            summary.textContent = `${claimNo} / ${customer}${product ? ` / ${product}` : ''}`;
+        }
+
+        if (supplierRefundInput) {
+            supplierRefundInput.value = refundAmount;
+        }
+
+        if (supplierRefundDateInput) {
+            supplierRefundDateInput.value = refundDate;
+        }
+
+        warrantyClaimModal.hidden = false;
+        document.body.classList.add('modal-open');
+        statusSelect?.focus();
+    };
+
+    document.querySelectorAll('[data-warranty-claim-row]').forEach((row) => {
+        row.addEventListener('click', () => openWarrantyModal(row));
+        row.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                openWarrantyModal(row);
+            }
+        });
+    });
+
+    closeButton?.addEventListener('click', closeWarrantyModal);
+    warrantyClaimModal.addEventListener('click', (event) => {
+        if (event.target === warrantyClaimModal) {
+            closeWarrantyModal();
+        }
+    });
+
+    document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape' && !warrantyClaimModal.hidden) {
+            closeWarrantyModal();
+        }
+    });
 }

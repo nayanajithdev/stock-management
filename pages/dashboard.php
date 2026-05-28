@@ -24,11 +24,13 @@ $metrics = [
     'today_collections' => 0.0,
     'today_expenses' => 0.0,
     'today_supplier_paid' => 0.0,
+    'today_supplier_refunds' => 0.0,
     'month_revenue' => 0.0,
     'month_orders' => 0,
     'month_profit' => 0.0,
     'month_expenses' => 0.0,
     'month_refunds' => 0.0,
+    'month_supplier_refunds' => 0.0,
     'month_net_profit' => 0.0,
     'receivable' => 0.0,
     'payable' => 0.0,
@@ -65,12 +67,14 @@ if ($dbReady && $pdo !== null) {
     $metrics['today_collections'] = (float) $pdo->query('SELECT COALESCE(SUM(amount), 0) FROM customer_payments WHERE DATE(payment_date) = CURRENT_DATE')->fetchColumn();
     $metrics['today_expenses'] = (float) $pdo->query('SELECT COALESCE(SUM(amount), 0) FROM expenses WHERE status = "active" AND expense_date = CURRENT_DATE')->fetchColumn();
     $metrics['today_supplier_paid'] = (float) $pdo->query('SELECT COALESCE(SUM(amount), 0) FROM supplier_payments WHERE DATE(payment_date) = CURRENT_DATE')->fetchColumn();
+    $metrics['today_supplier_refunds'] = (float) $pdo->query('SELECT COALESCE(SUM(supplier_refund_amount), 0) FROM warranty_claims WHERE supplier_refund_date = CURRENT_DATE')->fetchColumn();
     $metrics['month_orders'] = (int) ($monthSalesRow['orders'] ?? 0);
     $metrics['month_revenue'] = (float) ($monthSalesRow['total'] ?? 0);
     $metrics['month_profit'] = (float) ($monthProfitRow['profit'] ?? 0);
     $metrics['month_expenses'] = (float) $pdo->query('SELECT COALESCE(SUM(amount), 0) FROM expenses WHERE status = "active" AND expense_date >= DATE_FORMAT(CURRENT_DATE, "%Y-%m-01")')->fetchColumn();
     $metrics['month_refunds'] = (float) $pdo->query('SELECT COALESCE(SUM(refund_amount), 0) FROM sales_returns WHERE return_date >= DATE_FORMAT(CURRENT_DATE, "%Y-%m-01")')->fetchColumn();
-    $metrics['month_net_profit'] = $metrics['month_profit'] - $metrics['month_expenses'] - $metrics['month_refunds'];
+    $metrics['month_supplier_refunds'] = (float) $pdo->query('SELECT COALESCE(SUM(supplier_refund_amount), 0) FROM warranty_claims WHERE supplier_refund_date >= DATE_FORMAT(CURRENT_DATE, "%Y-%m-01")')->fetchColumn();
+    $metrics['month_net_profit'] = $metrics['month_profit'] - $metrics['month_expenses'] - $metrics['month_refunds'] + $metrics['month_supplier_refunds'];
     $metrics['receivable'] = (float) $pdo->query('SELECT COALESCE(SUM(total - paid), 0) FROM sales WHERE total > paid')->fetchColumn();
     $metrics['payable'] = (float) $pdo->query('SELECT COALESCE(SUM(total - paid), 0) FROM purchases WHERE total > paid')->fetchColumn();
     $metrics['stock_value'] = (float) $pdo->query('SELECT COALESCE(SUM(current_stock * cost_price), 0) FROM products WHERE status = "active"')->fetchColumn();
@@ -87,8 +91,8 @@ if ($dbReady && $pdo !== null) {
         ],
         [
             'label' => 'Cash In Today',
-            'value' => format_money($metrics['today_paid'] + $metrics['today_collections']),
-            'meta' => 'Sales and credit collections',
+            'value' => format_money($metrics['today_paid'] + $metrics['today_collections'] + $metrics['today_supplier_refunds']),
+            'meta' => 'Sales, collections, warranty refunds',
             'icon' => 'wallet',
         ],
         [
@@ -162,7 +166,6 @@ $trendBadge = $trendMode === 'weekly'
 
 <div class="page-heading">
     <div>
-        <p class="eyebrow">Shop overview</p>
         <h1>Dashboard</h1>
     </div>
     <div class="heading-actions">

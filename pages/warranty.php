@@ -4,15 +4,13 @@
 
 $warrantySearch = trim((string) ($_GET['q'] ?? ''));
 $statusFilter = (string) ($_GET['warranty_status'] ?? 'open');
-$selectedSaleItemId = (int) ($_GET['sale_item'] ?? 0);
 $allowedFilters = ['open', 'received', 'sent_to_supplier', 'ready_for_pickup', 'resolved', 'rejected', 'all'];
 
 if (! in_array($statusFilter, $allowedFilters, true)) {
     $statusFilter = 'open';
 }
 
-$soldWarrantyItems = [];
-$openClaims = [];
+$hasSoldWarrantyItems = false;
 $claims = [];
 $summary = [
     'open_claims' => 0,
@@ -31,42 +29,17 @@ if ($dbReady && $pdo !== null) {
     $summary['supplier'] = (int) $pdo->query('SELECT COUNT(*) FROM warranty_claims WHERE status = "sent_to_supplier"')->fetchColumn();
     $summary['ready'] = (int) $pdo->query('SELECT COUNT(*) FROM warranty_claims WHERE status = "ready_for_pickup"')->fetchColumn();
 
-    $soldWarrantyItems = $pdo->query(
-        'SELECT si.id AS sale_item_id,
-                si.quantity,
-                s.invoice_no,
-                s.sale_date,
-                c.name AS customer_name,
-                c.phone AS customer_phone,
-                p.sku,
-                p.name AS product_name,
-                p.model,
-                p.warranty_months,
-                DATE_ADD(DATE(s.sale_date), INTERVAL p.warranty_months MONTH) AS warranty_until
-         FROM sale_items si
-         INNER JOIN sales s ON s.id = si.sale_id
-         LEFT JOIN customers c ON c.id = s.customer_id
-         INNER JOIN products p ON p.id = si.product_id
-         WHERE p.warranty_months > 0
-           AND DATE_ADD(DATE(s.sale_date), INTERVAL p.warranty_months MONTH) >= CURRENT_DATE
-         ORDER BY s.sale_date DESC, si.id DESC
-         LIMIT 150'
-    )->fetchAll();
-
-    $openClaims = $pdo->query(
-        'SELECT wc.id,
-                wc.claim_no,
-                wc.status,
-                wc.received_date,
-                c.name AS customer_name,
-                p.sku,
-                p.name AS product_name
-         FROM warranty_claims wc
-         LEFT JOIN customers c ON c.id = wc.customer_id
-         INNER JOIN products p ON p.id = wc.product_id
-         WHERE wc.status IN ("received", "sent_to_supplier", "ready_for_pickup")
-         ORDER BY wc.received_date ASC, wc.id ASC'
-    )->fetchAll();
+    $hasSoldWarrantyItems = (bool) $pdo->query(
+        'SELECT EXISTS(
+            SELECT 1
+            FROM sale_items si
+            INNER JOIN sales s ON s.id = si.sale_id
+            INNER JOIN products p ON p.id = si.product_id
+            WHERE p.warranty_months > 0
+              AND DATE_ADD(DATE(s.sale_date), INTERVAL p.warranty_months MONTH) >= CURRENT_DATE
+            LIMIT 1
+        )'
+    )->fetchColumn();
 
     $claimSql = 'SELECT wc.*,
                         c.name AS customer_name,
@@ -110,7 +83,6 @@ if ($dbReady && $pdo !== null) {
 
 <div class="page-heading">
     <div>
-        <p class="eyebrow">Warranty desk</p>
         <h1>Warranty / RMA</h1>
     </div>
     <a class="top-action" href="#warranty-claim-form">
@@ -130,27 +102,11 @@ if ($dbReady && $pdo !== null) {
     </article>
     <article class="stat-card">
         <div>
-            <span>Received</span>
-            <strong><?php echo (int) $summary['received']; ?></strong>
-        </div>
-        <div class="stat-icon"><i data-lucide="inbox"></i></div>
-        <small>Needs inspection</small>
-    </article>
-    <article class="stat-card">
-        <div>
             <span>Supplier</span>
             <strong><?php echo (int) $summary['supplier']; ?></strong>
         </div>
         <div class="stat-icon"><i data-lucide="truck"></i></div>
         <small>Sent for repair</small>
-    </article>
-    <article class="stat-card">
-        <div>
-            <span>Ready</span>
-            <strong><?php echo (int) $summary['ready']; ?></strong>
-        </div>
-        <div class="stat-icon"><i data-lucide="badge-check"></i></div>
-        <small>Awaiting pickup</small>
     </article>
 </section>
 
@@ -167,26 +123,46 @@ if ($dbReady && $pdo !== null) {
 
             <?php if (! $dbReady): ?>
                 <p class="empty-state">Import <code>database/schema.sql</code> before saving warranty claims.</p>
-            <?php elseif ($soldWarrantyItems === []): ?>
+            <?php elseif (! $hasSoldWarrantyItems): ?>
                 <p class="empty-state">No sold items are currently inside warranty period.</p>
             <?php else: ?>
-                <form class="warranty-form" method="post" action="<?php echo e(app_url('actions/warranty_save.php')); ?>">
+                <form class="warranty-form" method="post" action="<?php echo e(app_url('actions/warranty_save.php')); ?>" data-warranty-form data-warranty-lookup-url="<?php echo e(app_url('actions/warranty_lookup.php')); ?>">
                     <?php echo csrf_field(); ?>
 
-                    <label class="field span-2">
-                        <span>Sold Warranty Item</span>
-                        <select name="sale_item_id" required>
-                            <option value="">Choose invoice item</option>
-                            <?php foreach ($soldWarrantyItems as $item): ?>
-                                <?php
-                                $label = $item['invoice_no'] . ' / ' . ($item['customer_name'] ?: 'Walk-in Customer') . ' / ' . $item['sku'] . ' - ' . $item['product_name'] . ' / Until ' . $item['warranty_until'];
-                                ?>
-                                <option value="<?php echo (int) $item['sale_item_id']; ?>" <?php echo $selectedSaleItemId === (int) $item['sale_item_id'] ? 'selected' : ''; ?>>
-                                    <?php echo e($label); ?>
-                                </option>
-                            <?php endforeach; ?>
-                        </select>
-                    </label>
+                    <div class="field product-picker span-2">
+                        <span>Customer or Invoice</span>
+                        <input type="search" placeholder="Search customer, phone, email, or invoice" autocomplete="off" data-warranty-search>
+                        <div class="product-suggestions" data-warranty-suggestions hidden></div>
+                    </div>
+
+                    <div class="return-picker-grid span-2">
+                        <section class="return-picker-panel">
+                            <div class="return-picker-heading">
+                                <strong>Invoices</strong>
+                                <span data-warranty-customer-label>Search and select a customer or invoice.</span>
+                            </div>
+                            <div class="return-choice-list" data-warranty-invoices>
+                                <p class="return-choice-empty">No customer selected.</p>
+                            </div>
+                        </section>
+
+                        <section class="return-picker-panel">
+                            <div class="return-picker-heading">
+                                <strong>Warranty Items</strong>
+                                <span data-warranty-invoice-label>Select an invoice to view warranty items.</span>
+                            </div>
+                            <div class="return-choice-list" data-warranty-items>
+                                <p class="return-choice-empty">No invoice selected.</p>
+                            </div>
+                        </section>
+                    </div>
+
+                    <input type="hidden" name="sale_item_id" data-warranty-item>
+
+                    <div class="collection-preview span-2">
+                        <i data-lucide="shield-check"></i>
+                        <span data-warranty-preview>Search customer, select invoice, then select the warranty item.</span>
+                    </div>
 
                     <label class="field">
                         <span>Received Date</span>
@@ -222,65 +198,6 @@ if ($dbReady && $pdo !== null) {
             <?php endif; ?>
         </article>
 
-        <article class="panel">
-            <div class="panel-header">
-                <div>
-                    <p class="panel-label">Claim Update</p>
-                    <h2>Move claim status</h2>
-                </div>
-            </div>
-
-            <?php if (! $dbReady): ?>
-                <p class="empty-state">Import <code>database/schema.sql</code> before updating claims.</p>
-            <?php elseif ($openClaims === []): ?>
-                <p class="empty-state">No open warranty claims to update.</p>
-            <?php else: ?>
-                <form class="warranty-form single-form" method="post" action="<?php echo e(app_url('actions/warranty_save.php')); ?>">
-                    <?php echo csrf_field(); ?>
-
-                    <label class="field">
-                        <span>Open Claim</span>
-                        <select name="claim_id" required>
-                            <option value="">Choose open claim</option>
-                            <?php foreach ($openClaims as $claim): ?>
-                                <?php
-                                $label = $claim['claim_no'] . ' / ' . warranty_status_label((string) $claim['status']) . ' / ' . ($claim['customer_name'] ?: 'Walk-in Customer') . ' / ' . $claim['sku'] . ' - ' . $claim['product_name'];
-                                ?>
-                                <option value="<?php echo (int) $claim['id']; ?>"><?php echo e($label); ?></option>
-                            <?php endforeach; ?>
-                        </select>
-                    </label>
-
-                    <label class="field">
-                        <span>New Status</span>
-                        <select name="status" required>
-                            <option value="sent_to_supplier">Sent to Supplier</option>
-                            <option value="ready_for_pickup">Ready for Pickup</option>
-                            <option value="resolved">Resolved</option>
-                            <option value="rejected">Rejected</option>
-                            <option value="received">Back to Received</option>
-                        </select>
-                    </label>
-
-                    <label class="field">
-                        <span>Resolved Date</span>
-                        <input type="date" name="resolved_date" value="<?php echo e(date('Y-m-d')); ?>">
-                    </label>
-
-                    <label class="field">
-                        <span>Status Note</span>
-                        <textarea name="supplier_notes" rows="3" placeholder="Optional note to append"></textarea>
-                    </label>
-
-                    <div class="form-actions">
-                        <button class="top-action" type="submit">
-                            <i data-lucide="refresh-cw"></i>
-                            Update Claim
-                        </button>
-                    </div>
-                </form>
-            <?php endif; ?>
-        </article>
     </div>
 
     <article class="panel table-panel">
@@ -320,18 +237,18 @@ if ($dbReady && $pdo !== null) {
                         <th>Warranty Until</th>
                         <th>Issue</th>
                         <th>Status</th>
-                        <th>Resolved</th>
                     </tr>
                 </thead>
                 <tbody>
                     <?php if ($claims === []): ?>
                         <tr>
-                            <td colspan="9">No warranty claims found.</td>
+                            <td colspan="8">No warranty claims found.</td>
                         </tr>
                     <?php endif; ?>
 
                     <?php foreach ($claims as $claim): ?>
-                        <tr>
+                        <?php $supplierRefundAmount = (float) ($claim['supplier_refund_amount'] ?? 0); ?>
+                        <tr class="clickable-row" tabindex="0" data-warranty-claim-row data-claim-id="<?php echo (int) $claim['id']; ?>" data-claim-no="<?php echo e($claim['claim_no']); ?>" data-claim-status="<?php echo e($claim['status']); ?>" data-claim-customer="<?php echo e($claim['customer_name'] ?: 'Walk-in Customer'); ?>" data-claim-product="<?php echo e($claim['sku'] . ' - ' . $claim['product_name']); ?>" data-claim-refund-amount="<?php echo e(number_format($supplierRefundAmount, 2, '.', '')); ?>" data-claim-refund-date="<?php echo e($claim['supplier_refund_date'] ?? date('Y-m-d')); ?>">
                             <td>
                                 <strong class="table-title"><?php echo e($claim['claim_no']); ?></strong>
                                 <span class="table-subtitle"><?php echo warranty_age_days((string) $claim['received_date']); ?> day(s) open</span>
@@ -351,8 +268,15 @@ if ($dbReady && $pdo !== null) {
                             <td><?php echo e($claim['received_date']); ?></td>
                             <td><?php echo e($claim['warranty_until'] ?? ''); ?></td>
                             <td><?php echo e($claim['issue_description']); ?></td>
-                            <td><span class="status <?php echo e(warranty_status_class((string) $claim['status'])); ?>"><?php echo e(warranty_status_label((string) $claim['status'])); ?></span></td>
-                            <td><?php echo e($claim['resolved_date'] ?? ''); ?></td>
+                            <td>
+                                <span class="status <?php echo e(warranty_status_class((string) $claim['status'])); ?>"><?php echo e(warranty_status_label((string) $claim['status'])); ?></span>
+                                <?php if (! empty($claim['resolved_date'])): ?>
+                                    <span class="table-subtitle"><?php echo e($claim['resolved_date']); ?></span>
+                                <?php endif; ?>
+                                <?php if ($supplierRefundAmount > 0): ?>
+                                    <span class="table-subtitle">Supplier refund <?php echo e(format_money($supplierRefundAmount)); ?></span>
+                                <?php endif; ?>
+                            </td>
                         </tr>
                     <?php endforeach; ?>
                 </tbody>
@@ -360,6 +284,63 @@ if ($dbReady && $pdo !== null) {
         </div>
     </article>
 </section>
+
+<div class="modal-backdrop" data-warranty-claim-modal hidden>
+    <div class="modal-card claim-update-modal" role="dialog" aria-modal="true" aria-labelledby="claim-update-title">
+        <div class="panel-header">
+            <div>
+                <h2 id="claim-update-title">Move claim status</h2>
+                <p class="modal-subtitle" data-warranty-claim-summary>Select a claim from the table.</p>
+            </div>
+            <button class="icon-button" type="button" aria-label="Close claim update" data-warranty-claim-close>
+                <i data-lucide="x"></i>
+            </button>
+        </div>
+
+        <form class="warranty-form single-form" method="post" action="<?php echo e(app_url('actions/warranty_save.php')); ?>">
+            <?php echo csrf_field(); ?>
+            <input type="hidden" name="claim_id" value="" data-warranty-claim-id required>
+
+            <label class="field">
+                <span>New Status</span>
+                <select name="status" required data-warranty-claim-status>
+                    <option value="received">Received</option>
+                    <option value="sent_to_supplier">Sent to Supplier</option>
+                    <option value="ready_for_pickup">Ready for Pickup</option>
+                    <option value="resolved">Resolved</option>
+                    <option value="rejected">Rejected</option>
+                </select>
+            </label>
+
+            <label class="field">
+                <span>Resolved Date</span>
+                <input type="date" name="resolved_date" value="<?php echo e(date('Y-m-d')); ?>">
+            </label>
+
+            <label class="field">
+                <span>Supplier Refund</span>
+                <input type="number" name="supplier_refund_amount" value="0.00" min="0" step="0.01" data-warranty-supplier-refund>
+            </label>
+
+            <label class="field">
+                <span>Refund Date</span>
+                <input type="date" name="supplier_refund_date" value="<?php echo e(date('Y-m-d')); ?>" data-warranty-supplier-refund-date>
+            </label>
+
+            <label class="field span-2">
+                <span>Status Note</span>
+                <textarea name="supplier_notes" rows="3" placeholder="Optional note to append"></textarea>
+            </label>
+
+            <div class="form-actions span-2">
+                <button class="top-action" type="submit">
+                    <i data-lucide="refresh-cw"></i>
+                    Update Claim
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
 
 <?php
 function warranty_status_label(string $status): string

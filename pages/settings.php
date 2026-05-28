@@ -30,7 +30,6 @@ $shopInitial = strtoupper(substr(trim($settings['shop_name']) !== '' ? trim($set
 
 <div class="page-heading">
     <div>
-        <p class="eyebrow">Configuration</p>
         <h1>Shop Settings</h1>
     </div>
 </div>

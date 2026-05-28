@@ -22,6 +22,8 @@ $receivedDate = trim((string) ($_POST['received_date'] ?? date('Y-m-d')));
 $resolvedDate = trim((string) ($_POST['resolved_date'] ?? date('Y-m-d')));
 $issueDescription = trim((string) ($_POST['issue_description'] ?? ''));
 $supplierNotes = nullable_string((string) ($_POST['supplier_notes'] ?? ''));
+$supplierRefundAmount = max(0.0, input_decimal('supplier_refund_amount'));
+$supplierRefundDate = trim((string) ($_POST['supplier_refund_date'] ?? date('Y-m-d')));
 $validStatuses = ['received', 'sent_to_supplier', 'ready_for_pickup', 'resolved', 'rejected'];
 $finalStatuses = ['resolved', 'rejected'];
 
@@ -31,6 +33,10 @@ if (! in_array($status, $validStatuses, true)) {
 }
 
 try {
+    if ($supplierRefundAmount > 0 && ! preg_match('/^\d{4}-\d{2}-\d{2}$/', $supplierRefundDate)) {
+        throw new RuntimeException('Supplier refund date is not valid.');
+    }
+
     if ($claimId > 0) {
         if (in_array($status, $finalStatuses, true) && ! preg_match('/^\d{4}-\d{2}-\d{2}$/', $resolvedDate)) {
             throw new RuntimeException('Resolved date is not valid.');
@@ -45,6 +51,8 @@ try {
                     WHEN supplier_notes IS NULL OR supplier_notes = "" THEN :supplier_notes_new
                     ELSE CONCAT(supplier_notes, "\n", :supplier_notes_append)
                  END,
+                 supplier_refund_amount = :supplier_refund_amount,
+                 supplier_refund_date = :supplier_refund_date,
                  updated_at = CURRENT_TIMESTAMP
              WHERE id = :id'
         );
@@ -54,6 +62,8 @@ try {
             'supplier_notes_check' => $supplierNotes,
             'supplier_notes_new' => $supplierNotes,
             'supplier_notes_append' => $supplierNotes,
+            'supplier_refund_amount' => $supplierRefundAmount,
+            'supplier_refund_date' => $supplierRefundAmount > 0 ? $supplierRefundDate : null,
             'id' => $claimId,
         ]);
 
@@ -61,7 +71,7 @@ try {
             throw new RuntimeException('Warranty claim was not found.');
         }
 
-        app_log_activity($pdo, $currentUser, 'warranty_update', 'Updated warranty claim ID ' . $claimId . ' to ' . $status . '.');
+        app_log_activity($pdo, $currentUser, 'warranty_update', 'Updated warranty claim ID ' . $claimId . ' to ' . $status . ($supplierRefundAmount > 0 ? ' with supplier refund ' . format_money($supplierRefundAmount) : '') . '.');
         set_flash('success', 'Warranty claim updated.');
         redirect('?page=warranty');
     }
@@ -117,9 +127,9 @@ try {
     $claimNo = next_warranty_claim_no($pdo);
     $statement = $pdo->prepare(
         'INSERT INTO warranty_claims
-            (customer_id, product_id, serial_id, sale_id, claim_no, issue_description, status, received_date, resolved_date, supplier_notes)
+            (customer_id, product_id, serial_id, sale_id, claim_no, issue_description, status, received_date, resolved_date, supplier_notes, supplier_refund_amount, supplier_refund_date)
          VALUES
-            (:customer_id, :product_id, NULL, :sale_id, :claim_no, :issue_description, :status, :received_date, :resolved_date, :supplier_notes)'
+            (:customer_id, :product_id, NULL, :sale_id, :claim_no, :issue_description, :status, :received_date, :resolved_date, :supplier_notes, :supplier_refund_amount, :supplier_refund_date)'
     );
     $statement->execute([
         'customer_id' => $saleItem['customer_id'],
@@ -131,6 +141,8 @@ try {
         'received_date' => $receivedDate,
         'resolved_date' => in_array($status, $finalStatuses, true) ? $resolvedDate : null,
         'supplier_notes' => $supplierNotes,
+        'supplier_refund_amount' => $supplierRefundAmount,
+        'supplier_refund_date' => $supplierRefundAmount > 0 ? $supplierRefundDate : null,
     ]);
 
     app_log_activity($pdo, $currentUser, 'warranty_create', 'Created warranty claim ' . $claimNo . ' for invoice ' . $saleItem['invoice_no'] . '.');

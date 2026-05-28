@@ -29,7 +29,6 @@ if ($dbReady && $pdo !== null) {
 
 <div class="page-heading">
     <div>
-        <p class="eyebrow">Stock history</p>
         <h1>Stock received</h1>
     </div>
     <a class="top-action" href="<?php echo e(app_url('?page=purchases')); ?>">

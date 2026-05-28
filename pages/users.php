@@ -82,7 +82,6 @@ $showUserForm = $canManageUsers && ($isEditing || (string) ($_GET['modal'] ?? ''
 
 <div class="page-heading">
     <div>
-        <p class="eyebrow">Access control</p>
         <h1>Users & Roles</h1>
     </div>
     <?php if ($canManageUsers && ! $showUserForm): ?>

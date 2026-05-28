@@ -92,7 +92,6 @@ $balance = is_array($sale) ? (float) $sale['total'] - (float) $sale['paid'] : 0.
 <?php else: ?>
     <div class="page-heading no-print">
         <div>
-            <p class="eyebrow">Invoice</p>
             <h1><?php echo e($sale['invoice_no']); ?></h1>
         </div>
         <div class="invoice-actions">

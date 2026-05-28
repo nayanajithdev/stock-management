@@ -41,7 +41,6 @@ if ($dbReady && $pdo !== null) {
 
 <div class="page-heading">
     <div>
-        <p class="eyebrow">Stock receiving</p>
         <h1>Purchases</h1>
     </div>
     <div class="heading-actions">
@@ -67,27 +66,11 @@ if ($dbReady && $pdo !== null) {
     </article>
     <article class="stat-card">
         <div>
-            <span>Paid</span>
-            <strong><?php echo e(format_money($summary['month_paid'])); ?></strong>
-        </div>
-        <div class="stat-icon"><i data-lucide="wallet-cards"></i></div>
-        <small>Supplier payments</small>
-    </article>
-    <article class="stat-card">
-        <div>
             <span>Balance</span>
             <strong><?php echo e(format_money($summary['month_balance'])); ?></strong>
         </div>
         <div class="stat-icon"><i data-lucide="receipt-text"></i></div>
         <small>Still payable</small>
-    </article>
-    <article class="stat-card">
-        <div>
-            <span>Units Received</span>
-            <strong><?php echo (int) $summary['stock_in_units']; ?></strong>
-        </div>
-        <div class="stat-icon"><i data-lucide="boxes"></i></div>
-        <small>This month</small>
     </article>
 </section>
 

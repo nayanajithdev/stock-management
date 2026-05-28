@@ -125,7 +125,6 @@ if ($dbReady && $pdo !== null) {
 
 <div class="page-heading">
     <div>
-        <p class="eyebrow">Receivables</p>
         <h1>Credit Sales</h1>
     </div>
     <a class="top-action" href="<?php echo e(app_url('?page=sales')); ?>">
@@ -150,22 +149,6 @@ if ($dbReady && $pdo !== null) {
         </div>
         <div class="stat-icon"><i data-lucide="wallet"></i></div>
         <small>Total amount due</small>
-    </article>
-    <article class="stat-card">
-        <div>
-            <span>Partial Paid</span>
-            <strong><?php echo (int) $summary['partial_invoices']; ?></strong>
-        </div>
-        <div class="stat-icon"><i data-lucide="circle-dollar-sign"></i></div>
-        <small>Some payment received</small>
-    </article>
-    <article class="stat-card">
-        <div>
-            <span>Collected Today</span>
-            <strong><?php echo e(format_money($summary['collected_today'])); ?></strong>
-        </div>
-        <div class="stat-icon"><i data-lucide="circle-dollar-sign"></i></div>
-        <small>Later payments</small>
     </article>
 </section>
 

@@ -3,7 +3,6 @@
 ?>
 
 <div class="auth-heading">
-    <p class="eyebrow">Secure access</p>
     <h1>Login</h1>
     <span>Use your username or email to continue.</span>
 </div>

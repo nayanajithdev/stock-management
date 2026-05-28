@@ -118,7 +118,6 @@ if ($dbReady && $pdo !== null) {
 
 <div class="page-heading">
     <div>
-        <p class="eyebrow">Operating costs</p>
         <h1>Expense Management</h1>
     </div>
     <a class="top-action" href="#expense-form">
@@ -138,27 +137,11 @@ if ($dbReady && $pdo !== null) {
     </article>
     <article class="stat-card">
         <div>
-            <span>This Month</span>
-            <strong><?php echo e(format_money($summary['month_total'])); ?></strong>
-        </div>
-        <div class="stat-icon"><i data-lucide="receipt"></i></div>
-        <small>Active expenses</small>
-    </article>
-    <article class="stat-card">
-        <div>
             <span>Today</span>
             <strong><?php echo e(format_money($summary['today_total'])); ?></strong>
         </div>
         <div class="stat-icon"><i data-lucide="wallet-cards"></i></div>
         <small>Paid today</small>
-    </article>
-    <article class="stat-card">
-        <div>
-            <span>Top Category</span>
-            <strong><?php echo e($categoryRows[0]['category'] ?? 'None'); ?></strong>
-        </div>
-        <div class="stat-icon"><i data-lucide="tags"></i></div>
-        <small><?php echo e(isset($categoryRows[0]) ? format_money($categoryRows[0]['total_amount']) : format_money(0)); ?></small>
     </article>
 </section>
 

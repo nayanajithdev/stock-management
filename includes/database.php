@@ -95,6 +95,24 @@ function app_database_ready(PDO $pdo): bool
         && app_column_exists($pdo, 'stock_movements', 'warranty_months');
 }
 
+function app_apply_schema_upgrades(PDO $pdo): void
+{
+    if (! app_tables_exist($pdo, ['warranty_claims'])) {
+        return;
+    }
+
+    $columns = [
+        'supplier_refund_amount' => 'ALTER TABLE warranty_claims ADD COLUMN supplier_refund_amount DECIMAL(12,2) NOT NULL DEFAULT 0.00 AFTER supplier_notes',
+        'supplier_refund_date' => 'ALTER TABLE warranty_claims ADD COLUMN supplier_refund_date DATE NULL AFTER supplier_refund_amount',
+    ];
+
+    foreach ($columns as $column => $sql) {
+        if (! app_column_exists($pdo, 'warranty_claims', $column)) {
+            $pdo->exec($sql);
+        }
+    }
+}
+
 function app_fetch_settings(PDO $pdo): array
 {
     if (! app_tables_exist($pdo, ['settings'])) {

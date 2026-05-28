@@ -186,10 +186,10 @@ function auth_action_permission(string $scriptName): ?string
         'expense_save.php', 'expense_void.php' => 'expenses',
         'stock_adjust.php' => 'stock',
         'sale_save.php', 'sale_product_search.php', 'customer_search.php' => 'sales',
-        'warranty_save.php' => 'warranty',
+        'warranty_save.php', 'warranty_lookup.php' => 'warranty',
         'customer_save.php', 'customer_archive.php' => 'customers',
         'payment_collect.php' => 'credit_sales',
-        'sales_return_save.php' => 'returns',
+        'sales_return_save.php', 'return_lookup.php' => 'returns',
         'settings_save.php', 'invoice_settings_save.php' => 'settings',
         default => null,
     };

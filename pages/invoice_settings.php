@@ -19,7 +19,6 @@ $settings = [
 
 <div class="page-heading">
     <div>
-        <p class="eyebrow">Invoice configuration</p>
         <h1>Invoice Settings</h1>
     </div>
 </div>

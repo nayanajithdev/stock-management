@@ -16,7 +16,6 @@ if ($dbReady && $pdo !== null) {
 
 <div class="page-heading">
     <div>
-        <p class="eyebrow">Point of Sale</p>
         <h1>Sales</h1>
     </div>
     <a class="top-action" href="<?php echo e(app_url('?page=sales-history')); ?>">

@@ -21,8 +21,10 @@ $sku = trim((string) ($_POST['sku'] ?? ''));
 $barcode = nullable_string((string) ($_POST['barcode'] ?? ''));
 $model = nullable_string((string) ($_POST['model'] ?? ''));
 $description = nullable_string((string) ($_POST['description'] ?? ''));
-$categoryId = ($_POST['category_id'] ?? '') !== '' ? (int) $_POST['category_id'] : null;
-$brandId = ($_POST['brand_id'] ?? '') !== '' ? (int) $_POST['brand_id'] : null;
+$categoryName = trim((string) ($_POST['category_name'] ?? ''));
+$brandName = trim((string) ($_POST['brand_name'] ?? ''));
+$categoryId = null;
+$brandId = null;
 $supplierId = ($_POST['supplier_id'] ?? '') !== '' ? (int) $_POST['supplier_id'] : null;
 $costPrice = input_decimal('cost_price');
 $sellingPrice = input_decimal('selling_price');
@@ -50,6 +52,10 @@ try {
     }
 
     if ($productId !== null) {
+        $pdo->beginTransaction();
+        $categoryId = resolve_product_master_id($pdo, 'categories', $categoryName);
+        $brandId = resolve_product_master_id($pdo, 'brands', $brandName);
+
         $statement = $pdo->prepare(
             'UPDATE products
              SET category_id = :category_id,
@@ -88,12 +94,16 @@ try {
             'id' => $productId,
         ]);
 
+        $pdo->commit();
+
         app_log_activity($pdo, $currentUser, 'product_update', 'Updated product ' . $sku . ' - ' . $name . '.');
         set_flash('success', 'Product updated successfully.');
         redirect('?page=products');
     }
 
     $pdo->beginTransaction();
+    $categoryId = resolve_product_master_id($pdo, 'categories', $categoryName);
+    $brandId = resolve_product_master_id($pdo, 'brands', $brandName);
 
     $statement = $pdo->prepare(
         'INSERT INTO products
@@ -164,4 +174,41 @@ try {
 
     set_flash('error', $exception->getMessage());
     redirect($formRedirect);
+}
+
+function resolve_product_master_id(PDO $pdo, string $table, string $name): ?int
+{
+    $allowedTables = ['categories', 'brands'];
+
+    if (! in_array($table, $allowedTables, true)) {
+        return null;
+    }
+
+    $name = trim($name);
+
+    if ($name === '') {
+        return null;
+    }
+
+    if (strlen($name) > 120) {
+        throw new RuntimeException(($table === 'categories' ? 'Category' : 'Brand') . ' name is too long.');
+    }
+
+    $statement = $pdo->prepare("SELECT id, is_active FROM {$table} WHERE name = :name LIMIT 1");
+    $statement->execute(['name' => $name]);
+    $row = $statement->fetch();
+
+    if (is_array($row)) {
+        if ((int) $row['is_active'] !== 1) {
+            $restore = $pdo->prepare("UPDATE {$table} SET is_active = 1, updated_at = CURRENT_TIMESTAMP WHERE id = :id");
+            $restore->execute(['id' => (int) $row['id']]);
+        }
+
+        return (int) $row['id'];
+    }
+
+    $insert = $pdo->prepare("INSERT INTO {$table} (name) VALUES (:name)");
+    $insert->execute(['name' => $name]);
+
+    return (int) $pdo->lastInsertId();
 }

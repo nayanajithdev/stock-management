@@ -5,6 +5,8 @@
 
 $search = trim((string) ($_GET['product_search'] ?? ''));
 $statusFilter = (string) ($_GET['product_status'] ?? 'active');
+$brandFilterId = max(0, (int) ($_GET['brand_id'] ?? 0));
+$categoryFilterId = max(0, (int) ($_GET['category_id'] ?? 0));
 $allowedStatuses = ['active', 'inactive', 'all'];
 
 if (! in_array($statusFilter, $allowedStatuses, true)) {
@@ -42,8 +44,18 @@ if ($dbReady && $pdo !== null) {
     }
 
     if ($search !== '') {
-        $where[] = '(p.name LIKE :search OR p.sku LIKE :search OR p.barcode LIKE :search OR p.model LIKE :search)';
+        $where[] = 'p.name LIKE :search';
         $params['search'] = '%' . $search . '%';
+    }
+
+    if ($brandFilterId > 0) {
+        $where[] = 'p.brand_id = :brand_id';
+        $params['brand_id'] = $brandFilterId;
+    }
+
+    if ($categoryFilterId > 0) {
+        $where[] = 'p.category_id = :category_id';
+        $params['category_id'] = $categoryFilterId;
     }
 
     $sql = 'SELECT p.*, c.name AS category_name, b.name AS brand_name, s.name AS supplier_name
@@ -71,11 +83,12 @@ if ($dbReady && $pdo !== null) {
 
 $formTitle = $editingProduct === null ? 'Add Product' : 'Edit Product';
 $showProductForm = $editingProduct !== null || (string) ($_GET['form'] ?? '') === 'product';
+$selectedCategoryName = product_option_name($categories, (int) ($editingProduct['category_id'] ?? 0));
+$selectedBrandName = product_option_name($brands, (int) ($editingProduct['brand_id'] ?? 0));
 ?>
 
 <div class="page-heading">
     <div>
-        <p class="eyebrow">Inventory control</p>
         <h1>Products</h1>
     </div>
     <?php if ($showProductForm): ?>
@@ -133,26 +146,22 @@ $showProductForm = $editingProduct !== null || (string) ($_GET['form'] ?? '') ==
 
                 <label class="field">
                     <span>Category</span>
-                    <select name="category_id">
-                        <option value="">Uncategorized</option>
+                    <input type="text" name="category_name" value="<?php echo e($selectedCategoryName); ?>" list="product-category-options" placeholder="Search or type new category" autocomplete="off">
+                    <datalist id="product-category-options">
                         <?php foreach ($categories as $category): ?>
-                            <option value="<?php echo (int) $category['id']; ?>" <?php echo (int) ($editingProduct['category_id'] ?? 0) === (int) $category['id'] ? 'selected' : ''; ?>>
-                                <?php echo e($category['name']); ?>
-                            </option>
+                            <option value="<?php echo e($category['name']); ?>"></option>
                         <?php endforeach; ?>
-                    </select>
+                    </datalist>
                 </label>
 
                 <label class="field">
                     <span>Brand</span>
-                    <select name="brand_id">
-                        <option value="">No brand</option>
+                    <input type="text" name="brand_name" value="<?php echo e($selectedBrandName); ?>" list="product-brand-options" placeholder="Search or type new brand" autocomplete="off">
+                    <datalist id="product-brand-options">
                         <?php foreach ($brands as $brand): ?>
-                            <option value="<?php echo (int) $brand['id']; ?>" <?php echo (int) ($editingProduct['brand_id'] ?? 0) === (int) $brand['id'] ? 'selected' : ''; ?>>
-                                <?php echo e($brand['name']); ?>
-                            </option>
+                            <option value="<?php echo e($brand['name']); ?>"></option>
                         <?php endforeach; ?>
-                    </select>
+                    </datalist>
                 </label>
 
                 <label class="field">
@@ -231,60 +240,29 @@ $showProductForm = $editingProduct !== null || (string) ($_GET['form'] ?? '') ==
     </article>
 </section>
 <?php else: ?>
-<section class="stats-grid compact-stats" aria-label="Product summary">
-    <article class="stat-card">
-        <div>
-            <span>Active Products</span>
-            <strong><?php echo (int) $summary['products']; ?></strong>
-        </div>
-        <div class="stat-icon"><i data-lucide="package-search"></i></div>
-        <small>Available in catalog</small>
-    </article>
-    <article class="stat-card">
-        <div>
-            <span>Low Stock</span>
-            <strong><?php echo (int) $summary['low_stock']; ?></strong>
-        </div>
-        <div class="stat-icon"><i data-lucide="triangle-alert"></i></div>
-        <small>At or below reorder level</small>
-    </article>
-    <article class="stat-card">
-        <div>
-            <span>Stock Units</span>
-            <strong><?php echo (int) $summary['stock_units']; ?></strong>
-        </div>
-        <div class="stat-icon"><i data-lucide="boxes"></i></div>
-        <small>Total quantity on hand</small>
-    </article>
-    <article class="stat-card">
-        <div>
-            <span>Stock Value</span>
-            <strong><?php echo e(format_money($summary['stock_value'])); ?></strong>
-        </div>
-        <div class="stat-icon"><i data-lucide="badge-dollar-sign"></i></div>
-        <small>Cost value on hand</small>
-    </article>
-</section>
-
 <section class="product-layout product-catalog-layout">
-    <article class="panel table-panel">
-        <div class="panel-header">
-            <div>
-                <p class="panel-label">Product Catalog</p>
-                <h2>Inventory list</h2>
-            </div>
-
-            <form class="filter-row" method="get" action="<?php echo e(app_url('')); ?>">
+    <article class="panel table-panel product-table-panel">
+        <div class="table-action-header table-action-header-left">
+            <form class="filter-row product-filter-row" method="get" action="<?php echo e(app_url('')); ?>">
                 <input type="hidden" name="page" value="products">
-                <input type="search" name="product_search" value="<?php echo e($search); ?>" placeholder="Search catalog">
+                <?php if ($brandFilterId > 0): ?>
+                    <input type="hidden" name="brand_id" value="<?php echo (int) $brandFilterId; ?>">
+                <?php endif; ?>
+                <?php if ($categoryFilterId > 0): ?>
+                    <input type="hidden" name="category_id" value="<?php echo (int) $categoryFilterId; ?>">
+                <?php endif; ?>
                 <select name="product_status">
                     <option value="active" <?php echo $statusFilter === 'active' ? 'selected' : ''; ?>>Active</option>
                     <option value="inactive" <?php echo $statusFilter === 'inactive' ? 'selected' : ''; ?>>Archived</option>
                     <option value="all" <?php echo $statusFilter === 'all' ? 'selected' : ''; ?>>All</option>
                 </select>
+                <input type="search" name="product_search" value="<?php echo e($search); ?>" placeholder="Search product name">
                 <button class="icon-button" type="submit" aria-label="Apply filters">
                     <i data-lucide="search"></i>
                 </button>
+                <?php if ($search !== '' || $statusFilter !== 'active' || $brandFilterId > 0 || $categoryFilterId > 0): ?>
+                    <a class="ghost-button compact-clear-button" href="<?php echo e(app_url('?page=products')); ?>">Clear</a>
+                <?php endif; ?>
             </form>
         </div>
 
@@ -294,8 +272,40 @@ $showProductForm = $editingProduct !== null || (string) ($_GET['form'] ?? '') ==
                     <tr>
                         <th>SKU</th>
                         <th>Product</th>
-                        <th>Brand</th>
-                        <th>Category</th>
+                        <th>
+                            <details class="th-filter-menu <?php echo $brandFilterId > 0 ? 'active' : ''; ?>">
+                                <summary>
+                                    Brand
+                                    <i data-lucide="chevron-down"></i>
+                                </summary>
+                                <div class="th-filter-popover">
+                                    <a class="<?php echo $brandFilterId === 0 ? 'active' : ''; ?>" href="<?php echo e(product_filter_url($statusFilter, $search, 0, $categoryFilterId)); ?>">All brands</a>
+                                    <?php foreach ($brands as $brand): ?>
+                                        <?php $brandId = (int) $brand['id']; ?>
+                                        <a class="<?php echo $brandFilterId === $brandId ? 'active' : ''; ?>" href="<?php echo e(product_filter_url($statusFilter, $search, $brandId, $categoryFilterId)); ?>">
+                                            <?php echo e($brand['name']); ?>
+                                        </a>
+                                    <?php endforeach; ?>
+                                </div>
+                            </details>
+                        </th>
+                        <th>
+                            <details class="th-filter-menu <?php echo $categoryFilterId > 0 ? 'active' : ''; ?>">
+                                <summary>
+                                    Category
+                                    <i data-lucide="chevron-down"></i>
+                                </summary>
+                                <div class="th-filter-popover">
+                                    <a class="<?php echo $categoryFilterId === 0 ? 'active' : ''; ?>" href="<?php echo e(product_filter_url($statusFilter, $search, $brandFilterId, 0)); ?>">All categories</a>
+                                    <?php foreach ($categories as $category): ?>
+                                        <?php $categoryId = (int) $category['id']; ?>
+                                        <a class="<?php echo $categoryFilterId === $categoryId ? 'active' : ''; ?>" href="<?php echo e(product_filter_url($statusFilter, $search, $brandFilterId, $categoryId)); ?>">
+                                            <?php echo e($category['name']); ?>
+                                        </a>
+                                    <?php endforeach; ?>
+                                </div>
+                            </details>
+                        </th>
                         <th>Stock</th>
                         <th>Reorder</th>
                         <th>Cost</th>
@@ -316,7 +326,7 @@ $showProductForm = $editingProduct !== null || (string) ($_GET['form'] ?? '') ==
                         <tr>
                             <td><?php echo e($product['sku']); ?></td>
                             <td>
-                                <strong class="table-title"><?php echo e($product['name']); ?></strong>
+                                <strong class="table-title"><?php echo product_highlight($product['name'], $search); ?></strong>
                                 <span class="table-subtitle"><?php echo e($product['model'] ?: ($product['barcode'] ?: 'No model')); ?></span>
                             </td>
                             <td><?php echo e($product['brand_name'] ?? ''); ?></td>
@@ -353,3 +363,75 @@ $showProductForm = $editingProduct !== null || (string) ($_GET['form'] ?? '') ==
     </article>
 </section>
 <?php endif; ?>
+
+<?php
+function product_option_name(array $options, int $selectedId): string
+{
+    if ($selectedId <= 0) {
+        return '';
+    }
+
+    foreach ($options as $option) {
+        if ((int) $option['id'] === $selectedId) {
+            return (string) $option['name'];
+        }
+    }
+
+    return '';
+}
+
+function product_filter_url(string $statusFilter, string $search, int $brandId, int $categoryId): string
+{
+    $params = [
+        'page' => 'products',
+        'product_status' => $statusFilter,
+    ];
+
+    if ($search !== '') {
+        $params['product_search'] = $search;
+    }
+
+    if ($brandId > 0) {
+        $params['brand_id'] = $brandId;
+    }
+
+    if ($categoryId > 0) {
+        $params['category_id'] = $categoryId;
+    }
+
+    return app_url('?' . http_build_query($params));
+}
+
+function product_highlight(mixed $value, string $search): string
+{
+    $text = (string) $value;
+    $search = trim($search);
+
+    if ($text === '' || $search === '') {
+        return e($text);
+    }
+
+    $parts = preg_split('/(' . preg_quote($search, '/') . ')/iu', $text, -1, PREG_SPLIT_DELIM_CAPTURE);
+
+    if ($parts === false || count($parts) === 1) {
+        return e($text);
+    }
+
+    $html = '';
+
+    foreach ($parts as $part) {
+        if ($part === '') {
+            continue;
+        }
+
+        if (strcasecmp($part, $search) === 0) {
+            $html .= '<mark class="search-highlight">' . e($part) . '</mark>';
+        } else {
+            $html .= e($part);
+        }
+    }
+
+    return $html;
+}
+
+?>

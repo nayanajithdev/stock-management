@@ -68,7 +68,6 @@ if ($dbReady && $pdo !== null) {
 
 <div class="page-heading">
     <div>
-        <p class="eyebrow">Inventory audit</p>
         <h1>Stock Movements</h1>
     </div>
 </div>
@@ -84,27 +83,11 @@ if ($dbReady && $pdo !== null) {
     </article>
     <article class="stat-card">
         <div>
-            <span>Stock Value</span>
-            <strong><?php echo e(format_money($summary['stock_value'])); ?></strong>
-        </div>
-        <div class="stat-icon"><i data-lucide="badge-dollar-sign"></i></div>
-        <small>Cost value on hand</small>
-    </article>
-    <article class="stat-card">
-        <div>
             <span>Low Stock</span>
             <strong><?php echo (int) $summary['low_stock']; ?></strong>
         </div>
         <div class="stat-icon"><i data-lucide="triangle-alert"></i></div>
         <small>Needs reorder</small>
-    </article>
-    <article class="stat-card">
-        <div>
-            <span>Manual Changes</span>
-            <strong><?php echo (int) $summary['manual_month']; ?></strong>
-        </div>
-        <div class="stat-icon"><i data-lucide="clipboard-pen"></i></div>
-        <small>This month</small>
     </article>
 </section>
 
@@ -193,6 +176,14 @@ if ($dbReady && $pdo !== null) {
             <div>
                 <p class="panel-label">Movement Ledger</p>
                 <h2>Stock audit trail</h2>
+                <?php if ($stockSearch !== '' || $typeFilter !== ''): ?>
+                    <p class="search-note panel-search-note">
+                        Showing stock movements<?php echo $stockSearch !== '' ? ' matching ' : ''; ?>
+                        <?php if ($stockSearch !== ''): ?><strong><?php echo e($stockSearch); ?></strong><?php endif; ?>
+                        <?php if ($typeFilter !== ''): ?> filtered by <strong><?php echo e($movementLabels[$typeFilter]); ?></strong><?php endif; ?>.
+                        <a class="muted-link" href="<?php echo e(app_url('?page=stock')); ?>">Clear</a>
+                    </p>
+                <?php endif; ?>
             </div>
 
             <form class="filter-row movement-filter" method="get" action="<?php echo e(app_url('')); ?>">
@@ -209,15 +200,6 @@ if ($dbReady && $pdo !== null) {
                 </button>
             </form>
         </div>
-
-        <?php if ($stockSearch !== '' || $typeFilter !== ''): ?>
-            <p class="search-note">
-                Showing stock movements<?php echo $stockSearch !== '' ? ' matching ' : ''; ?>
-                <?php if ($stockSearch !== ''): ?><strong><?php echo e($stockSearch); ?></strong><?php endif; ?>
-                <?php if ($typeFilter !== ''): ?> filtered by <strong><?php echo e($movementLabels[$typeFilter]); ?></strong><?php endif; ?>.
-                <a class="muted-link" href="<?php echo e(app_url('?page=stock')); ?>">Clear</a>
-            </p>
-        <?php endif; ?>
 
         <div class="table-wrap">
             <table>

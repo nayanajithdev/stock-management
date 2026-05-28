@@ -46,6 +46,11 @@ if (! headers_sent()) {
 
 $dbError = null;
 $pdo = app_pdo($dbError);
+
+if ($pdo !== null) {
+    app_apply_schema_upgrades($pdo);
+}
+
 $dbReady = $pdo !== null && app_database_ready($pdo);
 
 if ($pdo !== null && app_tables_exist($pdo, ['settings'])) {
@@ -99,12 +104,12 @@ if ($dbReady && $pdo !== null && $currentUser !== null && str_ends_with($scriptN
 $menuSections = [
     'Main Menu' => [
         ['key' => 'dashboard', 'label' => 'Dashboard', 'icon' => 'layout-dashboard'],
-        ['key' => 'products', 'label' => 'Products', 'icon' => 'package-search'],
         ['key' => 'inventory-setup', 'label' => 'Inventory Setup', 'icon' => 'sliders-horizontal'],
+        ['key' => 'products', 'label' => 'Products', 'icon' => 'package-search'],
         ['key' => 'purchases', 'label' => 'Purchases', 'icon' => 'shopping-cart'],
+        ['key' => 'stock', 'label' => 'Stock Movements', 'icon' => 'boxes'],
         ['key' => 'supplier-credit', 'label' => 'Supplier Credit', 'icon' => 'hand-coins'],
         ['key' => 'expenses', 'label' => 'Expenses', 'icon' => 'receipt'],
-        ['key' => 'stock', 'label' => 'Stock Movements', 'icon' => 'boxes'],
         ['key' => 'warranty', 'label' => 'Warranty / RMA', 'icon' => 'shield-check'],
     ],
     'Customers' => [

@@ -12,7 +12,6 @@ $profileRole = auth_role_label((string) ($profileUser['role'] ?? 'manager'));
 
 <div class="page-heading">
     <div>
-        <p class="eyebrow"><?php echo e($config['shop_name']); ?> / Profile</p>
         <h1>Profile</h1>
     </div>
 </div>

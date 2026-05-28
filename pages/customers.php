@@ -71,7 +71,6 @@ $showCustomerForm = $editingCustomer !== null || (string) ($_GET['form'] ?? '') 
 
 <div class="page-heading">
     <div>
-        <p class="eyebrow">Customer accounts</p>
         <h1>Customers</h1>
     </div>
     <?php if ($showCustomerForm): ?>
@@ -155,27 +154,11 @@ $showCustomerForm = $editingCustomer !== null || (string) ($_GET['form'] ?? '') 
     </article>
     <article class="stat-card">
         <div>
-            <span>Credit Customers</span>
-            <strong><?php echo (int) $summary['credit_customers']; ?></strong>
-        </div>
-        <div class="stat-icon"><i data-lucide="receipt-text"></i></div>
-        <small>Have unpaid invoices</small>
-    </article>
-    <article class="stat-card">
-        <div>
             <span>Receivable</span>
             <strong><?php echo e(format_money($summary['receivable'])); ?></strong>
         </div>
         <div class="stat-icon"><i data-lucide="wallet"></i></div>
         <small>Total customer balance</small>
-    </article>
-    <article class="stat-card">
-        <div>
-            <span>Lifetime Sales</span>
-            <strong><?php echo e(format_money($summary['lifetime_sales'])); ?></strong>
-        </div>
-        <div class="stat-icon"><i data-lucide="badge-dollar-sign"></i></div>
-        <small>All invoices</small>
     </article>
 </section>
 

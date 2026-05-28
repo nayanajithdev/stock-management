@@ -66,11 +66,34 @@ $shopInitial = strtoupper(substr($shopName !== '' ? $shopName : 'S', 0, 1));
                         $isDisabled = ! empty($item['disabled']);
                         $isActive = ($item['key'] ?? '') === $currentPage;
                         $href = $isDisabled ? '#' : app_url('?page=' . rawurlencode((string) $item['key']));
+                        $isProductForm = $currentPage === 'products' && ((string) ($_GET['form'] ?? '') === 'product' || isset($_GET['edit']));
                         ?>
-                        <a class="nav-link <?php echo $isActive ? 'active' : ''; ?> <?php echo $isDisabled ? 'disabled' : ''; ?>" href="<?php echo e($href); ?>" <?php echo $isDisabled ? 'aria-disabled="true"' : ''; ?>>
-                            <i data-lucide="<?php echo e($item['icon']); ?>"></i>
-                            <span><?php echo e($item['label']); ?></span>
-                        </a>
+                        <?php if (($item['key'] ?? '') === 'products' && ! $isDisabled): ?>
+                            <div class="nav-split-row">
+                                <a class="nav-link <?php echo $isActive && ! $isProductForm ? 'active' : ''; ?>" href="<?php echo e($href); ?>">
+                                    <i data-lucide="<?php echo e($item['icon']); ?>"></i>
+                                    <span><?php echo e($item['label']); ?></span>
+                                </a>
+                                <a class="nav-side-action <?php echo $isProductForm ? 'active' : ''; ?>" href="<?php echo e(app_url('?page=products&form=product#product-form')); ?>" title="Add Product" aria-label="Add Product">
+                                    <i data-lucide="circle-plus"></i>
+                                </a>
+                            </div>
+                        <?php elseif (($item['key'] ?? '') === 'purchases' && ! $isDisabled): ?>
+                            <div class="nav-split-row">
+                                <a class="nav-link <?php echo $isActive ? 'active' : ''; ?>" href="<?php echo e($href); ?>">
+                                    <i data-lucide="<?php echo e($item['icon']); ?>"></i>
+                                    <span><?php echo e($item['label']); ?></span>
+                                </a>
+                                <a class="nav-side-action <?php echo $currentPage === 'purchase-history' ? 'active' : ''; ?>" href="<?php echo e(app_url('?page=purchase-history')); ?>" title="Stock History" aria-label="Stock History">
+                                    <i data-lucide="history"></i>
+                                </a>
+                            </div>
+                        <?php else: ?>
+                            <a class="nav-link <?php echo $isActive ? 'active' : ''; ?> <?php echo $isDisabled ? 'disabled' : ''; ?>" href="<?php echo e($href); ?>" <?php echo $isDisabled ? 'aria-disabled="true"' : ''; ?>>
+                                <i data-lucide="<?php echo e($item['icon']); ?>"></i>
+                                <span><?php echo e($item['label']); ?></span>
+                            </a>
+                        <?php endif; ?>
                     <?php endforeach; ?>
                 </section>
             <?php endif; ?>

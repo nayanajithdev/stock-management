@@ -8,7 +8,6 @@
         $canOpenSales = isset($pdo) && $pdo instanceof PDO && auth_user_has_permission($pdo, $currentUser, 'sales');
         $profileName = trim((string) ($currentUser['full_name'] ?? 'User'));
         $profileRole = (string) ($currentUser['role_label'] ?? auth_role_label((string) ($currentUser['role'] ?? 'manager')));
-        $profileInitial = strtoupper(substr($profileName !== '' ? $profileName : 'User', 0, 1));
         ?>
         <?php if ($canOpenSales): ?>
             <a class="top-action topbar-sales-link <?php echo $currentPage === 'sales' ? 'active' : ''; ?>" href="<?php echo e(app_url('?page=sales')); ?>">
@@ -22,7 +21,12 @@
 
             <div class="user-menu" data-user-menu>
                 <button class="user-menu-toggle" type="button" aria-haspopup="true" aria-expanded="false" data-user-menu-toggle>
-                    <span class="user-avatar user-avatar-fallback"><?php echo e($profileInitial); ?></span>
+                    <span class="user-avatar user-avatar-icon" aria-hidden="true">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/>
+                            <circle cx="12" cy="7" r="4"/>
+                        </svg>
+                    </span>
                     <span class="user-menu-text">
                         <strong><?php echo e($profileName); ?></strong>
                         <small><?php echo e($profileRole); ?></small>

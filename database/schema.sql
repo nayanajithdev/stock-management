@@ -290,6 +290,8 @@ CREATE TABLE IF NOT EXISTS warranty_claims (
     received_date DATE NOT NULL,
     resolved_date DATE NULL,
     supplier_notes TEXT NULL,
+    supplier_refund_amount DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+    supplier_refund_date DATE NULL,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
     CONSTRAINT fk_warranty_customer FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE SET NULL,

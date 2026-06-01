@@ -196,14 +196,13 @@ $showCustomerForm = $editingCustomer !== null || (string) ($_GET['form'] ?? '') 
                         <th>Paid</th>
                         <th>Balance</th>
                         <th>Limit</th>
-                        <th>Status</th>
                         <th>Actions</th>
                     </tr>
                 </thead>
                 <tbody>
                     <?php if ($customers === []): ?>
                         <tr>
-                            <td colspan="10">No customers found.</td>
+                            <td colspan="9">No customers found.</td>
                         </tr>
                     <?php endif; ?>
 
@@ -218,7 +217,6 @@ $showCustomerForm = $editingCustomer !== null || (string) ($_GET['form'] ?? '') 
                             <td><?php echo e(format_money($customer['total_paid'])); ?></td>
                             <td class="<?php echo $balance > 0 ? 'text-danger' : ''; ?>"><?php echo e(format_money($balance)); ?></td>
                             <td><?php echo e(format_money($customer['credit_limit'])); ?></td>
-                            <td><span class="status status-<?php echo (int) $customer['is_active'] === 1 ? 'active' : 'inactive'; ?>"><?php echo (int) $customer['is_active'] === 1 ? 'Active' : 'Archived'; ?></span></td>
                             <td>
                                 <div class="table-actions">
                                     <a class="icon-button" href="<?php echo e(app_url('?page=customers&edit=' . (int) $customer['id'] . '#customer-form')); ?>" aria-label="Edit customer">

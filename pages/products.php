@@ -242,7 +242,7 @@ $selectedBrandName = product_option_name($brands, (int) ($editingProduct['brand_
 <?php else: ?>
 <section class="product-layout product-catalog-layout">
     <article class="panel table-panel product-table-panel">
-        <div class="table-action-header table-action-header-left">
+        <div class="table-action-header table-action-header-left product-table-toolbar">
             <form class="filter-row product-filter-row" method="get" action="<?php echo e(app_url('')); ?>">
                 <input type="hidden" name="page" value="products">
                 <?php if ($brandFilterId > 0): ?>
@@ -264,6 +264,7 @@ $selectedBrandName = product_option_name($brands, (int) ($editingProduct['brand_
                     <a class="ghost-button compact-clear-button" href="<?php echo e(app_url('?page=products')); ?>">Clear</a>
                 <?php endif; ?>
             </form>
+            <span class="dashboard-pill"><?php echo count($products); ?> <?php echo count($products) === 1 ? 'product' : 'products'; ?></span>
         </div>
 
         <div class="table-wrap">
@@ -310,14 +311,13 @@ $selectedBrandName = product_option_name($brands, (int) ($editingProduct['brand_
                         <th>Reorder</th>
                         <th>Cost</th>
                         <th>Sell</th>
-                        <th>Status</th>
                         <th>Actions</th>
                     </tr>
                 </thead>
                 <tbody>
                     <?php if ($products === []): ?>
                         <tr>
-                            <td colspan="10">No products found.</td>
+                            <td colspan="9">No products found.</td>
                         </tr>
                     <?php endif; ?>
 
@@ -335,7 +335,6 @@ $selectedBrandName = product_option_name($brands, (int) ($editingProduct['brand_
                             <td><?php echo (int) $product['reorder_level']; ?></td>
                             <td><?php echo e(format_money($product['cost_price'])); ?></td>
                             <td><?php echo e(format_money($product['selling_price'])); ?></td>
-                            <td><span class="status status-<?php echo e($product['status']); ?>"><?php echo e(ucfirst((string) $product['status'])); ?></span></td>
                             <td>
                                 <div class="table-actions">
                                     <a class="icon-button" href="<?php echo e(app_url('?page=product-history&id=' . (int) $product['id'])); ?>" aria-label="View stock history">

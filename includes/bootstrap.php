@@ -63,6 +63,12 @@ $flash = get_flash();
 $currentPage = (string) ($_GET['page'] ?? 'dashboard');
 $scriptName = basename((string) ($_SERVER['SCRIPT_NAME'] ?? 'index.php'));
 $authPages = ['login', 'setup-owner'];
+
+if (! $dbReady && $scriptName === 'index.php' && ! in_array($currentPage, $authPages, true)) {
+    http_response_code(503);
+    $currentPage = 'setup-owner';
+}
+
 $ownerIsConfigured = $dbReady && $pdo !== null && auth_configured_owner_exists($pdo);
 $publicAuthPages = $ownerIsConfigured ? ['login'] : ['setup-owner'];
 $publicActions = $ownerIsConfigured ? ['login.php', 'logout.php'] : ['setup_owner.php'];
@@ -125,7 +131,7 @@ $menuSections = [
     'Settings' => [
         ['key' => 'settings', 'label' => 'Shop Settings', 'icon' => 'settings'],
         ['key' => 'invoice-settings', 'label' => 'Invoice Settings', 'icon' => 'file-text'],
-        ['key' => 'backup', 'label' => 'Backup', 'icon' => 'database-backup', 'disabled' => true],
+        ['key' => 'backup', 'label' => 'Backup', 'icon' => 'database-backup'],
     ],
 ];
 
@@ -258,6 +264,11 @@ $pages = [
         'title' => 'Invoice Settings',
         'description' => 'Configure invoice tax, footer, and policy text',
         'view' => __DIR__ . '/../pages/invoice_settings.php',
+    ],
+    'backup' => [
+        'title' => 'Backup',
+        'description' => 'Download and restore verified backups',
+        'view' => __DIR__ . '/../pages/backup.php',
     ],
 ];
 

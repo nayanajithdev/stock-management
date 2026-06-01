@@ -155,7 +155,7 @@ function auth_permission_definitions(): array
         'settings' => [
             'label' => 'Shop Settings',
             'description' => 'Update business profile, invoice settings, and system defaults.',
-            'pages' => ['settings', 'invoice-settings'],
+            'pages' => ['settings', 'invoice-settings', 'backup'],
         ],
     ];
 }
@@ -190,7 +190,7 @@ function auth_action_permission(string $scriptName): ?string
         'customer_save.php', 'customer_archive.php' => 'customers',
         'payment_collect.php' => 'credit_sales',
         'sales_return_save.php', 'return_lookup.php' => 'returns',
-        'settings_save.php', 'invoice_settings_save.php' => 'settings',
+        'settings_save.php', 'invoice_settings_save.php', 'backup_download.php', 'backup_restore.php' => 'settings',
         default => null,
     };
 }

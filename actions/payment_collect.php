@@ -41,9 +41,27 @@ try {
     $pdo->beginTransaction();
 
     $saleStatement = $pdo->prepare(
-        'SELECT id, customer_id, invoice_no, total, paid
-         FROM sales
-         WHERE id = :id
+        'SELECT s.id,
+                s.customer_id,
+                s.invoice_no,
+                s.total,
+                s.paid,
+                COALESCE(ret.returned_total, 0) AS returned_total,
+                COALESCE(ret.refund_total, 0) AS refund_total
+         FROM sales s
+         LEFT JOIN (
+            SELECT sr.sale_id,
+                   COALESCE(SUM(ri.returned_total), 0) AS returned_total,
+                   COALESCE(SUM(sr.refund_amount), 0) AS refund_total
+            FROM sales_returns sr
+            LEFT JOIN (
+                SELECT return_id, COALESCE(SUM(total), 0) AS returned_total
+                FROM sales_return_items
+                GROUP BY return_id
+            ) ri ON ri.return_id = sr.id
+            GROUP BY sr.sale_id
+         ) ret ON ret.sale_id = s.id
+         WHERE s.id = :id
          FOR UPDATE'
     );
     $saleStatement->execute(['id' => $saleId]);
@@ -53,7 +71,7 @@ try {
         throw new RuntimeException('Selected invoice was not found.');
     }
 
-    $balance = (float) $sale['total'] - (float) $sale['paid'];
+    $balance = sale_receivable_balance($sale['total'], $sale['paid'], $sale['returned_total'], $sale['refund_total']);
 
     if ($balance <= 0.0) {
         throw new RuntimeException('This invoice is already fully paid.');
@@ -64,7 +82,8 @@ try {
     }
 
     $newPaid = (float) $sale['paid'] + $amount;
-    $newStatus = $newPaid >= (float) $sale['total'] ? 'paid' : 'partial';
+    $newBalance = sale_receivable_balance($sale['total'], $newPaid, $sale['returned_total'], $sale['refund_total']);
+    $newStatus = $newBalance <= 0.0 ? 'paid' : 'partial';
 
     $paymentStatement = $pdo->prepare(
         'INSERT INTO customer_payments

@@ -2,7 +2,6 @@
 /** @var ?PDO $pdo */
 /** @var bool $dbReady */
 
-$suppliers = [];
 $hasProducts = false;
 $summary = [
     'month_total' => 0.0,
@@ -12,7 +11,6 @@ $summary = [
 ];
 
 if ($dbReady && $pdo !== null) {
-    $suppliers = app_fetch_options($pdo, 'suppliers');
     $hasProducts = (int) $pdo->query('SELECT COUNT(*) FROM products WHERE status = "active"')->fetchColumn() > 0;
 
     $summaryStatement = $pdo->query(
@@ -89,18 +87,15 @@ if ($dbReady && $pdo !== null) {
         <?php elseif (! $hasProducts): ?>
             <p class="empty-state">Add products first, then return here to receive stock.</p>
         <?php else: ?>
-            <form class="purchase-form" method="post" action="<?php echo e(app_url('actions/purchase_save.php')); ?>" data-purchase-form data-product-search-url="<?php echo e(app_url('actions/product_search.php')); ?>">
+            <form class="purchase-form" method="post" action="<?php echo e(app_url('actions/purchase_save.php')); ?>" data-purchase-form data-product-search-url="<?php echo e(app_url('actions/product_search.php')); ?>" data-supplier-search-url="<?php echo e(app_url('actions/supplier_search.php')); ?>">
                 <?php echo csrf_field(); ?>
 
                 <div class="purchase-meta">
-                    <label class="field">
+                    <label class="field product-picker supplier-picker" data-supplier-picker>
                         <span>Supplier</span>
-                        <select name="supplier_id">
-                            <option value="">No supplier</option>
-                            <?php foreach ($suppliers as $supplier): ?>
-                                <option value="<?php echo (int) $supplier['id']; ?>"><?php echo e($supplier['name']); ?></option>
-                            <?php endforeach; ?>
-                        </select>
+                        <input type="hidden" name="supplier_id" data-purchase-supplier>
+                        <input type="search" placeholder="No supplier or search supplier" autocomplete="off" data-supplier-search>
+                        <div class="product-suggestions" data-supplier-suggestions hidden></div>
                     </label>
 
                     <label class="field">

@@ -58,6 +58,8 @@ try {
         'SELECT si.*,
                 s.customer_id,
                 s.invoice_no,
+                s.subtotal AS sale_subtotal,
+                s.discount AS sale_discount,
                 p.name AS product_name,
                 p.current_stock,
                 p.cost_price
@@ -83,7 +85,13 @@ try {
         throw new RuntimeException('Only ' . $availableToReturn . ' unit(s) are still returnable for this line.');
     }
 
-    $maxRefund = $quantity * (float) $saleItem['unit_price'];
+    $netUnitPrice = sale_discounted_unit_price(
+        $saleItem['total'],
+        $saleItem['sale_subtotal'],
+        $saleItem['sale_discount'],
+        (int) $saleItem['quantity']
+    );
+    $maxRefund = $quantity * $netUnitPrice;
 
     if ($refundAmount > $maxRefund) {
         throw new RuntimeException('Refund amount cannot exceed ' . format_money($maxRefund) . ' for this return quantity.');
@@ -106,7 +114,7 @@ try {
         'notes' => $notes,
     ]);
     $returnId = (int) $pdo->lastInsertId();
-    $lineTotal = $quantity * (float) $saleItem['unit_price'];
+    $lineTotal = $quantity * $netUnitPrice;
 
     $returnItemStatement = $pdo->prepare(
         'INSERT INTO sales_return_items
@@ -119,7 +127,7 @@ try {
         'sale_item_id' => $saleItemId,
         'product_id' => (int) $saleItem['product_id'],
         'quantity' => $quantity,
-        'unit_price' => (float) $saleItem['unit_price'],
+        'unit_price' => $netUnitPrice,
         'unit_cost' => (float) $saleItem['unit_cost'],
         'restock' => $restock,
         'condition_status' => $conditionStatus,
@@ -157,6 +165,25 @@ try {
         ]);
     }
 
+    $saleAdjustment = sales_return_sale_adjustment($pdo, (int) $saleItem['sale_id']);
+    $balanceAfterReturn = sale_receivable_balance(
+        (float) $saleAdjustment['total'],
+        (float) $saleAdjustment['paid'],
+        (float) $saleAdjustment['returned_total'],
+        (float) $saleAdjustment['refund_total']
+    );
+    $saleStatusAfterReturn = $balanceAfterReturn <= 0.0 ? 'paid' : ((float) $saleAdjustment['paid'] > 0.0 ? 'partial' : 'credit');
+    $statusStatement = $pdo->prepare(
+        'UPDATE sales
+         SET status = :status,
+             updated_at = CURRENT_TIMESTAMP
+         WHERE id = :id'
+    );
+    $statusStatement->execute([
+        'status' => $saleStatusAfterReturn,
+        'id' => (int) $saleItem['sale_id'],
+    ]);
+
     $pdo->commit();
 
     app_log_activity($pdo, $currentUser, 'return_create', 'Saved return ' . $returnNo . ' for invoice ' . $saleItem['invoice_no'] . '.');
@@ -184,4 +211,31 @@ function next_sales_return_no(PDO $pdo): string
     }
 
     return $prefix . str_pad((string) $nextNumber, 4, '0', STR_PAD_LEFT);
+}
+
+function sales_return_sale_adjustment(PDO $pdo, int $saleId): array
+{
+    $statement = $pdo->prepare(
+        'SELECT s.total,
+                s.paid,
+                COALESCE(SUM(ri.returned_total), 0) AS returned_total,
+                COALESCE(SUM(sr.refund_amount), 0) AS refund_total
+         FROM sales s
+         LEFT JOIN sales_returns sr ON sr.sale_id = s.id
+         LEFT JOIN (
+            SELECT return_id, COALESCE(SUM(total), 0) AS returned_total
+            FROM sales_return_items
+            GROUP BY return_id
+         ) ri ON ri.return_id = sr.id
+         WHERE s.id = :sale_id
+         GROUP BY s.id'
+    );
+    $statement->execute(['sale_id' => $saleId]);
+    $row = $statement->fetch();
+
+    if (! is_array($row)) {
+        throw new RuntimeException('Invoice could not be recalculated after return.');
+    }
+
+    return $row;
 }

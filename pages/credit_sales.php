@@ -24,9 +24,25 @@ $summary = [
 ];
 
 if ($dbReady && $pdo !== null) {
-    $summary['open_invoices'] = (int) $pdo->query('SELECT COUNT(*) FROM sales WHERE total > paid')->fetchColumn();
-    $summary['receivable'] = (float) $pdo->query('SELECT COALESCE(SUM(total - paid), 0) FROM sales WHERE total > paid')->fetchColumn();
-    $summary['partial_invoices'] = (int) $pdo->query('SELECT COUNT(*) FROM sales WHERE total > paid AND paid > 0')->fetchColumn();
+    $returnJoin = credit_sales_return_join_sql();
+    $balanceSql = credit_sales_balance_sql();
+
+    $summaryRow = $pdo->query(
+        'SELECT COUNT(*) AS open_invoices,
+                COALESCE(SUM(balance), 0) AS receivable,
+                COALESCE(SUM(CASE WHEN paid > 0 THEN 1 ELSE 0 END), 0) AS partial_invoices
+         FROM (
+            SELECT s.id,
+                   s.paid,
+                   ' . $balanceSql . ' AS balance
+            FROM sales s
+            ' . $returnJoin . '
+         ) due
+         WHERE balance > 0'
+    )->fetch() ?: [];
+    $summary['open_invoices'] = (int) ($summaryRow['open_invoices'] ?? 0);
+    $summary['receivable'] = (float) ($summaryRow['receivable'] ?? 0);
+    $summary['partial_invoices'] = (int) ($summaryRow['partial_invoices'] ?? 0);
     $summary['collected_today'] = (float) $pdo->query('SELECT COALESCE(SUM(amount), 0) FROM customer_payments WHERE DATE(payment_date) = CURRENT_DATE')->fetchColumn();
 
     $openInvoices = $pdo->query(
@@ -35,11 +51,13 @@ if ($dbReady && $pdo !== null) {
                 s.sale_date,
                 s.total,
                 s.paid,
+                ' . $balanceSql . ' AS balance,
                 c.name AS customer_name,
                 c.phone AS customer_phone
          FROM sales s
          LEFT JOIN customers c ON c.id = s.customer_id
-         WHERE s.total > s.paid
+         ' . $returnJoin . '
+         WHERE ' . $balanceSql . ' > 0
          ORDER BY s.sale_date DESC, s.id DESC'
     )->fetchAll();
 
@@ -49,10 +67,12 @@ if ($dbReady && $pdo !== null) {
                     s.invoice_no,
                     s.total,
                     s.paid,
+                    ' . $balanceSql . ' AS balance,
                     c.name AS customer_name,
                     c.phone AS customer_phone
              FROM sales s
              LEFT JOIN customers c ON c.id = s.customer_id
+             ' . $returnJoin . '
              WHERE s.id = :id
              LIMIT 1'
         );
@@ -65,19 +85,21 @@ if ($dbReady && $pdo !== null) {
                          c.phone AS customer_phone,
                          c.credit_limit,
                          COUNT(si.id) AS item_count,
-                         COALESCE(SUM(si.quantity), 0) AS total_units
+                         COALESCE(SUM(si.quantity), 0) AS total_units,
+                         ' . $balanceSql . ' AS balance
                   FROM sales s
                   LEFT JOIN customers c ON c.id = s.customer_id
-                  LEFT JOIN sale_items si ON si.sale_id = s.id';
+                  LEFT JOIN sale_items si ON si.sale_id = s.id
+                  ' . $returnJoin;
     $where = [];
     $params = [];
 
     if ($statusFilter === 'open') {
-        $where[] = 's.total > s.paid';
+        $where[] = $balanceSql . ' > 0';
     } elseif ($statusFilter === 'partial') {
-        $where[] = 's.total > s.paid AND s.paid > 0';
+        $where[] = $balanceSql . ' > 0 AND s.paid > 0';
     } elseif ($statusFilter === 'credit') {
-        $where[] = 's.total > s.paid AND s.paid <= 0';
+        $where[] = $balanceSql . ' > 0 AND s.paid <= 0';
     }
 
     if ($creditSearch !== '') {
@@ -99,11 +121,17 @@ if ($dbReady && $pdo !== null) {
                 c.name,
                 c.phone,
                 c.credit_limit,
-                COUNT(s.id) AS open_invoices,
-                COALESCE(SUM(s.total - s.paid), 0) AS balance
+                COUNT(due.id) AS open_invoices,
+                COALESCE(SUM(due.balance), 0) AS balance
          FROM customers c
-         INNER JOIN sales s ON s.customer_id = c.id
-         WHERE s.total > s.paid
+         INNER JOIN (
+            SELECT s.id,
+                   s.customer_id,
+                   ' . $balanceSql . ' AS balance
+            FROM sales s
+            ' . $returnJoin . '
+         ) due ON due.customer_id = c.id
+         WHERE due.balance > 0
          GROUP BY c.id
          ORDER BY balance DESC
          LIMIT 8'
@@ -176,7 +204,7 @@ if ($dbReady && $pdo !== null) {
                         <option value="">Choose unpaid invoice</option>
                         <?php foreach ($openInvoices as $invoice): ?>
                             <?php
-                            $balance = (float) $invoice['total'] - (float) $invoice['paid'];
+                            $balance = (float) $invoice['balance'];
                             $label = $invoice['invoice_no'] . ' / ' . ($invoice['customer_name'] ?: 'Walk-in Customer') . ' / Balance ' . format_money($balance);
                             ?>
                             <option
@@ -192,12 +220,12 @@ if ($dbReady && $pdo !== null) {
 
                 <div class="collection-balance">
                     <span>Invoice Balance</span>
-                    <strong data-collection-balance><?php echo $collectingSale !== null ? e(format_money((float) $collectingSale['total'] - (float) $collectingSale['paid'])) : 'Choose invoice'; ?></strong>
+                    <strong data-collection-balance><?php echo $collectingSale !== null ? e(format_money((float) $collectingSale['balance'])) : 'Choose invoice'; ?></strong>
                 </div>
 
                 <label class="field">
                     <span>Payment Amount</span>
-                    <input type="number" name="amount" value="<?php echo $collectingSale !== null ? e(number_format((float) $collectingSale['total'] - (float) $collectingSale['paid'], 2, '.', '')) : '0.00'; ?>" min="0" step="0.01" data-collection-amount required>
+                    <input type="number" name="amount" value="<?php echo $collectingSale !== null ? e(number_format((float) $collectingSale['balance'], 2, '.', '')) : '0.00'; ?>" min="0" step="0.01" data-collection-amount required>
                 </label>
 
                 <label class="field">
@@ -282,7 +310,7 @@ if ($dbReady && $pdo !== null) {
                     <?php endif; ?>
 
                     <?php foreach ($creditSales as $sale): ?>
-                        <?php $balance = (float) $sale['total'] - (float) $sale['paid']; ?>
+                        <?php $balance = (float) $sale['balance']; ?>
                         <tr>
                             <td><?php echo e(date('Y-m-d H:i', strtotime((string) $sale['sale_date']))); ?></td>
                             <td><?php echo e($sale['invoice_no']); ?></td>
@@ -407,6 +435,27 @@ if ($dbReady && $pdo !== null) {
 </section>
 
 <?php
+function credit_sales_return_join_sql(): string
+{
+    return 'LEFT JOIN (
+                SELECT sr.sale_id,
+                       COALESCE(SUM(ri.returned_total), 0) AS returned_total,
+                       COALESCE(SUM(sr.refund_amount), 0) AS refund_total
+                FROM sales_returns sr
+                LEFT JOIN (
+                    SELECT return_id, COALESCE(SUM(total), 0) AS returned_total
+                    FROM sales_return_items
+                    GROUP BY return_id
+                ) ri ON ri.return_id = sr.id
+                GROUP BY sr.sale_id
+            ) ret ON ret.sale_id = s.id';
+}
+
+function credit_sales_balance_sql(): string
+{
+    return 'GREATEST(s.total - s.paid - COALESCE(ret.returned_total, 0) + COALESCE(ret.refund_total, 0), 0)';
+}
+
 function credit_status_class(string $status, float $balance): string
 {
     if ($balance <= 0) {

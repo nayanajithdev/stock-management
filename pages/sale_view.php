@@ -16,9 +16,23 @@ if ($dbReady && $pdo !== null && $saleId > 0) {
                 c.name AS customer_name,
                 c.phone AS customer_phone,
                 c.email AS customer_email,
-                c.address AS customer_address
+                c.address AS customer_address,
+                COALESCE(ret.returned_total, 0) AS returned_total,
+                COALESCE(ret.refund_total, 0) AS refund_total
          FROM sales s
          LEFT JOIN customers c ON c.id = s.customer_id
+         LEFT JOIN (
+            SELECT sr.sale_id,
+                   COALESCE(SUM(ri.returned_total), 0) AS returned_total,
+                   COALESCE(SUM(sr.refund_amount), 0) AS refund_total
+            FROM sales_returns sr
+            LEFT JOIN (
+                SELECT return_id, COALESCE(SUM(total), 0) AS returned_total
+                FROM sales_return_items
+                GROUP BY return_id
+            ) ri ON ri.return_id = sr.id
+            GROUP BY sr.sale_id
+         ) ret ON ret.sale_id = s.id
          WHERE s.id = :id
          LIMIT 1'
     );
@@ -76,7 +90,7 @@ if ($dbReady && $pdo !== null && $saleId > 0) {
     }
 }
 
-$balance = is_array($sale) ? (float) $sale['total'] - (float) $sale['paid'] : 0.0;
+$balance = is_array($sale) ? sale_receivable_balance($sale['total'], $sale['paid'], $sale['returned_total'] ?? 0, $sale['refund_total'] ?? 0) : 0.0;
 ?>
 
 <?php if (! $dbReady): ?>
@@ -201,6 +215,12 @@ $balance = is_array($sale) ? (float) $sale['total'] - (float) $sale['paid'] : 0.
                         <dt>Paid</dt>
                         <dd><?php echo e(format_money($sale['paid'])); ?></dd>
                     </div>
+                    <?php if ((float) ($sale['returned_total'] ?? 0) > 0): ?>
+                        <div>
+                            <dt>Returned</dt>
+                            <dd><?php echo e(format_money($sale['returned_total'])); ?></dd>
+                        </div>
+                    <?php endif; ?>
                     <div>
                         <dt>Balance</dt>
                         <dd><?php echo e(format_money($balance)); ?></dd>
@@ -232,6 +252,9 @@ $balance = is_array($sale) ? (float) $sale['total'] - (float) $sale['paid'] : 0.
                 <div class="invoice-mini-list">
                     <div><span>Total</span><strong><?php echo e(format_money($sale['total'])); ?></strong></div>
                     <div><span>Paid</span><strong><?php echo e(format_money($sale['paid'])); ?></strong></div>
+                    <?php if ((float) ($sale['returned_total'] ?? 0) > 0): ?>
+                        <div><span>Returned</span><strong><?php echo e(format_money($sale['returned_total'])); ?></strong></div>
+                    <?php endif; ?>
                     <div><span>Balance</span><strong class="<?php echo $balance > 0 ? 'text-danger' : 'text-good'; ?>"><?php echo e(format_money($balance)); ?></strong></div>
                 </div>
             </article>

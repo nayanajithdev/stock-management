@@ -171,12 +171,16 @@ function return_lookup_items(PDO $pdo, int $saleId): array
                 si.product_id,
                 si.quantity AS sold_quantity,
                 si.unit_price,
+                si.total AS line_total,
+                s.subtotal AS sale_subtotal,
+                s.discount AS sale_discount,
                 p.sku,
                 p.name AS product_name,
                 p.model,
                 COALESCE(r.returned_quantity, 0) AS returned_quantity,
                 si.quantity - COALESCE(r.returned_quantity, 0) AS available_quantity
          FROM sale_items si
+         INNER JOIN sales s ON s.id = si.sale_id
          INNER JOIN products p ON p.id = si.product_id
          LEFT JOIN (
             SELECT sale_item_id, COALESCE(SUM(quantity), 0) AS returned_quantity
@@ -201,11 +205,21 @@ function return_lookup_items(PDO $pdo, int $saleId): array
             'sold' => (int) $item['sold_quantity'],
             'returned' => (int) $item['returned_quantity'],
             'available' => (int) $item['available_quantity'],
-            'price' => number_format((float) $item['unit_price'], 2, '.', ''),
+            'price' => number_format(return_lookup_net_unit_price($item), 2, '.', ''),
         ];
     }
 
     return $items;
+}
+
+function return_lookup_net_unit_price(array $item): float
+{
+    return sale_discounted_unit_price(
+        $item['line_total'] ?? 0,
+        $item['sale_subtotal'] ?? 0,
+        $item['sale_discount'] ?? 0,
+        (int) ($item['sold_quantity'] ?? 1)
+    );
 }
 
 function return_lookup_invoice_payload(array $invoice): array

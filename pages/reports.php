@@ -22,6 +22,8 @@ $summary = [
     'stock_value' => 0.0,
     'receivable' => 0.0,
     'refunds' => 0.0,
+    'return_value' => 0.0,
+    'return_cost_recovered' => 0.0,
     'supplier_refunds' => 0.0,
     'expenses' => 0.0,
     'net_profit' => 0.0,
@@ -49,10 +51,16 @@ if ($dbReady && $pdo !== null) {
     $salesRow = $salesSummary->fetch() ?: [];
 
     $profitSummary = $pdo->prepare(
-        'SELECT COALESCE(SUM(si.quantity), 0) AS units_sold,
-                COALESCE(SUM(si.total - (si.quantity * si.unit_cost)), 0) AS gross_profit
-         FROM sale_items si
-         INNER JOIN sales s ON s.id = si.sale_id
+        'SELECT COALESCE(SUM(cost.units_sold), 0) AS units_sold,
+                COALESCE(SUM(s.subtotal - s.discount - COALESCE(cost.total_cost, 0)), 0) AS gross_profit
+         FROM sales s
+         LEFT JOIN (
+            SELECT sale_id,
+                   COALESCE(SUM(quantity), 0) AS units_sold,
+                   COALESCE(SUM(quantity * unit_cost), 0) AS total_cost
+            FROM sale_items
+            GROUP BY sale_id
+         ) cost ON cost.sale_id = s.id
          WHERE s.sale_date BETWEEN :start_date AND :end_date'
     );
     $profitSummary->execute([
@@ -67,6 +75,27 @@ if ($dbReady && $pdo !== null) {
          WHERE return_date BETWEEN :start_date AND :end_date'
     );
     $returnSummary->execute([
+        'start_date' => $startDateTime,
+        'end_date' => $endDateTime,
+    ]);
+    $returnValueSummary = $pdo->prepare(
+        'SELECT COALESCE(SUM(sri.total), 0)
+         FROM sales_return_items sri
+         INNER JOIN sales_returns sr ON sr.id = sri.return_id
+         WHERE sr.return_date BETWEEN :start_date AND :end_date'
+    );
+    $returnValueSummary->execute([
+        'start_date' => $startDateTime,
+        'end_date' => $endDateTime,
+    ]);
+    $returnCostSummary = $pdo->prepare(
+        'SELECT COALESCE(SUM(sri.quantity * sri.unit_cost), 0)
+         FROM sales_return_items sri
+         INNER JOIN sales_returns sr ON sr.id = sri.return_id
+         WHERE sri.restock = 1
+           AND sr.return_date BETWEEN :start_date AND :end_date'
+    );
+    $returnCostSummary->execute([
         'start_date' => $startDateTime,
         'end_date' => $endDateTime,
     ]);
@@ -95,11 +124,13 @@ if ($dbReady && $pdo !== null) {
     $summary['invoices'] = (int) ($salesRow['invoices'] ?? 0);
     $summary['units_sold'] = (int) ($profitRow['units_sold'] ?? 0);
     $summary['stock_value'] = (float) $pdo->query('SELECT COALESCE(SUM(current_stock * cost_price), 0) FROM products WHERE status = "active"')->fetchColumn();
-    $summary['receivable'] = (float) $pdo->query('SELECT COALESCE(SUM(total - paid), 0) FROM sales WHERE total > paid')->fetchColumn();
+    $summary['receivable'] = report_receivable_total($pdo);
     $summary['refunds'] = (float) $returnSummary->fetchColumn();
+    $summary['return_value'] = (float) $returnValueSummary->fetchColumn();
+    $summary['return_cost_recovered'] = (float) $returnCostSummary->fetchColumn();
     $summary['supplier_refunds'] = (float) $supplierRefundSummary->fetchColumn();
     $summary['expenses'] = (float) $expenseSummary->fetchColumn();
-    $summary['net_profit'] = $summary['gross_profit'] - $summary['expenses'] - $summary['refunds'] + $summary['supplier_refunds'];
+    $summary['net_profit'] = $summary['gross_profit'] - $summary['expenses'] - $summary['return_value'] + $summary['return_cost_recovered'] + $summary['supplier_refunds'];
     $summary['open_warranty'] = (int) $pdo->query('SELECT COUNT(*) FROM warranty_claims WHERE status IN ("received", "sent_to_supplier", "ready_for_pickup")')->fetchColumn();
 
     $dailyStatement = $pdo->prepare(
@@ -121,9 +152,9 @@ if ($dbReady && $pdo !== null) {
                           p.name,
                           p.current_stock,
                           COALESCE(SUM(si.quantity), 0) AS units_sold,
-                          COALESCE(SUM(si.total), 0) AS revenue,
+                          COALESCE(SUM(si.total - CASE WHEN s.subtotal > 0 THEN s.discount * (si.total / s.subtotal) ELSE 0 END), 0) AS revenue,
                           COALESCE(SUM(si.quantity * si.unit_cost), 0) AS cost,
-                          COALESCE(SUM(si.total - (si.quantity * si.unit_cost)), 0) AS gross_profit
+                          COALESCE(SUM((si.total - CASE WHEN s.subtotal > 0 THEN s.discount * (si.total / s.subtotal) ELSE 0 END) - (si.quantity * si.unit_cost)), 0) AS gross_profit
                    FROM sale_items si
                    INNER JOIN sales s ON s.id = si.sale_id
                    INNER JOIN products p ON p.id = si.product_id
@@ -168,10 +199,22 @@ if ($dbReady && $pdo !== null) {
     $creditSql = 'SELECT COALESCE(c.name, "Walk-in Customer") AS customer_name,
                          c.phone,
                          COUNT(s.id) AS open_invoices,
-                         COALESCE(SUM(s.total - s.paid), 0) AS balance
+                         COALESCE(SUM(GREATEST(s.total - s.paid - COALESCE(ret.returned_total, 0) + COALESCE(ret.refund_total, 0), 0)), 0) AS balance
                   FROM sales s
                   LEFT JOIN customers c ON c.id = s.customer_id
-                  WHERE s.total > s.paid';
+                  LEFT JOIN (
+                    SELECT sr.sale_id,
+                           COALESCE(SUM(ri.returned_total), 0) AS returned_total,
+                           COALESCE(SUM(sr.refund_amount), 0) AS refund_total
+                    FROM sales_returns sr
+                    LEFT JOIN (
+                        SELECT return_id, COALESCE(SUM(total), 0) AS returned_total
+                        FROM sales_return_items
+                        GROUP BY return_id
+                    ) ri ON ri.return_id = sr.id
+                    GROUP BY sr.sale_id
+                  ) ret ON ret.sale_id = s.id
+                  WHERE GREATEST(s.total - s.paid - COALESCE(ret.returned_total, 0) + COALESCE(ret.refund_total, 0), 0) > 0';
     $creditParams = [];
 
     if ($reportSearch !== '') {
@@ -329,7 +372,7 @@ foreach ($dailySales as $day) {
             <strong><?php echo e(format_money($summary['net_profit'])); ?></strong>
         </div>
         <div class="stat-icon"><i data-lucide="chart-line"></i></div>
-        <small>After expenses, customer refunds, supplier refunds</small>
+        <small>After expenses, returns, supplier refunds</small>
     </article>
 </section>
 
@@ -634,6 +677,30 @@ function report_margin_label(float $profit, float $revenue): string
     }
 
     return number_format(($profit / $revenue) * 100, 2) . '% margin';
+}
+
+function report_receivable_total(PDO $pdo): float
+{
+    return (float) $pdo->query(
+        'SELECT COALESCE(SUM(balance), 0)
+         FROM (
+            SELECT GREATEST(s.total - s.paid - COALESCE(ret.returned_total, 0) + COALESCE(ret.refund_total, 0), 0) AS balance
+            FROM sales s
+            LEFT JOIN (
+                SELECT sr.sale_id,
+                       COALESCE(SUM(ri.returned_total), 0) AS returned_total,
+                       COALESCE(SUM(sr.refund_amount), 0) AS refund_total
+                FROM sales_returns sr
+                LEFT JOIN (
+                    SELECT return_id, COALESCE(SUM(total), 0) AS returned_total
+                    FROM sales_return_items
+                    GROUP BY return_id
+                ) ri ON ri.return_id = sr.id
+                GROUP BY sr.sale_id
+            ) ret ON ret.sale_id = s.id
+         ) receivables
+         WHERE balance > 0'
+    )->fetchColumn();
 }
 
 function report_warranty_status_label(string $status): string

@@ -1734,50 +1734,144 @@ input[readonly] {
 
 .backup-panel {
     display: grid;
-    gap: 16px;
+    gap: 18px;
 }
 
-.backup-info {
-    border: 1px solid rgba(255, 255, 255, .07);
-    border-radius: 8px;
-    background: rgba(15, 20, 25, .32);
-    padding: 16px;
+.backup-meta-row {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 8px;
 }
 
-.backup-info h3 {
-    margin: 0 0 10px;
-    font-size: 16px;
+.backup-meta-row span {
+    display: inline-flex;
+    align-items: center;
+    min-height: 32px;
+    border: 1px solid rgba(14, 165, 233, .24);
+    border-radius: 999px;
+    background: rgba(14, 165, 233, .08);
+    color: var(--accent-2);
+    padding: 0 12px;
+    font-size: 13px;
 }
 
-.backup-info p {
-    margin: 0;
-}
-
-.backup-info p + p {
-    margin-top: 8px;
-}
-
-.backup-muted {
-    color: var(--muted);
-}
-
-.backup-actions,
-.backup-restore-form {
+.backup-actions {
     display: flex;
     flex-wrap: wrap;
     gap: 10px;
 }
 
+.backup-summary-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(220px, 1fr));
+    gap: 10px;
+    max-width: 760px;
+}
+
+.backup-summary-grid div {
+    display: grid;
+    gap: 6px;
+    border: 1px solid rgba(255, 255, 255, .07);
+    border-radius: 8px;
+    background: rgba(15, 20, 25, .22);
+    padding: 12px 14px;
+}
+
+.backup-summary-grid strong {
+    font-size: 15px;
+}
+
+.backup-summary-grid span {
+    color: var(--muted);
+}
+
+.backup-required-note {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    border: 1px solid rgba(241, 184, 75, .32);
+    border-radius: 8px;
+    background: rgba(241, 184, 75, .08);
+    color: var(--warn);
+    padding: 12px 14px;
+}
+
+.backup-required-note span {
+    color: var(--muted);
+}
+
+.backup-required-note strong {
+    color: var(--warn);
+}
+
 .backup-restore-form {
-    align-items: flex-end;
+    display: grid;
+    gap: 14px;
+    max-width: 860px;
 }
 
-.backup-restore-form .field {
-    flex: 1 1 420px;
+.backup-file-picker {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    min-height: 72px;
+    border: 1px dashed rgba(191, 219, 254, .24);
+    border-radius: 10px;
+    background: rgba(8, 13, 18, .34);
+    cursor: pointer;
+    padding: 14px 16px;
+    transition: border-color .18s ease, background .18s ease;
 }
 
-.backup-warning {
-    margin: 0;
+.backup-file-picker:hover,
+.backup-file-picker:focus-within {
+    border-color: rgba(14, 165, 233, .55);
+    background: rgba(14, 165, 233, .06);
+}
+
+.backup-file-input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+}
+
+.backup-file-icon {
+    display: inline-grid;
+    place-items: center;
+    width: 42px;
+    height: 42px;
+    flex: 0 0 42px;
+    border-radius: 9px;
+    background: rgba(14, 165, 233, .14);
+    color: var(--accent-2);
+}
+
+.backup-file-copy {
+    display: grid;
+    gap: 4px;
+}
+
+.backup-file-copy strong {
+    font-size: 16px;
+}
+
+.backup-file-copy small {
+    color: var(--muted);
+}
+
+.backup-restore-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+}
+
+.backup-confirm-field {
+    min-height: 42px;
 }
 
 .checkbox-field {
@@ -2946,6 +3040,30 @@ td {
 
     .settings-section-grid {
         grid-template-columns: 1fr;
+    }
+
+    .backup-meta-row {
+        justify-content: flex-start;
+    }
+
+    .backup-restore-form {
+        grid-template-columns: 1fr;
+        max-width: none;
+    }
+
+    .backup-summary-grid {
+        grid-template-columns: 1fr;
+        max-width: none;
+    }
+
+    .backup-restore-actions {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .backup-restore-actions .top-action {
+        justify-content: center;
+        width: 100%;
     }
 
     .span-3 {

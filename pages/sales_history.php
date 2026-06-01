@@ -6,14 +6,19 @@ $saleSearch = trim((string) ($_GET['q'] ?? ''));
 $sales = [];
 
 if ($dbReady && $pdo !== null) {
+    $returnJoin = sale_history_return_join_sql();
+    $balanceSql = sale_history_balance_sql();
+
     $saleSql = 'SELECT s.*,
                        c.name AS customer_name,
                        c.phone AS customer_phone,
                        COUNT(si.id) AS item_count,
-                       COALESCE(SUM(si.quantity), 0) AS total_units
+                       COALESCE(SUM(si.quantity), 0) AS total_units,
+                       ' . $balanceSql . ' AS balance
                 FROM sales s
                 LEFT JOIN customers c ON c.id = s.customer_id
-                LEFT JOIN sale_items si ON si.sale_id = s.id';
+                LEFT JOIN sale_items si ON si.sale_id = s.id
+                ' . $returnJoin;
     $saleParams = [];
 
     if ($saleSearch !== '') {
@@ -85,7 +90,7 @@ if ($dbReady && $pdo !== null) {
                     <?php endif; ?>
 
                     <?php foreach ($sales as $sale): ?>
-                        <?php $balance = (float) $sale['total'] - (float) $sale['paid']; ?>
+                        <?php $balance = (float) $sale['balance']; ?>
                         <tr>
                             <td><?php echo e(date('Y-m-d H:i', strtotime((string) $sale['sale_date']))); ?></td>
                             <td>
@@ -100,7 +105,7 @@ if ($dbReady && $pdo !== null) {
                             <td><?php echo e(format_money($sale['total'])); ?></td>
                             <td><?php echo e(format_money($sale['paid'])); ?></td>
                             <td class="<?php echo $balance > 0 ? 'text-danger' : ''; ?>"><?php echo e(format_money($balance)); ?></td>
-                            <td><span class="status <?php echo e(sale_history_status_class((string) $sale['status'])); ?>"><?php echo e(ucfirst((string) $sale['status'])); ?></span></td>
+                            <td><span class="status <?php echo e(sale_history_status_class((string) $sale['status'], $balance)); ?>"><?php echo e($balance > 0 ? ucfirst((string) $sale['status']) : 'Closed'); ?></span></td>
                             <td>
                                 <a class="icon-button" href="<?php echo e(app_url('?page=sale-view&id=' . (int) $sale['id'])); ?>" aria-label="View invoice">
                                     <i data-lucide="file-text"></i>
@@ -115,8 +120,33 @@ if ($dbReady && $pdo !== null) {
 </section>
 
 <?php
-function sale_history_status_class(string $status): string
+function sale_history_return_join_sql(): string
 {
+    return 'LEFT JOIN (
+                SELECT sr.sale_id,
+                       COALESCE(SUM(ri.returned_total), 0) AS returned_total,
+                       COALESCE(SUM(sr.refund_amount), 0) AS refund_total
+                FROM sales_returns sr
+                LEFT JOIN (
+                    SELECT return_id, COALESCE(SUM(total), 0) AS returned_total
+                    FROM sales_return_items
+                    GROUP BY return_id
+                ) ri ON ri.return_id = sr.id
+                GROUP BY sr.sale_id
+            ) ret ON ret.sale_id = s.id';
+}
+
+function sale_history_balance_sql(): string
+{
+    return 'GREATEST(s.total - s.paid - COALESCE(ret.returned_total, 0) + COALESCE(ret.refund_total, 0), 0)';
+}
+
+function sale_history_status_class(string $status, float $balance): string
+{
+    if ($balance <= 0.0) {
+        return 'status-active';
+    }
+
     return match ($status) {
         'paid' => 'status-active',
         'partial' => 'status-warranty',

@@ -181,7 +181,7 @@ function auth_action_permission(string $scriptName): ?string
     return match ($scriptName) {
         'product_save.php', 'product_delete.php' => 'products',
         'master_save.php', 'master_archive.php' => 'inventory_setup',
-        'purchase_save.php', 'product_search.php' => 'purchases',
+        'purchase_save.php', 'product_search.php', 'supplier_search.php' => 'purchases',
         'supplier_payment_collect.php' => 'supplier_credit',
         'expense_save.php', 'expense_void.php' => 'expenses',
         'stock_adjust.php' => 'stock',

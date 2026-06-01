@@ -41,6 +41,11 @@ if ($name === '' || $sku === '') {
     redirect($formRedirect);
 }
 
+if ($costPrice < 0 || $sellingPrice < 0 || $wholesalePrice < 0) {
+    set_flash('error', 'Product prices cannot be negative.');
+    redirect($formRedirect);
+}
+
 if ($sellingPrice < $costPrice) {
     set_flash('error', 'Selling price should be equal to or higher than cost price.');
     redirect($formRedirect);

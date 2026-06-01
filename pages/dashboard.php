@@ -22,6 +22,7 @@ $metrics = [
     'today_orders' => 0,
     'today_paid' => 0.0,
     'today_collections' => 0.0,
+    'today_customer_refunds' => 0.0,
     'today_expenses' => 0.0,
     'today_supplier_paid' => 0.0,
     'today_supplier_refunds' => 0.0,
@@ -30,6 +31,8 @@ $metrics = [
     'month_profit' => 0.0,
     'month_expenses' => 0.0,
     'month_refunds' => 0.0,
+    'month_return_value' => 0.0,
+    'month_return_cost_recovered' => 0.0,
     'month_supplier_refunds' => 0.0,
     'month_net_profit' => 0.0,
     'receivable' => 0.0,
@@ -43,11 +46,20 @@ $metrics = [
 if ($dbReady && $pdo !== null) {
     $todaySalesRow = dashboard_fetch_one($pdo,
         'SELECT COUNT(*) AS orders,
-                COALESCE(SUM(total), 0) AS total,
-                COALESCE(SUM(paid), 0) AS paid
+                COALESCE(SUM(total), 0) AS total
          FROM sales
          WHERE DATE(sale_date) = CURRENT_DATE'
     );
+    $todayInitialPaid = (float) $pdo->query(
+        'SELECT COALESCE(SUM(GREATEST(s.paid - COALESCE(cp.total_collected, 0), 0)), 0)
+         FROM sales s
+         LEFT JOIN (
+            SELECT sale_id, COALESCE(SUM(amount), 0) AS total_collected
+            FROM customer_payments
+            GROUP BY sale_id
+         ) cp ON cp.sale_id = s.id
+         WHERE DATE(s.sale_date) = CURRENT_DATE'
+    )->fetchColumn();
     $monthSalesRow = dashboard_fetch_one($pdo,
         'SELECT COUNT(*) AS orders,
                 COALESCE(SUM(total), 0) AS total
@@ -55,16 +67,21 @@ if ($dbReady && $pdo !== null) {
          WHERE sale_date >= DATE_FORMAT(CURRENT_DATE, "%Y-%m-01")'
     );
     $monthProfitRow = dashboard_fetch_one($pdo,
-        'SELECT COALESCE(SUM(si.total - (si.quantity * si.unit_cost)), 0) AS profit
-         FROM sale_items si
-         INNER JOIN sales s ON s.id = si.sale_id
+        'SELECT COALESCE(SUM(s.subtotal - s.discount - COALESCE(cost.total_cost, 0)), 0) AS profit
+         FROM sales s
+         LEFT JOIN (
+            SELECT sale_id, COALESCE(SUM(quantity * unit_cost), 0) AS total_cost
+            FROM sale_items
+            GROUP BY sale_id
+         ) cost ON cost.sale_id = s.id
          WHERE s.sale_date >= DATE_FORMAT(CURRENT_DATE, "%Y-%m-01")'
     );
 
     $metrics['today_orders'] = (int) ($todaySalesRow['orders'] ?? 0);
     $metrics['today_sales'] = (float) ($todaySalesRow['total'] ?? 0);
-    $metrics['today_paid'] = (float) ($todaySalesRow['paid'] ?? 0);
+    $metrics['today_paid'] = $todayInitialPaid;
     $metrics['today_collections'] = (float) $pdo->query('SELECT COALESCE(SUM(amount), 0) FROM customer_payments WHERE DATE(payment_date) = CURRENT_DATE')->fetchColumn();
+    $metrics['today_customer_refunds'] = (float) $pdo->query('SELECT COALESCE(SUM(refund_amount), 0) FROM sales_returns WHERE DATE(return_date) = CURRENT_DATE')->fetchColumn();
     $metrics['today_expenses'] = (float) $pdo->query('SELECT COALESCE(SUM(amount), 0) FROM expenses WHERE status = "active" AND expense_date = CURRENT_DATE')->fetchColumn();
     $metrics['today_supplier_paid'] = (float) $pdo->query('SELECT COALESCE(SUM(amount), 0) FROM supplier_payments WHERE DATE(payment_date) = CURRENT_DATE')->fetchColumn();
     $metrics['today_supplier_refunds'] = (float) $pdo->query('SELECT COALESCE(SUM(supplier_refund_amount), 0) FROM warranty_claims WHERE supplier_refund_date = CURRENT_DATE')->fetchColumn();
@@ -73,9 +90,22 @@ if ($dbReady && $pdo !== null) {
     $metrics['month_profit'] = (float) ($monthProfitRow['profit'] ?? 0);
     $metrics['month_expenses'] = (float) $pdo->query('SELECT COALESCE(SUM(amount), 0) FROM expenses WHERE status = "active" AND expense_date >= DATE_FORMAT(CURRENT_DATE, "%Y-%m-01")')->fetchColumn();
     $metrics['month_refunds'] = (float) $pdo->query('SELECT COALESCE(SUM(refund_amount), 0) FROM sales_returns WHERE return_date >= DATE_FORMAT(CURRENT_DATE, "%Y-%m-01")')->fetchColumn();
+    $metrics['month_return_value'] = (float) $pdo->query(
+        'SELECT COALESCE(SUM(sri.total), 0)
+         FROM sales_return_items sri
+         INNER JOIN sales_returns sr ON sr.id = sri.return_id
+         WHERE sr.return_date >= DATE_FORMAT(CURRENT_DATE, "%Y-%m-01")'
+    )->fetchColumn();
+    $metrics['month_return_cost_recovered'] = (float) $pdo->query(
+        'SELECT COALESCE(SUM(sri.quantity * sri.unit_cost), 0)
+         FROM sales_return_items sri
+         INNER JOIN sales_returns sr ON sr.id = sri.return_id
+         WHERE sri.restock = 1
+           AND sr.return_date >= DATE_FORMAT(CURRENT_DATE, "%Y-%m-01")'
+    )->fetchColumn();
     $metrics['month_supplier_refunds'] = (float) $pdo->query('SELECT COALESCE(SUM(supplier_refund_amount), 0) FROM warranty_claims WHERE supplier_refund_date >= DATE_FORMAT(CURRENT_DATE, "%Y-%m-01")')->fetchColumn();
-    $metrics['month_net_profit'] = $metrics['month_profit'] - $metrics['month_expenses'] - $metrics['month_refunds'] + $metrics['month_supplier_refunds'];
-    $metrics['receivable'] = (float) $pdo->query('SELECT COALESCE(SUM(total - paid), 0) FROM sales WHERE total > paid')->fetchColumn();
+    $metrics['month_net_profit'] = $metrics['month_profit'] - $metrics['month_expenses'] - $metrics['month_return_value'] + $metrics['month_return_cost_recovered'] + $metrics['month_supplier_refunds'];
+    $metrics['receivable'] = dashboard_receivable_total($pdo);
     $metrics['payable'] = (float) $pdo->query('SELECT COALESCE(SUM(total - paid), 0) FROM purchases WHERE total > paid')->fetchColumn();
     $metrics['stock_value'] = (float) $pdo->query('SELECT COALESCE(SUM(current_stock * cost_price), 0) FROM products WHERE status = "active"')->fetchColumn();
     $metrics['low_stock'] = (int) $pdo->query('SELECT COUNT(*) FROM products WHERE status = "active" AND reorder_level > 0 AND current_stock <= reorder_level')->fetchColumn();
@@ -254,7 +284,7 @@ $trendBadge = $trendMode === 'weekly'
             <a href="<?php echo e(app_url('?page=expenses')); ?>">
                 <i data-lucide="receipt"></i>
                 <span>Today paid out</span>
-                <strong><?php echo e(format_money($metrics['today_expenses'] + $metrics['today_supplier_paid'])); ?></strong>
+                <strong><?php echo e(format_money($metrics['today_expenses'] + $metrics['today_supplier_paid'] + $metrics['today_customer_refunds'])); ?></strong>
             </a>
             <a href="<?php echo e(app_url('?page=warranty')); ?>">
                 <i data-lucide="shield-check"></i>
@@ -385,6 +415,30 @@ function dashboard_warranty_expiring_lots(PDO $pdo): int
     }
 
     return $expiringLots;
+}
+
+function dashboard_receivable_total(PDO $pdo): float
+{
+    return (float) $pdo->query(
+        'SELECT COALESCE(SUM(balance), 0)
+         FROM (
+            SELECT GREATEST(s.total - s.paid - COALESCE(ret.returned_total, 0) + COALESCE(ret.refund_total, 0), 0) AS balance
+            FROM sales s
+            LEFT JOIN (
+                SELECT sr.sale_id,
+                       COALESCE(SUM(ri.returned_total), 0) AS returned_total,
+                       COALESCE(SUM(sr.refund_amount), 0) AS refund_total
+                FROM sales_returns sr
+                LEFT JOIN (
+                    SELECT return_id, COALESCE(SUM(total), 0) AS returned_total
+                    FROM sales_return_items
+                    GROUP BY return_id
+                ) ri ON ri.return_id = sr.id
+                GROUP BY sr.sale_id
+            ) ret ON ret.sale_id = s.id
+         ) receivables
+         WHERE balance > 0'
+    )->fetchColumn();
 }
 
 function dashboard_stat_card(array $stat): void

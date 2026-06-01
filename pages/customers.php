@@ -20,23 +20,40 @@ $summary = [
 ];
 
 if ($dbReady && $pdo !== null) {
+    $returnJoin = customer_return_join_sql();
+    $balanceSql = customer_balance_sql();
+
     $summary['active_customers'] = (int) $pdo->query('SELECT COUNT(*) FROM customers WHERE is_active = 1')->fetchColumn();
-    $summary['credit_customers'] = (int) $pdo->query(
-        'SELECT COUNT(DISTINCT customer_id)
-         FROM sales
-         WHERE customer_id IS NOT NULL
-           AND total > paid'
-    )->fetchColumn();
-    $summary['receivable'] = (float) $pdo->query('SELECT COALESCE(SUM(total - paid), 0) FROM sales WHERE total > paid')->fetchColumn();
+    $creditSummary = $pdo->query(
+        'SELECT COUNT(DISTINCT customer_id) AS credit_customers,
+                COALESCE(SUM(balance), 0) AS receivable
+         FROM (
+            SELECT s.customer_id,
+                   ' . $balanceSql . ' AS balance
+            FROM sales s
+            ' . $returnJoin . '
+         ) due
+         WHERE balance > 0'
+    )->fetch() ?: [];
+    $summary['credit_customers'] = (int) ($creditSummary['credit_customers'] ?? 0);
+    $summary['receivable'] = (float) ($creditSummary['receivable'] ?? 0);
     $summary['lifetime_sales'] = (float) $pdo->query('SELECT COALESCE(SUM(total), 0) FROM sales')->fetchColumn();
 
     $customerSql = 'SELECT c.*,
-                           COUNT(s.id) AS order_count,
-                           COALESCE(SUM(s.total), 0) AS total_sales,
-                           COALESCE(SUM(s.paid), 0) AS total_paid,
-                           COALESCE(SUM(s.total - s.paid), 0) AS balance
+                           COUNT(sales_due.id) AS order_count,
+                           COALESCE(SUM(sales_due.total), 0) AS total_sales,
+                           COALESCE(SUM(sales_due.paid), 0) AS total_paid,
+                           COALESCE(SUM(sales_due.balance), 0) AS balance
                     FROM customers c
-                    LEFT JOIN sales s ON s.customer_id = c.id';
+                    LEFT JOIN (
+                        SELECT s.id,
+                               s.customer_id,
+                               s.total,
+                               s.paid,
+                               ' . $balanceSql . ' AS balance
+                        FROM sales s
+                        ' . $returnJoin . '
+                    ) sales_due ON sales_due.customer_id = c.id';
     $where = [];
     $params = [];
 
@@ -244,3 +261,25 @@ $showCustomerForm = $editingCustomer !== null || (string) ($_GET['form'] ?? '') 
     </article>
 </section>
 <?php endif; ?>
+
+<?php
+function customer_return_join_sql(): string
+{
+    return 'LEFT JOIN (
+                SELECT sr.sale_id,
+                       COALESCE(SUM(ri.returned_total), 0) AS returned_total,
+                       COALESCE(SUM(sr.refund_amount), 0) AS refund_total
+                FROM sales_returns sr
+                LEFT JOIN (
+                    SELECT return_id, COALESCE(SUM(total), 0) AS returned_total
+                    FROM sales_return_items
+                    GROUP BY return_id
+                ) ri ON ri.return_id = sr.id
+                GROUP BY sr.sale_id
+            ) ret ON ret.sale_id = s.id';
+}
+
+function customer_balance_sql(): string
+{
+    return 'GREATEST(s.total - s.paid - COALESCE(ret.returned_total, 0) + COALESCE(ret.refund_total, 0), 0)';
+}

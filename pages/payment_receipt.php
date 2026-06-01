@@ -17,12 +17,26 @@ if ($dbReady && $pdo !== null && $paymentId > 0) {
                 s.total AS invoice_total,
                 s.paid AS invoice_paid,
                 s.customer_id AS sale_customer_id,
+                COALESCE(ret.returned_total, 0) AS returned_total,
+                COALESCE(ret.refund_total, 0) AS refund_total,
                 c.name AS customer_name,
                 c.phone AS customer_phone,
                 c.email AS customer_email,
                 c.address AS customer_address
          FROM customer_payments cp
          INNER JOIN sales s ON s.id = cp.sale_id
+         LEFT JOIN (
+            SELECT sr.sale_id,
+                   COALESCE(SUM(ri.returned_total), 0) AS returned_total,
+                   COALESCE(SUM(sr.refund_amount), 0) AS refund_total
+            FROM sales_returns sr
+            LEFT JOIN (
+                SELECT return_id, COALESCE(SUM(total), 0) AS returned_total
+                FROM sales_return_items
+                GROUP BY return_id
+            ) ri ON ri.return_id = sr.id
+            GROUP BY sr.sale_id
+         ) ret ON ret.sale_id = s.id
          LEFT JOIN customers c ON c.id = COALESCE(cp.customer_id, s.customer_id)
          WHERE cp.id = :id
          LIMIT 1'
@@ -55,8 +69,9 @@ if ($dbReady && $pdo !== null && $paymentId > 0) {
             'id' => $paymentId,
         ]);
         $paidThroughReceipt = $initialPaid + (float) $paidThroughStatement->fetchColumn();
-        $previousBalance = max(0.0, (float) $payment['invoice_total'] - ($paidThroughReceipt - (float) $payment['amount']));
-        $remainingBalance = max(0.0, (float) $payment['invoice_total'] - $paidThroughReceipt);
+        $previousPaid = $paidThroughReceipt - (float) $payment['amount'];
+        $previousBalance = sale_receivable_balance($payment['invoice_total'], $previousPaid, $payment['returned_total'], $payment['refund_total']);
+        $remainingBalance = sale_receivable_balance($payment['invoice_total'], $paidThroughReceipt, $payment['returned_total'], $payment['refund_total']);
     }
 }
 

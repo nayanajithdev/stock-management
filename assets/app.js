@@ -68,6 +68,19 @@ document.querySelectorAll('a[aria-disabled="true"]').forEach((link) => {
     link.addEventListener('click', (event) => event.preventDefault());
 });
 
+document.querySelectorAll('[data-backup-file-input]').forEach((input) => {
+    const picker = input.closest('.backup-file-picker');
+    const fileName = picker?.querySelector('[data-backup-file-name]');
+
+    input.addEventListener('change', () => {
+        if (!fileName) {
+            return;
+        }
+
+        fileName.textContent = input.files?.[0]?.name || 'No file selected';
+    });
+});
+
 const headerFilterMenus = Array.from(document.querySelectorAll('.th-filter-menu'));
 
 if (headerFilterMenus.length) {
@@ -165,6 +178,12 @@ if (purchaseForm) {
     const paidInput = purchaseForm.querySelector('[data-purchase-paid]');
     const balanceInput = purchaseForm.querySelector('[data-purchase-balance]');
     const productSearchUrl = purchaseForm.dataset.productSearchUrl || '';
+    const supplierSearchUrl = purchaseForm.dataset.supplierSearchUrl || '';
+    const supplierInput = purchaseForm.querySelector('[data-supplier-search]');
+    const supplierHidden = purchaseForm.querySelector('[data-purchase-supplier]');
+    const supplierSuggestions = purchaseForm.querySelector('[data-supplier-suggestions]');
+    let supplierSearchTimer = null;
+    let supplierSearchToken = 0;
 
     const money = (value) => Number.isFinite(value) ? value.toFixed(2) : '0.00';
 
@@ -204,6 +223,130 @@ if (purchaseForm) {
             }
         });
     };
+
+    const closeSupplierSuggestions = () => {
+        if (!supplierSuggestions) {
+            return;
+        }
+
+        supplierSuggestions.hidden = true;
+        supplierSuggestions.innerHTML = '';
+    };
+
+    const showSupplierSuggestionMessage = (message) => {
+        if (!supplierSuggestions) {
+            return;
+        }
+
+        supplierSuggestions.innerHTML = `<div class="product-suggestion-empty">${message}</div>`;
+        supplierSuggestions.hidden = false;
+    };
+
+    const selectSupplier = (supplier) => {
+        if (supplierHidden) {
+            supplierHidden.value = String(supplier.id || '');
+        }
+
+        if (supplierInput) {
+            supplierInput.value = supplier.label || supplier.name || '';
+        }
+
+        closeSupplierSuggestions();
+    };
+
+    const renderSupplierSuggestions = (suppliers) => {
+        if (!supplierSuggestions) {
+            return;
+        }
+
+        supplierSuggestions.innerHTML = '';
+
+        if (!suppliers.length) {
+            showSupplierSuggestionMessage('No suppliers found');
+            return;
+        }
+
+        suppliers.forEach((supplier) => {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'product-suggestion-item';
+            button.innerHTML = `
+                <strong></strong>
+                <span></span>
+            `;
+            button.querySelector('strong').textContent = supplier.label || supplier.name || '';
+            button.querySelector('span').textContent = [supplier.contact, supplier.phone, supplier.email].filter(Boolean).join(' / ') || 'Supplier account';
+            button.addEventListener('mousedown', (event) => event.preventDefault());
+            button.addEventListener('click', () => selectSupplier(supplier));
+            supplierSuggestions.appendChild(button);
+        });
+
+        supplierSuggestions.hidden = false;
+    };
+
+    const runSupplierSearch = () => {
+        if (!supplierInput || !supplierSearchUrl) {
+            return;
+        }
+
+        const query = supplierInput.value.trim();
+
+        if (supplierHidden) {
+            supplierHidden.value = '';
+        }
+
+        if (query.length < 2) {
+            closeSupplierSuggestions();
+            return;
+        }
+
+        const token = ++supplierSearchToken;
+        showSupplierSuggestionMessage('Searching...');
+
+        fetch(`${supplierSearchUrl}?q=${encodeURIComponent(query)}`, {
+            headers: { Accept: 'application/json' },
+        })
+            .then((response) => response.ok ? response.json() : { suppliers: [] })
+            .then((data) => {
+                if (token !== supplierSearchToken) {
+                    return;
+                }
+
+                renderSupplierSuggestions(Array.isArray(data.suppliers) ? data.suppliers : []);
+            })
+            .catch(() => {
+                if (token === supplierSearchToken) {
+                    showSupplierSuggestionMessage('Search failed');
+                }
+            });
+    };
+
+    if (supplierInput) {
+        supplierInput.addEventListener('input', () => {
+            if (supplierHidden) {
+                supplierHidden.value = '';
+            }
+
+            window.clearTimeout(supplierSearchTimer);
+            supplierSearchTimer = window.setTimeout(runSupplierSearch, 180);
+        });
+
+        supplierInput.addEventListener('focus', () => {
+            if (supplierInput.value.trim().length >= 2) {
+                runSupplierSearch();
+            }
+        });
+
+        supplierInput.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape') {
+                closeSupplierSuggestions();
+            }
+        });
+
+        supplierInput.addEventListener('blur', () => {
+            window.setTimeout(closeSupplierSuggestions, 120);
+        });
+    }
 
     const hydrateRow = (row) => {
         const productInput = row.querySelector('[data-product-search]');

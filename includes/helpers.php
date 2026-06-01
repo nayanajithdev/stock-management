@@ -108,3 +108,30 @@ function nullable_string(string $value): ?string
 
     return $value === '' ? null : $value;
 }
+
+function sale_receivable_balance(float|int|string|null $total, float|int|string|null $paid, float|int|string|null $returnedTotal = 0, float|int|string|null $refundTotal = 0): float
+{
+    return max(0.0, round((float) $total - (float) $paid - (float) $returnedTotal + (float) $refundTotal, 2));
+}
+
+function sale_discounted_line_total(float|int|string|null $lineTotal, float|int|string|null $saleSubtotal, float|int|string|null $saleDiscount = 0): float
+{
+    $lineTotal = max(0.0, (float) $lineTotal);
+    $saleSubtotal = max(0.0, (float) $saleSubtotal);
+    $saleDiscount = max(0.0, (float) $saleDiscount);
+
+    if ($lineTotal <= 0.0 || $saleSubtotal <= 0.0 || $saleDiscount <= 0.0) {
+        return round($lineTotal, 2);
+    }
+
+    $discountShare = min($lineTotal, $saleDiscount * ($lineTotal / $saleSubtotal));
+
+    return round($lineTotal - $discountShare, 2);
+}
+
+function sale_discounted_unit_price(float|int|string|null $lineTotal, float|int|string|null $saleSubtotal, float|int|string|null $saleDiscount, int $quantity): float
+{
+    $quantity = max(1, $quantity);
+
+    return round(sale_discounted_line_total($lineTotal, $saleSubtotal, $saleDiscount) / $quantity, 2);
+}

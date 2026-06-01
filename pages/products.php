@@ -240,6 +240,41 @@ $selectedBrandName = product_option_name($brands, (int) ($editingProduct['brand_
     </article>
 </section>
 <?php else: ?>
+<section class="stats-grid compact-stats" aria-label="Product summary">
+    <article class="stat-card">
+        <div>
+            <span>Active Products</span>
+            <strong><?php echo (int) $summary['products']; ?></strong>
+        </div>
+        <div class="stat-icon"><i data-lucide="package-search"></i></div>
+        <small>Available in catalog</small>
+    </article>
+    <article class="stat-card">
+        <div>
+            <span>Low Stock</span>
+            <strong><?php echo (int) $summary['low_stock']; ?></strong>
+        </div>
+        <div class="stat-icon"><i data-lucide="triangle-alert"></i></div>
+        <small>At or below reorder level</small>
+    </article>
+    <article class="stat-card">
+        <div>
+            <span>Stock Units</span>
+            <strong><?php echo (int) $summary['stock_units']; ?></strong>
+        </div>
+        <div class="stat-icon"><i data-lucide="boxes"></i></div>
+        <small>Total quantity on hand</small>
+    </article>
+    <article class="stat-card">
+        <div>
+            <span>Stock Value</span>
+            <strong><?php echo e(format_money($summary['stock_value'])); ?></strong>
+        </div>
+        <div class="stat-icon"><i data-lucide="badge-dollar-sign"></i></div>
+        <small>Cost value on hand</small>
+    </article>
+</section>
+
 <section class="product-layout product-catalog-layout">
     <article class="panel table-panel product-table-panel">
         <div class="table-action-header table-action-header-left product-table-toolbar">

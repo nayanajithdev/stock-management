@@ -112,6 +112,43 @@ if ($dbReady && $pdo !== null) {
     </a>
 </div>
 
+<?php if ($dbReady): ?>
+<section class="stats-grid compact-stats" aria-label="Inventory setup summary">
+    <article class="stat-card">
+        <div>
+            <span>Categories</span>
+            <strong><?php echo (int) $summary['categories']; ?></strong>
+        </div>
+        <div class="stat-icon"><i data-lucide="tags"></i></div>
+        <small>Active product groups</small>
+    </article>
+    <article class="stat-card">
+        <div>
+            <span>Brands</span>
+            <strong><?php echo (int) $summary['brands']; ?></strong>
+        </div>
+        <div class="stat-icon"><i data-lucide="badge"></i></div>
+        <small>Active manufacturers</small>
+    </article>
+    <article class="stat-card">
+        <div>
+            <span>Suppliers</span>
+            <strong><?php echo (int) $summary['suppliers']; ?></strong>
+        </div>
+        <div class="stat-icon"><i data-lucide="truck"></i></div>
+        <small>Active vendors</small>
+    </article>
+    <article class="stat-card">
+        <div>
+            <span>Linked Products</span>
+            <strong><?php echo (int) $summary['linked_products']; ?></strong>
+        </div>
+        <div class="stat-icon"><i data-lucide="package-check"></i></div>
+        <small>Using setup records</small>
+    </article>
+</section>
+<?php endif; ?>
+
 <div class="tab-row" role="tablist" aria-label="Inventory setup sections">
     <a class="<?php echo $section === 'categories' ? 'active' : ''; ?>" href="<?php echo e(app_url('?page=inventory-setup&section=categories' . ($setupSearch !== '' ? '&q=' . rawurlencode($setupSearch) : ''))); ?>">Categories</a>
     <a class="<?php echo $section === 'brands' ? 'active' : ''; ?>" href="<?php echo e(app_url('?page=inventory-setup&section=brands' . ($setupSearch !== '' ? '&q=' . rawurlencode($setupSearch) : ''))); ?>">Brands</a>

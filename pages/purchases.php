@@ -183,7 +183,7 @@ function render_purchase_row(): void
         <div class="field compact-field product-picker" data-product-picker>
             <span>Product</span>
             <input type="hidden" name="product_id[]" data-purchase-product>
-            <input type="search" placeholder="Search product, SKU, barcode" autocomplete="off" data-product-search>
+            <input type="search" placeholder="Search product, SKU, barcode or @category" autocomplete="off" data-product-search>
             <div class="product-suggestions" data-product-suggestions hidden></div>
         </div>
         <label class="field compact-field">

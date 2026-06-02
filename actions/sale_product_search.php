@@ -13,52 +13,127 @@ if (! $dbReady || $pdo === null) {
 }
 
 $query = trim((string) ($_GET['q'] ?? ''));
+$categoryId = max(0, (int) ($_GET['category_id'] ?? 0));
 
-if (mb_strlen($query) < 2) {
+if (str_starts_with($query, '@')) {
+    $categoryQuery = trim(mb_substr($query, 1));
+    $categoryWhere = 'c.is_active = 1
+                      AND p.status = "active"
+                      AND p.current_stock > 0';
+    $categoryParams = [];
+
+    if ($categoryQuery !== '') {
+        $categoryWhere .= ' AND c.name LIKE :category_search';
+        $categoryParams['category_search'] = '%' . $categoryQuery . '%';
+    }
+
+    $categorySql = 'SELECT c.id,
+                           c.name,
+                           COUNT(p.id) AS product_count
+                    FROM categories c
+                    INNER JOIN products p ON p.category_id = c.id
+                    WHERE ' . $categoryWhere . '
+                    GROUP BY c.id, c.name
+                    ORDER BY ';
+
+    if ($categoryQuery !== '') {
+        $categorySql .= 'CASE
+                            WHEN c.name = :category_exact THEN 0
+                            WHEN c.name LIKE :category_prefix THEN 1
+                            ELSE 2
+                         END, ';
+        $categoryParams['category_exact'] = $categoryQuery;
+        $categoryParams['category_prefix'] = $categoryQuery . '%';
+    }
+
+    $categorySql .= 'c.name ASC
+                     LIMIT 12';
+
+    $statement = $pdo->prepare($categorySql);
+    $statement->execute($categoryParams);
+
+    $categories = [];
+
+    foreach ($statement->fetchAll() as $category) {
+        $categories[] = [
+            'id' => (int) $category['id'],
+            'name' => (string) $category['name'],
+            'product_count' => (int) $category['product_count'],
+        ];
+    }
+
+    sale_product_search_json(200, [
+        'mode' => 'categories',
+        'categories' => $categories,
+        'products' => [],
+    ]);
+}
+
+if (mb_strlen($query) < 2 && $categoryId <= 0) {
     sale_product_search_json(200, ['products' => []]);
 }
 
 $search = '%' . $query . '%';
 $prefix = $query . '%';
+$where = [
+    'p.status = "active"',
+    'p.current_stock > 0',
+];
+$params = [];
+
+if ($categoryId > 0) {
+    $where[] = 'p.category_id = :category_id';
+    $params['category_id'] = $categoryId;
+}
+
+if (mb_strlen($query) >= 2) {
+    $where[] = '(p.sku LIKE :search_sku
+                 OR p.name LIKE :search_name
+                 OR p.barcode LIKE :search_barcode
+                 OR p.model LIKE :search_model)';
+    $params += [
+        'search_sku' => $search,
+        'search_name' => $search,
+        'search_barcode' => $search,
+        'search_model' => $search,
+    ];
+}
+
+$orderSql = 'p.name ASC';
+
+if (mb_strlen($query) >= 2) {
+    $orderSql = 'CASE
+                    WHEN p.sku = :exact_sku OR p.barcode = :exact_barcode THEN 0
+                    WHEN p.sku LIKE :prefix_sku OR p.name LIKE :prefix_name THEN 1
+                    ELSE 2
+                 END,
+                 p.name ASC';
+    $params += [
+        'exact_sku' => $query,
+        'exact_barcode' => $query,
+        'prefix_sku' => $prefix,
+        'prefix_name' => $prefix,
+    ];
+}
 
 $statement = $pdo->prepare(
-    'SELECT id,
-            sku,
-            barcode,
-            name,
-            model,
-            current_stock,
-            cost_price,
-            selling_price,
-            warranty_months
-     FROM products
-     WHERE status = "active"
-       AND current_stock > 0
-       AND (
-            sku LIKE :search_sku
-            OR name LIKE :search_name
-            OR barcode LIKE :search_barcode
-            OR model LIKE :search_model
-       )
-     ORDER BY
-        CASE
-            WHEN sku = :exact_sku OR barcode = :exact_barcode THEN 0
-            WHEN sku LIKE :prefix_sku OR name LIKE :prefix_name THEN 1
-            ELSE 2
-        END,
-        name ASC
-     LIMIT 12'
+    'SELECT p.id,
+            p.sku,
+            p.barcode,
+            p.name,
+            p.model,
+            p.current_stock,
+            p.cost_price,
+            p.selling_price,
+            p.warranty_months,
+            c.name AS category_name
+     FROM products p
+     LEFT JOIN categories c ON c.id = p.category_id
+     WHERE ' . implode(' AND ', $where) . '
+     ORDER BY ' . $orderSql . '
+     LIMIT 20'
 );
-$statement->execute([
-    'search_sku' => $search,
-    'search_name' => $search,
-    'search_barcode' => $search,
-    'search_model' => $search,
-    'exact_sku' => $query,
-    'exact_barcode' => $query,
-    'prefix_sku' => $prefix,
-    'prefix_name' => $prefix,
-]);
+$statement->execute($params);
 
 $products = [];
 
@@ -77,6 +152,7 @@ foreach ($statement->fetchAll() as $product) {
         'barcode' => (string) ($product['barcode'] ?? ''),
         'name' => (string) $product['name'],
         'model' => $model,
+        'category' => (string) ($product['category_name'] ?? ''),
         'stock' => (int) $product['current_stock'],
         'cost' => (float) $product['cost_price'],
         'price' => (float) $product['selling_price'],
@@ -84,7 +160,10 @@ foreach ($statement->fetchAll() as $product) {
     ];
 }
 
-sale_product_search_json(200, ['products' => $products]);
+sale_product_search_json(200, [
+    'mode' => 'products',
+    'products' => $products,
+]);
 
 function sale_product_search_json(int $status, array $payload): never
 {

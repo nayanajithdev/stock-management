@@ -147,7 +147,7 @@ function render_sale_row(): void
         <div class="field compact-field product-picker" data-sale-product-picker>
             <span>Product</span>
             <input type="hidden" name="product_id[]" data-sale-product required>
-            <input type="search" placeholder="Search product, SKU, barcode" autocomplete="off" data-sale-product-search>
+            <input type="search" placeholder="Search product, SKU, barcode or @category" autocomplete="off" data-sale-product-search>
             <div class="product-suggestions" data-sale-product-suggestions hidden></div>
         </div>
         <div class="stock-pill" data-sale-stock>0</div>

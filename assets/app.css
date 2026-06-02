@@ -2469,6 +2469,31 @@ select,
     justify-content: space-between;
 }
 
+.product-toolbar-summary,
+.active-filter-pills {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.product-toolbar-summary {
+    justify-content: flex-end;
+    margin-left: auto;
+}
+
+.active-filter-pills span {
+    display: inline-flex;
+    align-items: center;
+    min-height: 30px;
+    border: 1px solid rgba(191, 219, 254, .18);
+    border-radius: 999px;
+    background: rgba(191, 219, 254, .06);
+    color: var(--muted);
+    padding: 0 11px;
+    font-size: 13px;
+}
+
 .ledger-tabs-block {
     display: grid;
     gap: 0;

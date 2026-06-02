@@ -7,10 +7,16 @@ $search = trim((string) ($_GET['product_search'] ?? ''));
 $statusFilter = (string) ($_GET['product_status'] ?? 'active');
 $brandFilterId = max(0, (int) ($_GET['brand_id'] ?? 0));
 $categoryFilterId = max(0, (int) ($_GET['category_id'] ?? 0));
+$stockFilter = (string) ($_GET['stock_filter'] ?? '');
 $allowedStatuses = ['active', 'inactive', 'all'];
+$allowedStockFilters = ['max_units', 'min_units', 'needs_reorder'];
 
 if (! in_array($statusFilter, $allowedStatuses, true)) {
     $statusFilter = 'active';
+}
+
+if (! in_array($stockFilter, $allowedStockFilters, true)) {
+    $stockFilter = '';
 }
 
 $products = [];
@@ -58,6 +64,10 @@ if ($dbReady && $pdo !== null) {
         $params['category_id'] = $categoryFilterId;
     }
 
+    if ($stockFilter === 'needs_reorder') {
+        $where[] = 'p.reorder_level > 0 AND p.current_stock <= p.reorder_level';
+    }
+
     $sql = 'SELECT p.*, c.name AS category_name, b.name AS brand_name, s.name AS supplier_name
             FROM products p
             LEFT JOIN categories c ON c.id = p.category_id
@@ -68,7 +78,13 @@ if ($dbReady && $pdo !== null) {
         $sql .= ' WHERE ' . implode(' AND ', $where);
     }
 
-    $sql .= ' ORDER BY p.created_at DESC, p.id DESC';
+    $orderSql = match ($stockFilter) {
+        'max_units' => 'p.current_stock DESC, p.name ASC',
+        'min_units', 'needs_reorder' => 'p.current_stock ASC, p.name ASC',
+        default => 'p.created_at DESC, p.id DESC',
+    };
+
+    $sql .= ' ORDER BY ' . $orderSql;
 
     $statement = $pdo->prepare($sql);
     $statement->execute($params);
@@ -85,6 +101,34 @@ $formTitle = $editingProduct === null ? 'Add Product' : 'Edit Product';
 $showProductForm = $editingProduct !== null || (string) ($_GET['form'] ?? '') === 'product';
 $selectedCategoryName = product_option_name($categories, (int) ($editingProduct['category_id'] ?? 0));
 $selectedBrandName = product_option_name($brands, (int) ($editingProduct['brand_id'] ?? 0));
+$stockFilterLabels = [
+    'max_units' => 'Max Units',
+    'min_units' => 'Min Units',
+    'needs_reorder' => 'Needs Reorder',
+];
+$activeProductFilters = [];
+
+if ($search !== '') {
+    $activeProductFilters[] = 'Search: ' . $search;
+}
+
+if ($statusFilter !== 'active') {
+    $activeProductFilters[] = $statusFilter === 'inactive' ? 'Archived' : 'All statuses';
+}
+
+if ($brandFilterId > 0) {
+    $filterBrandName = product_option_name($brands, $brandFilterId);
+    $activeProductFilters[] = $filterBrandName !== '' ? $filterBrandName : 'Brand #' . $brandFilterId;
+}
+
+if ($categoryFilterId > 0) {
+    $filterCategoryName = product_option_name($categories, $categoryFilterId);
+    $activeProductFilters[] = $filterCategoryName !== '' ? $filterCategoryName : 'Category #' . $categoryFilterId;
+}
+
+if ($stockFilter !== '') {
+    $activeProductFilters[] = $stockFilterLabels[$stockFilter] ?? $stockFilter;
+}
 ?>
 
 <div class="page-heading">
@@ -286,6 +330,9 @@ $selectedBrandName = product_option_name($brands, (int) ($editingProduct['brand_
                 <?php if ($categoryFilterId > 0): ?>
                     <input type="hidden" name="category_id" value="<?php echo (int) $categoryFilterId; ?>">
                 <?php endif; ?>
+                <?php if ($stockFilter !== ''): ?>
+                    <input type="hidden" name="stock_filter" value="<?php echo e($stockFilter); ?>">
+                <?php endif; ?>
                 <select name="product_status">
                     <option value="active" <?php echo $statusFilter === 'active' ? 'selected' : ''; ?>>Active</option>
                     <option value="inactive" <?php echo $statusFilter === 'inactive' ? 'selected' : ''; ?>>Archived</option>
@@ -295,11 +342,20 @@ $selectedBrandName = product_option_name($brands, (int) ($editingProduct['brand_
                 <button class="icon-button" type="submit" aria-label="Apply filters">
                     <i data-lucide="search"></i>
                 </button>
-                <?php if ($search !== '' || $statusFilter !== 'active' || $brandFilterId > 0 || $categoryFilterId > 0): ?>
+                <?php if ($search !== '' || $statusFilter !== 'active' || $brandFilterId > 0 || $categoryFilterId > 0 || $stockFilter !== ''): ?>
                     <a class="ghost-button compact-clear-button" href="<?php echo e(app_url('?page=products')); ?>">Clear</a>
                 <?php endif; ?>
             </form>
-            <span class="dashboard-pill"><?php echo count($products); ?> <?php echo count($products) === 1 ? 'product' : 'products'; ?></span>
+            <div class="product-toolbar-summary">
+                <?php if ($activeProductFilters !== []): ?>
+                    <div class="active-filter-pills" aria-label="Active product filters">
+                        <?php foreach ($activeProductFilters as $activeFilter): ?>
+                            <span><?php echo e($activeFilter); ?></span>
+                        <?php endforeach; ?>
+                    </div>
+                <?php endif; ?>
+                <span class="dashboard-pill"><?php echo count($products); ?> <?php echo count($products) === 1 ? 'product' : 'products'; ?></span>
+            </div>
         </div>
 
         <div class="table-wrap">
@@ -315,10 +371,10 @@ $selectedBrandName = product_option_name($brands, (int) ($editingProduct['brand_
                                     <i data-lucide="chevron-down"></i>
                                 </summary>
                                 <div class="th-filter-popover">
-                                    <a class="<?php echo $brandFilterId === 0 ? 'active' : ''; ?>" href="<?php echo e(product_filter_url($statusFilter, $search, 0, $categoryFilterId)); ?>">All brands</a>
+                                    <a class="<?php echo $brandFilterId === 0 ? 'active' : ''; ?>" href="<?php echo e(product_filter_url($statusFilter, $search, 0, $categoryFilterId, $stockFilter)); ?>">All brands</a>
                                     <?php foreach ($brands as $brand): ?>
                                         <?php $brandId = (int) $brand['id']; ?>
-                                        <a class="<?php echo $brandFilterId === $brandId ? 'active' : ''; ?>" href="<?php echo e(product_filter_url($statusFilter, $search, $brandId, $categoryFilterId)); ?>">
+                                        <a class="<?php echo $brandFilterId === $brandId ? 'active' : ''; ?>" href="<?php echo e(product_filter_url($statusFilter, $search, $brandId, $categoryFilterId, $stockFilter)); ?>">
                                             <?php echo e($brand['name']); ?>
                                         </a>
                                     <?php endforeach; ?>
@@ -332,17 +388,29 @@ $selectedBrandName = product_option_name($brands, (int) ($editingProduct['brand_
                                     <i data-lucide="chevron-down"></i>
                                 </summary>
                                 <div class="th-filter-popover">
-                                    <a class="<?php echo $categoryFilterId === 0 ? 'active' : ''; ?>" href="<?php echo e(product_filter_url($statusFilter, $search, $brandFilterId, 0)); ?>">All categories</a>
+                                    <a class="<?php echo $categoryFilterId === 0 ? 'active' : ''; ?>" href="<?php echo e(product_filter_url($statusFilter, $search, $brandFilterId, 0, $stockFilter)); ?>">All categories</a>
                                     <?php foreach ($categories as $category): ?>
                                         <?php $categoryId = (int) $category['id']; ?>
-                                        <a class="<?php echo $categoryFilterId === $categoryId ? 'active' : ''; ?>" href="<?php echo e(product_filter_url($statusFilter, $search, $brandFilterId, $categoryId)); ?>">
+                                        <a class="<?php echo $categoryFilterId === $categoryId ? 'active' : ''; ?>" href="<?php echo e(product_filter_url($statusFilter, $search, $brandFilterId, $categoryId, $stockFilter)); ?>">
                                             <?php echo e($category['name']); ?>
                                         </a>
                                     <?php endforeach; ?>
                                 </div>
                             </details>
                         </th>
-                        <th>Stock</th>
+                        <th>
+                            <details class="th-filter-menu <?php echo $stockFilter !== '' ? 'active' : ''; ?>">
+                                <summary>
+                                    Stock
+                                    <i data-lucide="chevron-down"></i>
+                                </summary>
+                                <div class="th-filter-popover">
+                                    <a class="<?php echo $stockFilter === 'max_units' ? 'active' : ''; ?>" href="<?php echo e(product_filter_url($statusFilter, $search, $brandFilterId, $categoryFilterId, 'max_units')); ?>">Max Units</a>
+                                    <a class="<?php echo $stockFilter === 'min_units' ? 'active' : ''; ?>" href="<?php echo e(product_filter_url($statusFilter, $search, $brandFilterId, $categoryFilterId, 'min_units')); ?>">Min Units</a>
+                                    <a class="<?php echo $stockFilter === 'needs_reorder' ? 'active' : ''; ?>" href="<?php echo e(product_filter_url($statusFilter, $search, $brandFilterId, $categoryFilterId, 'needs_reorder')); ?>">Needs Reorder</a>
+                                </div>
+                            </details>
+                        </th>
                         <th>Reorder</th>
                         <th>Cost</th>
                         <th>Sell</th>
@@ -414,7 +482,7 @@ function product_option_name(array $options, int $selectedId): string
     return '';
 }
 
-function product_filter_url(string $statusFilter, string $search, int $brandId, int $categoryId): string
+function product_filter_url(string $statusFilter, string $search, int $brandId, int $categoryId, string $stockFilter = ''): string
 {
     $params = [
         'page' => 'products',
@@ -431,6 +499,10 @@ function product_filter_url(string $statusFilter, string $search, int $brandId, 
 
     if ($categoryId > 0) {
         $params['category_id'] = $categoryId;
+    }
+
+    if ($stockFilter !== '') {
+        $params['stock_filter'] = $stockFilter;
     }
 
     return app_url('?' . http_build_query($params));

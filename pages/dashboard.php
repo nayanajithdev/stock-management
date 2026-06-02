@@ -266,7 +266,7 @@ $trendBadge = $trendMode === 'weekly'
         </div>
 
         <div class="dashboard-alerts">
-            <a href="<?php echo e(app_url('?page=products')); ?>">
+            <a href="<?php echo e(app_url('?page=products&product_status=active&stock_filter=needs_reorder')); ?>">
                 <i data-lucide="triangle-alert"></i>
                 <span>Low stock</span>
                 <strong><?php echo (int) $metrics['low_stock']; ?></strong>

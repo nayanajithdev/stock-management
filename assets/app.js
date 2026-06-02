@@ -356,6 +356,7 @@ if (purchaseForm) {
         const costInput = row.querySelector('[data-purchase-cost]');
         let searchTimer = null;
         let searchToken = 0;
+        let selectedCategory = null;
 
         row.querySelectorAll('[data-purchase-quantity], [data-purchase-cost]').forEach((input) => {
             input.addEventListener('input', recalculate);
@@ -380,6 +381,8 @@ if (purchaseForm) {
         };
 
         const selectProduct = (product) => {
+            selectedCategory = null;
+
             if (productHidden) {
                 productHidden.value = String(product.id || '');
             }
@@ -398,6 +401,48 @@ if (purchaseForm) {
 
             closeSuggestions();
             recalculate();
+        };
+
+        const renderCategorySuggestions = (categories) => {
+            if (!suggestions) {
+                return;
+            }
+
+            suggestions.innerHTML = '';
+
+            if (!categories.length) {
+                showSuggestionMessage('No categories found');
+                return;
+            }
+
+            categories.forEach((category) => {
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.className = 'product-suggestion-item category-suggestion-item';
+                button.innerHTML = `
+                    <strong></strong>
+                    <span></span>
+                `;
+                button.querySelector('strong').textContent = category.name || '';
+                button.querySelector('span').textContent = `${category.product_count ?? 0} product(s)`;
+                button.addEventListener('mousedown', (event) => event.preventDefault());
+                button.addEventListener('click', () => {
+                    selectedCategory = {
+                        id: Number.parseInt(category.id || '0', 10) || 0,
+                        name: category.name || '',
+                    };
+
+                    if (productInput) {
+                        productInput.value = `@${selectedCategory.name} `;
+                        productInput.focus();
+                    }
+
+                    runProductSearch();
+                });
+                suggestions.appendChild(button);
+            });
+
+            suggestions.hidden = false;
         };
 
         const renderSuggestions = (products) => {
@@ -421,7 +466,7 @@ if (purchaseForm) {
                     <span></span>
                 `;
                 button.querySelector('strong').textContent = product.label || '';
-                button.querySelector('span').textContent = `Stock ${product.stock ?? 0} / Cost ${money(Number.parseFloat(product.cost || '0'))} / Warranty ${product.warranty ?? 0} mo`;
+                button.querySelector('span').textContent = `${product.category ? `${product.category} / ` : ''}Stock ${product.stock ?? 0} / Cost ${money(Number.parseFloat(product.cost || '0'))} / Warranty ${product.warranty ?? 0} mo`;
                 button.addEventListener('mousedown', (event) => event.preventDefault());
                 button.addEventListener('click', () => selectProduct(product));
                 suggestions.appendChild(button);
@@ -435,21 +480,46 @@ if (purchaseForm) {
                 return;
             }
 
-            const query = productInput.value.trim();
+            const rawQuery = productInput.value.trim();
+            let query = rawQuery;
+            let categoryId = 0;
+            let categoryMode = rawQuery.startsWith('@');
 
             if (productHidden) {
                 productHidden.value = '';
             }
 
-            if (query.length < 2) {
+            if (selectedCategory) {
+                const categoryPrefix = `@${selectedCategory.name}`;
+                const lowerRawQuery = rawQuery.toLowerCase();
+                const lowerCategoryPrefix = categoryPrefix.toLowerCase();
+
+                if (lowerRawQuery === lowerCategoryPrefix || lowerRawQuery.startsWith(`${lowerCategoryPrefix} `)) {
+                    categoryMode = false;
+                    categoryId = selectedCategory.id;
+                    query = rawQuery.slice(categoryPrefix.length).trim();
+                } else {
+                    selectedCategory = null;
+                    categoryMode = rawQuery.startsWith('@');
+                    query = rawQuery;
+                }
+            }
+
+            if (!categoryMode && categoryId <= 0 && query.length < 2) {
                 closeSuggestions();
                 return;
             }
 
             const token = ++searchToken;
-            showSuggestionMessage('Searching...');
+            showSuggestionMessage(categoryMode ? 'Searching categories...' : 'Searching products...');
 
-            fetch(`${productSearchUrl}?q=${encodeURIComponent(query)}`, {
+            const params = new URLSearchParams({ q: query });
+
+            if (categoryId > 0) {
+                params.set('category_id', String(categoryId));
+            }
+
+            fetch(`${productSearchUrl}?${params.toString()}`, {
                 headers: { Accept: 'application/json' },
             })
                 .then((response) => response.ok ? response.json() : { products: [] })
@@ -458,7 +528,11 @@ if (purchaseForm) {
                         return;
                     }
 
-                    renderSuggestions(Array.isArray(data.products) ? data.products : []);
+                    if (Array.isArray(data.categories)) {
+                        renderCategorySuggestions(data.categories);
+                    } else {
+                        renderSuggestions(Array.isArray(data.products) ? data.products : []);
+                    }
                 })
                 .catch(() => {
                     if (token === searchToken) {
@@ -814,6 +888,7 @@ if (saleForm) {
         const stockDisplay = row.querySelector('[data-sale-stock]');
         let searchTimer = null;
         let searchToken = 0;
+        let selectedCategory = null;
 
         row.querySelectorAll('[data-sale-quantity], [data-sale-price], [data-sale-line-discount]').forEach((input) => {
             input.addEventListener('input', recalculateSale);
@@ -857,6 +932,7 @@ if (saleForm) {
         const selectProduct = (product) => {
             const stock = Math.max(0, Number.parseInt(product.stock || '0', 10) || 0);
             const price = Math.max(0, Number.parseFloat(product.price || '0') || 0);
+            selectedCategory = null;
 
             if (productHidden) {
                 productHidden.value = String(product.id || '');
@@ -886,6 +962,48 @@ if (saleForm) {
             recalculateSale();
         };
 
+        const renderCategorySuggestions = (categories) => {
+            if (!suggestions) {
+                return;
+            }
+
+            suggestions.innerHTML = '';
+
+            if (!categories.length) {
+                showSuggestionMessage('No categories found');
+                return;
+            }
+
+            categories.forEach((category) => {
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.className = 'product-suggestion-item category-suggestion-item';
+                button.innerHTML = `
+                    <strong></strong>
+                    <span></span>
+                `;
+                button.querySelector('strong').textContent = category.name || '';
+                button.querySelector('span').textContent = `${category.product_count ?? 0} product(s) available`;
+                button.addEventListener('mousedown', (event) => event.preventDefault());
+                button.addEventListener('click', () => {
+                    selectedCategory = {
+                        id: Number.parseInt(category.id || '0', 10) || 0,
+                        name: category.name || '',
+                    };
+
+                    if (productInput) {
+                        productInput.value = `@${selectedCategory.name} `;
+                        productInput.focus();
+                    }
+
+                    runProductSearch();
+                });
+                suggestions.appendChild(button);
+            });
+
+            suggestions.hidden = false;
+        };
+
         const renderSuggestions = (products) => {
             if (!suggestions) {
                 return;
@@ -907,7 +1025,7 @@ if (saleForm) {
                     <span></span>
                 `;
                 button.querySelector('strong').textContent = product.label || '';
-                button.querySelector('span').textContent = `Stock ${product.stock ?? 0} / Sell ${money(Number.parseFloat(product.price || '0'))}`;
+                button.querySelector('span').textContent = `${product.category ? `${product.category} / ` : ''}Stock ${product.stock ?? 0} / Sell ${money(Number.parseFloat(product.price || '0'))}`;
                 button.addEventListener('mousedown', (event) => event.preventDefault());
                 button.addEventListener('click', () => selectProduct(product));
                 suggestions.appendChild(button);
@@ -921,19 +1039,45 @@ if (saleForm) {
                 return;
             }
 
-            const query = productInput.value.trim();
+            const rawQuery = productInput.value.trim();
+            let query = rawQuery;
+            let categoryId = 0;
+            let categoryMode = rawQuery.startsWith('@');
+
+            if (selectedCategory) {
+                const categoryPrefix = `@${selectedCategory.name}`;
+                const lowerRawQuery = rawQuery.toLowerCase();
+                const lowerCategoryPrefix = categoryPrefix.toLowerCase();
+
+                if (lowerRawQuery === lowerCategoryPrefix || lowerRawQuery.startsWith(`${lowerCategoryPrefix} `)) {
+                    categoryMode = false;
+                    categoryId = selectedCategory.id;
+                    query = rawQuery.slice(categoryPrefix.length).trim();
+                } else {
+                    selectedCategory = null;
+                    categoryMode = rawQuery.startsWith('@');
+                    query = rawQuery;
+                }
+            }
+
             clearSelectedProduct();
             recalculateSale();
 
-            if (query.length < 2) {
+            if (!categoryMode && categoryId <= 0 && query.length < 2) {
                 closeSuggestions();
                 return;
             }
 
             const token = ++searchToken;
-            showSuggestionMessage('Searching...');
+            showSuggestionMessage(categoryMode ? 'Searching categories...' : 'Searching products...');
 
-            fetch(`${saleProductSearchUrl}?q=${encodeURIComponent(query)}`, {
+            const params = new URLSearchParams({ q: query });
+
+            if (categoryId > 0) {
+                params.set('category_id', String(categoryId));
+            }
+
+            fetch(`${saleProductSearchUrl}?${params.toString()}`, {
                 headers: { Accept: 'application/json' },
             })
                 .then((response) => response.ok ? response.json() : { products: [] })
@@ -942,7 +1086,11 @@ if (saleForm) {
                         return;
                     }
 
-                    renderSuggestions(Array.isArray(data.products) ? data.products : []);
+                    if (Array.isArray(data.categories)) {
+                        renderCategorySuggestions(data.categories);
+                    } else {
+                        renderSuggestions(Array.isArray(data.products) ? data.products : []);
+                    }
                 })
                 .catch(() => {
                     if (token === searchToken) {

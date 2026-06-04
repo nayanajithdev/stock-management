@@ -200,7 +200,7 @@ function stock_adjust_fetch_lot(PDO $pdo, int $productId, int $lotMovementId): ?
          WHERE id = :id
            AND product_id = :product_id
            AND quantity_change > 0
-           AND movement_type IN ("opening", "purchase", "return_in", "adjustment_in")
+           AND movement_type IN ("opening", "purchase", "return_in", "adjustment_in", "warranty_supplier_in")
          LIMIT 1'
     );
     $statement->execute([
@@ -221,7 +221,7 @@ function stock_adjust_current_lot_stock(PDO $pdo, int $productId, int $lotMoveme
          LEFT JOIN purchases pu ON sm.reference_type = "purchase" AND pu.id = sm.reference_id
          WHERE sm.product_id = :product_id
            AND sm.quantity_change > 0
-           AND sm.movement_type IN ("opening", "purchase", "return_in", "adjustment_in")
+           AND sm.movement_type IN ("opening", "purchase", "return_in", "adjustment_in", "warranty_supplier_in")
          ORDER BY COALESCE(pu.purchase_date, DATE(sm.created_at)) ASC, sm.id ASC'
     );
     $lotStatement->execute(['product_id' => $productId]);

@@ -140,7 +140,7 @@ function auth_permission_definitions(): array
         'returns' => [
             'label' => 'Returns',
             'description' => 'Process sales returns and refunds.',
-            'pages' => ['returns'],
+            'pages' => ['returns', 'warranty-returns'],
         ],
         'reports' => [
             'label' => 'Reports',
@@ -178,6 +178,10 @@ function auth_page_permission(string $page): ?string
 
 function auth_action_permission(string $scriptName): ?string
 {
+    if ($scriptName === 'warranty_save.php') {
+        return (string) ($_POST['redirect_to'] ?? '') === '?page=warranty-returns' ? 'returns' : 'warranty';
+    }
+
     return match ($scriptName) {
         'product_save.php', 'product_delete.php' => 'products',
         'master_save.php', 'master_archive.php' => 'inventory_setup',
@@ -186,10 +190,10 @@ function auth_action_permission(string $scriptName): ?string
         'expense_save.php', 'expense_void.php' => 'expenses',
         'stock_adjust.php' => 'stock',
         'sale_save.php', 'sale_product_search.php', 'customer_search.php' => 'sales',
-        'warranty_save.php', 'warranty_lookup.php' => 'warranty',
+        'warranty_lookup.php' => 'warranty',
         'customer_save.php', 'customer_archive.php' => 'customers',
         'payment_collect.php' => 'credit_sales',
-        'sales_return_save.php', 'return_lookup.php' => 'returns',
+        'sales_return_save.php', 'return_lookup.php', 'warranty_return_save.php', 'warranty_return_lookup.php' => 'returns',
         'settings_save.php', 'invoice_settings_save.php', 'backup_download.php', 'backup_restore.php' => 'settings',
         default => null,
     };

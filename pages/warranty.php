@@ -164,6 +164,26 @@ if ($dbReady && $pdo !== null) {
                         <span data-warranty-preview>Search customer, select invoice, then select the warranty item.</span>
                     </div>
 
+                    <div class="field span-2">
+                        <span>Replacement</span>
+                        <div class="replacement-options">
+                            <label class="replacement-option">
+                                <input type="radio" name="replacement_mode" value="replace_now">
+                                <span>
+                                    <strong>Replace now from stock</strong>
+                                    <small>Customer gets a new item now. Stock -1.</small>
+                                </span>
+                            </label>
+                            <label class="replacement-option">
+                                <input type="radio" name="replacement_mode" value="wait_supplier" checked>
+                                <span>
+                                    <strong>Wait for supplier</strong>
+                                    <small>No stock change until supplier sends replacement.</small>
+                                </span>
+                            </label>
+                        </div>
+                    </div>
+
                     <label class="field">
                         <span>Received Date</span>
                         <input type="date" name="received_date" value="<?php echo e(date('Y-m-d')); ?>" required>
@@ -236,7 +256,7 @@ if ($dbReady && $pdo !== null) {
                         <th>Received</th>
                         <th>Warranty Until</th>
                         <th>Issue</th>
-                        <th>Status</th>
+                        <th>Progress</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -248,7 +268,21 @@ if ($dbReady && $pdo !== null) {
 
                     <?php foreach ($claims as $claim): ?>
                         <?php $supplierRefundAmount = (float) ($claim['supplier_refund_amount'] ?? 0); ?>
-                        <tr class="clickable-row" tabindex="0" data-warranty-claim-row data-claim-id="<?php echo (int) $claim['id']; ?>" data-claim-no="<?php echo e($claim['claim_no']); ?>" data-claim-status="<?php echo e($claim['status']); ?>" data-claim-customer="<?php echo e($claim['customer_name'] ?: 'Walk-in Customer'); ?>" data-claim-product="<?php echo e($claim['sku'] . ' - ' . $claim['product_name']); ?>" data-claim-refund-amount="<?php echo e(number_format($supplierRefundAmount, 2, '.', '')); ?>" data-claim-refund-date="<?php echo e($claim['supplier_refund_date'] ?? date('Y-m-d')); ?>">
+                        <tr
+                            class="clickable-row"
+                            tabindex="0"
+                            data-warranty-claim-row
+                            data-claim-id="<?php echo (int) $claim['id']; ?>"
+                            data-claim-no="<?php echo e($claim['claim_no']); ?>"
+                            data-claim-status="<?php echo e($claim['status']); ?>"
+                            data-claim-customer="<?php echo e($claim['customer_name'] ?: 'Walk-in Customer'); ?>"
+                            data-claim-product="<?php echo e($claim['sku'] . ' - ' . $claim['product_name']); ?>"
+                            data-claim-refund-amount="<?php echo e(number_format($supplierRefundAmount, 2, '.', '')); ?>"
+                            data-claim-refund-date="<?php echo e($claim['supplier_refund_date'] ?? date('Y-m-d')); ?>"
+                            data-replacement-mode="<?php echo e($claim['replacement_mode'] ?? 'wait_supplier'); ?>"
+                            data-customer-replacement-status="<?php echo e($claim['customer_replacement_status'] ?? 'pending'); ?>"
+                            data-supplier-replacement-status="<?php echo e($claim['supplier_replacement_status'] ?? 'pending'); ?>"
+                        >
                             <td>
                                 <strong class="table-title"><?php echo e($claim['claim_no']); ?></strong>
                                 <span class="table-subtitle"><?php echo warranty_age_days((string) $claim['received_date']); ?> day(s) open</span>
@@ -270,6 +304,7 @@ if ($dbReady && $pdo !== null) {
                             <td><?php echo e($claim['issue_description']); ?></td>
                             <td>
                                 <span class="status <?php echo e(warranty_status_class((string) $claim['status'])); ?>"><?php echo e(warranty_status_label((string) $claim['status'])); ?></span>
+                                <span class="table-subtitle"><?php echo e(warranty_replacement_summary($claim)); ?></span>
                                 <?php if (! empty($claim['resolved_date'])): ?>
                                     <span class="table-subtitle"><?php echo e($claim['resolved_date']); ?></span>
                                 <?php endif; ?>
@@ -327,6 +362,27 @@ if ($dbReady && $pdo !== null) {
                 <input type="date" name="supplier_refund_date" value="<?php echo e(date('Y-m-d')); ?>" data-warranty-supplier-refund-date>
             </label>
 
+            <div class="claim-stock-actions span-2">
+                <div>
+                    <strong>Replacement stock</strong>
+                    <span data-warranty-replacement-summary>Select a claim first.</span>
+                </div>
+                <label class="claim-stock-action" data-warranty-supplier-action>
+                    <input type="checkbox" name="supplier_replacement_received" value="1" data-warranty-supplier-replacement>
+                    <span>
+                        <strong>Supplier replacement received</strong>
+                        <small>Stock +1</small>
+                    </span>
+                </label>
+                <label class="claim-stock-action" data-warranty-customer-action>
+                    <input type="checkbox" name="customer_replacement_issued" value="1" data-warranty-customer-replacement>
+                    <span>
+                        <strong>Give replacement to customer</strong>
+                        <small>Stock -1</small>
+                    </span>
+                </label>
+            </div>
+
             <label class="field span-2">
                 <span>Status Note</span>
                 <textarea name="supplier_notes" rows="3" placeholder="Optional note to append"></textarea>
@@ -363,6 +419,21 @@ function warranty_status_class(string $status): string
         'rejected' => 'status-pending',
         default => 'status-inactive',
     };
+}
+
+function warranty_replacement_summary(array $claim): string
+{
+    $customerStatus = (string) ($claim['customer_replacement_status'] ?? 'pending');
+    $supplierStatus = (string) ($claim['supplier_replacement_status'] ?? 'pending');
+
+    if ($customerStatus === 'issued' && $supplierStatus === 'received') {
+        return 'Replacement complete';
+    }
+
+    $customerText = $customerStatus === 'issued' ? 'Customer replaced' : 'Customer waiting';
+    $supplierText = $supplierStatus === 'received' ? 'Supplier received' : 'Supplier pending';
+
+    return $customerText . ' / ' . $supplierText;
 }
 
 function warranty_age_days(string $receivedDate): int

@@ -186,6 +186,8 @@ function stock_movement_labels(): array
         'sale' => 'Sale',
         'return_in' => 'Sales Return',
         'return_out' => 'Purchase Return',
+        'warranty_supplier_in' => 'Supplier Replacement',
+        'warranty_customer_out' => 'Customer Replacement',
         'adjustment_in' => 'Manual Increase',
         'adjustment_out' => 'Manual Decrease',
         'damage' => 'Damage / Loss',
@@ -201,6 +203,8 @@ function stock_movement_filter_labels(): array
         'sale' => 'Sale',
         'return_in' => 'Sales Return',
         'return_out' => 'Purchase Return',
+        'warranty_supplier_in' => 'Supplier Replacement',
+        'warranty_customer_out' => 'Customer Replacement',
         'damage' => 'Damage / Loss',
         'stock_count' => 'Lot Correction',
     ];
@@ -209,8 +213,8 @@ function stock_movement_filter_labels(): array
 function stock_movement_status_class(string $type): string
 {
     return match ($type) {
-        'purchase', 'opening', 'return_in', 'adjustment_in' => 'status-active',
-        'damage', 'sale', 'return_out', 'adjustment_out' => 'status-pending',
+        'purchase', 'opening', 'return_in', 'adjustment_in', 'warranty_supplier_in' => 'status-active',
+        'damage', 'sale', 'return_out', 'adjustment_out', 'warranty_customer_out' => 'status-pending',
         'stock_count' => 'status-warranty',
         default => 'status-inactive',
     };

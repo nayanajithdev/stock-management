@@ -389,7 +389,7 @@ function dashboard_warranty_expiring_lots(PDO $pdo): int
            AND p.item_tracking = 1
            AND sm.warranty_months > 0
            AND sm.quantity_change > 0
-           AND sm.movement_type IN ("opening", "purchase", "return_in", "adjustment_in")
+           AND sm.movement_type IN ("opening", "purchase", "return_in", "adjustment_in", "warranty_supplier_in")
          ORDER BY sm.product_id ASC, COALESCE(pu.purchase_date, DATE(sm.created_at)) ASC, sm.id ASC'
     )->fetchAll();
 

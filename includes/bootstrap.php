@@ -119,6 +119,7 @@ $menuSections = [
         ['key' => 'warranty', 'label' => 'Warranty / RMA', 'icon' => 'shield-check'],
     ],
     'Customers' => [
+        ['key' => 'warranty-returns', 'label' => 'Warranty / Returns', 'icon' => 'shield-check'],
         ['key' => 'customers', 'label' => 'Customer List', 'icon' => 'users'],
         ['key' => 'credit-sales', 'label' => 'Credit Sales', 'icon' => 'receipt-text'],
         ['key' => 'returns', 'label' => 'Returns', 'icon' => 'rotate-ccw'],
@@ -214,6 +215,11 @@ $pages = [
         'title' => 'Warranty / RMA',
         'description' => 'Track warranty claims, supplier repair status, and resolutions',
         'view' => __DIR__ . '/../pages/warranty.php',
+    ],
+    'warranty-returns' => [
+        'title' => 'Warranty / Returns',
+        'description' => 'Handle customer returns, warranty exchanges, supplier claims, and refunds',
+        'view' => __DIR__ . '/../pages/warranty_returns.php',
     ],
     'customers' => [
         'title' => 'Customers',

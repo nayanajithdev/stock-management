@@ -1233,6 +1233,510 @@ if (collectionForm) {
     renderCollectionPreview();
 }
 
+const serviceForm = document.querySelector('[data-service-form]');
+
+if (serviceForm) {
+    const lookupUrl = serviceForm.dataset.serviceLookupUrl || '';
+    const searchInput = serviceForm.querySelector('[data-service-search]');
+    const suggestions = serviceForm.querySelector('[data-service-suggestions]');
+    const invoiceList = serviceForm.querySelector('[data-service-invoices]');
+    const itemList = serviceForm.querySelector('[data-service-items]');
+    const customerLabel = serviceForm.querySelector('[data-service-customer-label]');
+    const invoiceLabel = serviceForm.querySelector('[data-service-invoice-label]');
+    const itemHidden = serviceForm.querySelector('[data-service-item]');
+    const outcomeHidden = serviceForm.querySelector('[data-service-outcome]');
+    const pathStep = serviceForm.querySelector('[data-service-path-step]');
+    const outcomeStep = serviceForm.querySelector('[data-service-outcome-step]');
+    const detailsStep = serviceForm.querySelector('[data-service-details-step]');
+    const normalOutcomes = serviceForm.querySelector('[data-service-normal-outcomes]');
+    const damagedOutcomes = serviceForm.querySelector('[data-service-damaged-outcomes]');
+    const quantityInput = serviceForm.querySelector('[data-service-quantity]');
+    const refundInput = serviceForm.querySelector('[data-service-refund]');
+    const refundFields = serviceForm.querySelectorAll('[data-service-refund-fields]');
+    const claimFields = serviceForm.querySelectorAll('[data-service-claim-fields]');
+    const preview = serviceForm.querySelector('[data-service-preview]');
+    let selectedItem = null;
+    let searchTimer = null;
+    let searchToken = 0;
+    let invoiceToken = 0;
+    let itemToken = 0;
+
+    const money = (value) => Number.isFinite(value) ? value.toFixed(2) : '0.00';
+    const warrantyOutcomes = ['warranty_refund_supplier', 'warranty_replace_now', 'warranty_wait_supplier'];
+    const replacementOutcomes = ['damaged_replace_loss', 'warranty_replace_now'];
+    const refundOutcomes = ['normal_restock', 'damaged_refund_loss', 'warranty_refund_supplier'];
+
+    const setListMessage = (container, message) => {
+        if (container) {
+            container.innerHTML = `<p class="return-choice-empty">${message}</p>`;
+        }
+    };
+
+    const closeSuggestions = () => {
+        if (!suggestions) {
+            return;
+        }
+
+        suggestions.hidden = true;
+        suggestions.innerHTML = '';
+    };
+
+    const showSuggestionMessage = (message) => {
+        if (!suggestions) {
+            return;
+        }
+
+        suggestions.innerHTML = `<div class="product-suggestion-empty">${message}</div>`;
+        suggestions.hidden = false;
+    };
+
+    const resetAfterItem = () => {
+        serviceForm.querySelectorAll('[data-service-path]').forEach((input) => {
+            input.checked = false;
+        });
+        serviceForm.querySelectorAll('[data-service-outcome-choice]').forEach((input) => {
+            input.checked = false;
+        });
+
+        if (outcomeHidden) {
+            outcomeHidden.value = '';
+        }
+
+        if (pathStep) {
+            pathStep.hidden = !selectedItem;
+        }
+
+        if (outcomeStep) {
+            outcomeStep.hidden = true;
+        }
+
+        if (detailsStep) {
+            detailsStep.hidden = true;
+        }
+
+        if (normalOutcomes) {
+            normalOutcomes.hidden = true;
+        }
+
+        if (damagedOutcomes) {
+            damagedOutcomes.hidden = true;
+        }
+    };
+
+    const updateOutcomeAvailability = () => {
+        const inWarranty = !!selectedItem?.in_warranty;
+        const hasStock = Number.parseInt(selectedItem?.stock ?? '0', 10) > 0;
+
+        serviceForm.querySelectorAll('[data-service-needs-warranty]').forEach((card) => {
+            const input = card.querySelector('input');
+            const disabled = !inWarranty;
+            card.classList.toggle('is-disabled', disabled);
+
+            if (input) {
+                input.disabled = disabled;
+                if (disabled) {
+                    input.checked = false;
+                }
+            }
+        });
+
+        replacementOutcomes.forEach((value) => {
+            const input = serviceForm.querySelector(`[data-service-outcome-choice][value="${value}"]`);
+            const card = input?.closest('.service-outcome-card');
+            const disabled = !hasStock;
+            card?.classList.toggle('is-disabled', disabled);
+
+            if (input) {
+                input.disabled = disabled;
+                if (disabled) {
+                    input.checked = false;
+                }
+            }
+        });
+    };
+
+    const showOutcomeStep = (path) => {
+        if (!outcomeStep) {
+            return;
+        }
+
+        outcomeStep.hidden = false;
+        normalOutcomes.hidden = path !== 'normal_return';
+        damagedOutcomes.hidden = path !== 'damaged_item';
+        detailsStep.hidden = true;
+
+        if (outcomeHidden) {
+            outcomeHidden.value = '';
+        }
+
+        serviceForm.querySelectorAll('[data-service-outcome-choice]').forEach((input) => {
+            input.checked = false;
+        });
+
+        updateOutcomeAvailability();
+    };
+
+    const renderServicePreview = () => {
+        if (!preview) {
+            return;
+        }
+
+        const outcome = outcomeHidden?.value || '';
+
+        if (!selectedItem || !outcome) {
+            preview.textContent = 'Select an item and action.';
+            return;
+        }
+
+        const quantity = Number.parseInt(quantityInput?.value || '1', 10) || 1;
+        const refund = Number.parseFloat(refundInput?.value || '0') || 0;
+
+        const text = {
+            normal_restock: `Refund ${money(refund)} and return ${quantity} unit(s) to sellable stock.`,
+            damaged_refund_loss: `Refund ${money(refund)}. Faulty item is not restocked; loss stays with shop.`,
+            damaged_replace_loss: 'Issue one replacement from stock. No supplier recovery is expected.',
+            warranty_refund_supplier: `Refund ${money(refund)} and keep supplier claim open for recovery.`,
+            warranty_replace_now: 'Issue one replacement now. Supplier replacement can be recorded later.',
+            warranty_wait_supplier: 'Send faulty item to supplier first. Customer replacement is pending.',
+        };
+
+        preview.textContent = text[outcome] || 'Select an item and action.';
+    };
+
+    const showDetailsStep = (outcome) => {
+        if (!selectedItem || !detailsStep || !outcomeHidden) {
+            return;
+        }
+
+        outcomeHidden.value = outcome;
+        detailsStep.hidden = false;
+
+        const isRefund = refundOutcomes.includes(outcome);
+        const isWarranty = warrantyOutcomes.includes(outcome);
+        const fixedOne = isWarranty || outcome === 'damaged_replace_loss';
+
+        refundFields.forEach((field) => {
+            field.hidden = !isRefund;
+            field.style.display = isRefund ? '' : 'none';
+        });
+
+        claimFields.forEach((field) => {
+            field.hidden = !isWarranty;
+            field.style.display = isWarranty ? '' : 'none';
+        });
+
+        if (quantityInput) {
+            quantityInput.max = String(selectedItem.available || 1);
+            quantityInput.readOnly = fixedOne;
+            quantityInput.value = fixedOne ? '1' : Math.min(Number.parseInt(quantityInput.value || '1', 10) || 1, selectedItem.available || 1);
+        }
+
+        if (refundInput && isRefund && Number.parseFloat(refundInput.value || '0') <= 0) {
+            refundInput.value = money(Number.parseFloat(selectedItem.price || '0'));
+        }
+
+        renderServicePreview();
+    };
+
+    const clearSelectedItem = () => {
+        selectedItem = null;
+
+        if (itemHidden) {
+            itemHidden.value = '';
+        }
+
+        resetAfterItem();
+
+        if (preview) {
+            preview.textContent = 'Select an item and action.';
+        }
+    };
+
+    const selectItem = (item, button) => {
+        selectedItem = item;
+
+        if (itemHidden) {
+            itemHidden.value = String(item.sale_item_id || '');
+        }
+
+        itemList?.querySelectorAll('.return-choice-card').forEach((card) => card.classList.remove('active'));
+        button?.classList.add('active');
+
+        if (quantityInput) {
+            quantityInput.value = '1';
+            quantityInput.max = String(item.available || 1);
+        }
+
+        if (refundInput) {
+            refundInput.value = money(Number.parseFloat(item.price || '0'));
+        }
+
+        resetAfterItem();
+    };
+
+    const renderItems = (items) => {
+        if (!itemList) {
+            return;
+        }
+
+        clearSelectedItem();
+
+        if (!items.length) {
+            setListMessage(itemList, 'No available items found for this invoice.');
+            return;
+        }
+
+        itemList.innerHTML = '';
+
+        items.forEach((item) => {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'return-choice-card';
+            button.innerHTML = `
+                <strong></strong>
+                <span></span>
+                <small></small>
+            `;
+            button.querySelector('strong').textContent = item.label || '';
+            button.querySelector('span').textContent = `Available ${item.available ?? 0} / Stock ${item.stock ?? 0} / Price ${money(Number.parseFloat(item.price || '0'))}`;
+            button.querySelector('small').textContent = item.in_warranty
+                ? `Warranty until ${item.warranty_until || ''}`
+                : 'No active warranty';
+            button.addEventListener('click', () => selectItem(item, button));
+            itemList.appendChild(button);
+        });
+    };
+
+    const loadItems = (invoice) => {
+        if (!lookupUrl || !invoice?.sale_id) {
+            return;
+        }
+
+        const token = ++itemToken;
+        clearSelectedItem();
+        setListMessage(itemList, 'Loading items...');
+
+        if (invoiceLabel) {
+            invoiceLabel.textContent = `${invoice.invoice_no || invoice.label} / ${invoice.customer || 'Walk-in Customer'}`;
+        }
+
+        fetch(`${lookupUrl}?type=items&sale_id=${encodeURIComponent(invoice.sale_id)}`, {
+            headers: { Accept: 'application/json' },
+        })
+            .then((response) => response.ok ? response.json() : { items: [] })
+            .then((data) => {
+                if (token !== itemToken) {
+                    return;
+                }
+
+                renderItems(Array.isArray(data.items) ? data.items : []);
+            })
+            .catch(() => {
+                if (token === itemToken) {
+                    setListMessage(itemList, 'Could not load items.');
+                }
+            });
+    };
+
+    const renderInvoices = (invoices) => {
+        if (!invoiceList) {
+            return;
+        }
+
+        clearSelectedItem();
+        setListMessage(itemList, 'Select an invoice to view items.');
+
+        if (!invoices.length) {
+            setListMessage(invoiceList, 'No invoices found.');
+            return;
+        }
+
+        invoiceList.innerHTML = '';
+
+        invoices.forEach((invoice) => {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'return-choice-card';
+            button.innerHTML = `
+                <strong></strong>
+                <span></span>
+                <small></small>
+            `;
+            button.querySelector('strong').textContent = invoice.invoice_no || invoice.label || '';
+            button.querySelector('span').textContent = `${invoice.date || ''} / ${invoice.customer || 'Walk-in Customer'}`;
+            button.querySelector('small').textContent = `${invoice.available ?? 0} item(s), ${money(Number.parseFloat(invoice.total || '0'))}`;
+            button.addEventListener('click', () => {
+                invoiceList.querySelectorAll('.return-choice-card').forEach((card) => card.classList.remove('active'));
+                button.classList.add('active');
+                loadItems(invoice);
+            });
+            invoiceList.appendChild(button);
+        });
+    };
+
+    const loadInvoices = (customer) => {
+        if (!lookupUrl || !customer?.id) {
+            return;
+        }
+
+        const token = ++invoiceToken;
+        clearSelectedItem();
+        setListMessage(invoiceList, 'Loading invoices...');
+        setListMessage(itemList, 'Select an invoice to view items.');
+
+        if (customerLabel) {
+            customerLabel.textContent = customer.label || 'Selected customer';
+        }
+
+        fetch(`${lookupUrl}?type=invoices&customer_id=${encodeURIComponent(customer.id)}`, {
+            headers: { Accept: 'application/json' },
+        })
+            .then((response) => response.ok ? response.json() : { invoices: [] })
+            .then((data) => {
+                if (token !== invoiceToken) {
+                    return;
+                }
+
+                renderInvoices(Array.isArray(data.invoices) ? data.invoices : []);
+            })
+            .catch(() => {
+                if (token === invoiceToken) {
+                    setListMessage(invoiceList, 'Could not load invoices.');
+                }
+            });
+    };
+
+    const selectSearchMatch = (match) => {
+        closeSuggestions();
+
+        if (searchInput) {
+            searchInput.value = match.type === 'invoice'
+                ? `${match.invoice_no || match.label} / ${match.customer || 'Walk-in Customer'}`
+                : match.label || '';
+        }
+
+        if (match.type === 'invoice') {
+            if (customerLabel) {
+                customerLabel.textContent = match.customer || 'Selected invoice';
+            }
+
+            renderInvoices([match]);
+            loadItems(match);
+            return;
+        }
+
+        loadInvoices(match);
+    };
+
+    const renderSearchMatches = (matches) => {
+        if (!suggestions) {
+            return;
+        }
+
+        suggestions.innerHTML = '';
+
+        if (!matches.length) {
+            showSuggestionMessage('No invoices found');
+            return;
+        }
+
+        matches.forEach((match) => {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'product-suggestion-item';
+            button.innerHTML = `
+                <strong></strong>
+                <span></span>
+            `;
+            button.querySelector('strong').textContent = match.type === 'invoice'
+                ? `Invoice ${match.invoice_no || match.label}`
+                : match.label || '';
+            button.querySelector('span').textContent = `${match.type === 'invoice' ? 'Invoice' : 'Customer'} / ${match.meta || ''}`;
+            button.addEventListener('mousedown', (event) => event.preventDefault());
+            button.addEventListener('click', () => selectSearchMatch(match));
+            suggestions.appendChild(button);
+        });
+
+        suggestions.hidden = false;
+    };
+
+    const runSearch = () => {
+        if (!searchInput || !lookupUrl) {
+            return;
+        }
+
+        const query = searchInput.value.trim();
+
+        if (query.length < 2) {
+            closeSuggestions();
+            return;
+        }
+
+        const token = ++searchToken;
+        showSuggestionMessage('Searching...');
+
+        fetch(`${lookupUrl}?type=search&q=${encodeURIComponent(query)}`, {
+            headers: { Accept: 'application/json' },
+        })
+            .then((response) => response.ok ? response.json() : { matches: [] })
+            .then((data) => {
+                if (token !== searchToken) {
+                    return;
+                }
+
+                renderSearchMatches(Array.isArray(data.matches) ? data.matches : []);
+            })
+            .catch(() => {
+                if (token === searchToken) {
+                    showSuggestionMessage('Search failed');
+                }
+            });
+    };
+
+    serviceForm.querySelectorAll('[data-service-path]').forEach((input) => {
+        input.addEventListener('change', () => showOutcomeStep(input.value));
+    });
+
+    serviceForm.querySelectorAll('[data-service-outcome-choice]').forEach((input) => {
+        input.addEventListener('change', () => showDetailsStep(input.value));
+    });
+
+    [quantityInput, refundInput].forEach((input) => {
+        input?.addEventListener('input', renderServicePreview);
+    });
+
+    searchInput?.addEventListener('input', () => {
+        window.clearTimeout(searchTimer);
+        searchTimer = window.setTimeout(runSearch, 180);
+    });
+
+    searchInput?.addEventListener('focus', () => {
+        if (searchInput.value.trim().length >= 2) {
+            runSearch();
+        }
+    });
+
+    searchInput?.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape') {
+            closeSuggestions();
+        }
+    });
+
+    searchInput?.addEventListener('blur', () => {
+        window.setTimeout(closeSuggestions, 120);
+    });
+
+    serviceForm.addEventListener('submit', (event) => {
+        if (!itemHidden?.value || !outcomeHidden?.value) {
+            event.preventDefault();
+
+            if (preview) {
+                preview.textContent = 'Choose the invoice item and handling action before saving.';
+            }
+        }
+    });
+}
+
 const returnForm = document.querySelector('[data-return-form]');
 
 if (returnForm) {
@@ -1948,10 +2452,67 @@ if (warrantyClaimModal) {
     const closeButton = warrantyClaimModal.querySelector('[data-warranty-claim-close]');
     const supplierRefundInput = warrantyClaimModal.querySelector('[data-warranty-supplier-refund]');
     const supplierRefundDateInput = warrantyClaimModal.querySelector('[data-warranty-supplier-refund-date]');
+    const replacementSummary = warrantyClaimModal.querySelector('[data-warranty-replacement-summary]');
+    const supplierReplacementInput = warrantyClaimModal.querySelector('[data-warranty-supplier-replacement]');
+    const customerReplacementInput = warrantyClaimModal.querySelector('[data-warranty-customer-replacement]');
+    const supplierReplacementAction = warrantyClaimModal.querySelector('[data-warranty-supplier-action]');
+    const customerReplacementAction = warrantyClaimModal.querySelector('[data-warranty-customer-action]');
+    let activeCustomerReplacementStatus = 'pending';
+    let activeSupplierReplacementStatus = 'pending';
 
     const closeWarrantyModal = () => {
         warrantyClaimModal.hidden = true;
         document.body.classList.remove('modal-open');
+    };
+
+    const replacementText = (customerStatus, supplierStatus) => {
+        if (customerStatus === 'issued' && supplierStatus === 'received') {
+            return 'Replacement complete.';
+        }
+
+        if (customerStatus === 'refunded') {
+            const supplierText = supplierStatus === 'received' ? 'supplier recovery received.' : 'supplier recovery pending.';
+            return `Customer already refunded; ${supplierText}`;
+        }
+
+        if (supplierStatus === 'none') {
+            return customerStatus === 'issued'
+                ? 'Customer replacement issued. No supplier replacement expected.'
+                : 'No supplier replacement expected.';
+        }
+
+        const customerText = customerStatus === 'issued' ? 'Customer already received replacement.' : 'Customer is waiting for replacement.';
+        const supplierText = supplierStatus === 'received' ? 'Supplier replacement received.' : 'Supplier replacement pending.';
+
+        return `${customerText} ${supplierText}`;
+    };
+
+    const configureStockAction = (input, container, completed) => {
+        if (!input) {
+            return;
+        }
+
+        input.checked = false;
+        input.disabled = completed;
+        container?.classList.toggle('is-disabled', completed);
+    };
+
+    const syncWarrantyStatusFromActions = () => {
+        if (!statusSelect) {
+            return;
+        }
+
+        const supplierDone = ['received', 'none'].includes(activeSupplierReplacementStatus) || !!supplierReplacementInput?.checked;
+        const supplierReceived = activeSupplierReplacementStatus === 'received' || !!supplierReplacementInput?.checked;
+        const customerDone = ['issued', 'refunded'].includes(activeCustomerReplacementStatus) || !!customerReplacementInput?.checked;
+
+        if (supplierDone && customerDone) {
+            statusSelect.value = 'resolved';
+        } else if (supplierReceived) {
+            statusSelect.value = 'ready_for_pickup';
+        } else if (customerDone && statusSelect.value === 'received') {
+            statusSelect.value = 'sent_to_supplier';
+        }
     };
 
     const openWarrantyModal = (row) => {
@@ -1962,6 +2523,8 @@ if (warrantyClaimModal) {
         const product = row.dataset.claimProduct || '';
         const refundAmount = row.dataset.claimRefundAmount || '0.00';
         const refundDate = row.dataset.claimRefundDate || new Date().toISOString().slice(0, 10);
+        activeCustomerReplacementStatus = row.dataset.customerReplacementStatus || 'pending';
+        activeSupplierReplacementStatus = row.dataset.supplierReplacementStatus || 'pending';
 
         if (claimIdInput) {
             claimIdInput.value = claimId;
@@ -1983,6 +2546,13 @@ if (warrantyClaimModal) {
             supplierRefundDateInput.value = refundDate;
         }
 
+        if (replacementSummary) {
+            replacementSummary.textContent = replacementText(activeCustomerReplacementStatus, activeSupplierReplacementStatus);
+        }
+
+        configureStockAction(supplierReplacementInput, supplierReplacementAction, ['received', 'none'].includes(activeSupplierReplacementStatus));
+        configureStockAction(customerReplacementInput, customerReplacementAction, ['issued', 'refunded'].includes(activeCustomerReplacementStatus));
+
         warrantyClaimModal.hidden = false;
         document.body.classList.add('modal-open');
         statusSelect?.focus();
@@ -1997,6 +2567,9 @@ if (warrantyClaimModal) {
             }
         });
     });
+
+    supplierReplacementInput?.addEventListener('change', syncWarrantyStatusFromActions);
+    customerReplacementInput?.addEventListener('change', syncWarrantyStatusFromActions);
 
     closeButton?.addEventListener('click', closeWarrantyModal);
     warrantyClaimModal.addEventListener('click', (event) => {

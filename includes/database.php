@@ -92,7 +92,9 @@ function app_database_ready(PDO $pdo): bool
     return app_column_exists($pdo, 'users', 'email')
         && app_column_exists($pdo, 'products', 'item_tracking')
         && app_column_exists($pdo, 'purchase_items', 'warranty_months')
-        && app_column_exists($pdo, 'stock_movements', 'warranty_months');
+        && app_column_exists($pdo, 'stock_movements', 'warranty_months')
+        && app_column_exists($pdo, 'warranty_claims', 'sale_item_id')
+        && app_column_exists($pdo, 'warranty_claims', 'replacement_mode');
 }
 
 function app_apply_schema_upgrades(PDO $pdo): void
@@ -104,6 +106,12 @@ function app_apply_schema_upgrades(PDO $pdo): void
     $columns = [
         'supplier_refund_amount' => 'ALTER TABLE warranty_claims ADD COLUMN supplier_refund_amount DECIMAL(12,2) NOT NULL DEFAULT 0.00 AFTER supplier_notes',
         'supplier_refund_date' => 'ALTER TABLE warranty_claims ADD COLUMN supplier_refund_date DATE NULL AFTER supplier_refund_amount',
+        'sale_item_id' => 'ALTER TABLE warranty_claims ADD COLUMN sale_item_id BIGINT UNSIGNED NULL AFTER sale_id',
+        'replacement_mode' => 'ALTER TABLE warranty_claims ADD COLUMN replacement_mode VARCHAR(30) NOT NULL DEFAULT \'wait_supplier\' AFTER supplier_refund_date',
+        'customer_replacement_status' => 'ALTER TABLE warranty_claims ADD COLUMN customer_replacement_status VARCHAR(30) NOT NULL DEFAULT \'pending\' AFTER replacement_mode',
+        'customer_replaced_at' => 'ALTER TABLE warranty_claims ADD COLUMN customer_replaced_at DATETIME NULL AFTER customer_replacement_status',
+        'supplier_replacement_status' => 'ALTER TABLE warranty_claims ADD COLUMN supplier_replacement_status VARCHAR(30) NOT NULL DEFAULT \'pending\' AFTER customer_replaced_at',
+        'supplier_replaced_at' => 'ALTER TABLE warranty_claims ADD COLUMN supplier_replaced_at DATETIME NULL AFTER supplier_replacement_status',
     ];
 
     foreach ($columns as $column => $sql) {

@@ -846,6 +846,11 @@ h2 {
     gap: 20px;
 }
 
+.warranty-return-layout {
+    display: grid;
+    gap: 20px;
+}
+
 .user-layout {
     display: grid;
     grid-template-columns: 380px minmax(0, 1fr);
@@ -1540,6 +1545,158 @@ input[readonly] {
 
 .return-choice-card span,
 .return-choice-card small {
+    color: var(--muted);
+    font-size: 12px;
+}
+
+.replacement-options,
+.claim-stock-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+}
+
+.replacement-option,
+.claim-stock-action {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    min-height: 70px;
+    border: 1px solid rgba(255, 255, 255, .08);
+    border-radius: 8px;
+    background: rgba(17, 24, 32, .62);
+    color: var(--text);
+    padding: 12px;
+}
+
+.replacement-option:has(input:checked),
+.claim-stock-action:has(input:checked) {
+    border-color: rgba(14, 165, 233, .78);
+    background: rgba(14, 165, 233, .12);
+}
+
+.replacement-option input,
+.claim-stock-action input {
+    margin-top: 3px;
+    accent-color: var(--accent);
+}
+
+.replacement-option span,
+.claim-stock-action span {
+    display: grid;
+    gap: 4px;
+}
+
+.replacement-option small,
+.claim-stock-action small,
+.claim-stock-actions > div > span {
+    color: var(--muted);
+    font-size: 12px;
+}
+
+.claim-stock-actions {
+    grid-template-columns: 1fr 1fr;
+    border: 1px solid rgba(255, 255, 255, .08);
+    border-radius: 8px;
+    padding: 12px;
+}
+
+.claim-stock-actions > div:first-child {
+    grid-column: 1 / -1;
+    display: grid;
+    gap: 4px;
+}
+
+.claim-stock-action.is-disabled {
+    opacity: .56;
+}
+
+.service-wizard {
+    display: grid;
+    gap: 18px;
+    margin-top: 18px;
+}
+
+.service-step {
+    display: grid;
+    gap: 14px;
+    border-top: 1px solid rgba(255, 255, 255, .08);
+    padding-top: 18px;
+}
+
+.service-step:first-child {
+    border-top: 0;
+    padding-top: 0;
+}
+
+.service-step[hidden] {
+    display: none;
+}
+
+.service-step-title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.service-step-title span {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border: 1px solid rgba(14, 165, 233, .55);
+    border-radius: 999px;
+    color: var(--accent);
+    font-weight: 800;
+}
+
+.service-outcome-group {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+}
+
+.service-outcome-group[hidden] {
+    display: none;
+}
+
+[data-service-refund-fields][hidden],
+[data-service-claim-fields][hidden] {
+    display: none !important;
+}
+
+.service-outcome-card {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    min-height: 88px;
+    border: 1px solid rgba(255, 255, 255, .08);
+    border-radius: 8px;
+    background: rgba(17, 24, 32, .62);
+    padding: 12px;
+}
+
+.service-outcome-card:has(input:checked) {
+    border-color: rgba(14, 165, 233, .78);
+    background: rgba(14, 165, 233, .12);
+}
+
+.service-outcome-card.is-disabled {
+    opacity: .48;
+}
+
+.service-outcome-card input {
+    margin-top: 3px;
+    accent-color: var(--accent);
+}
+
+.service-outcome-card span {
+    display: grid;
+    gap: 5px;
+}
+
+.service-outcome-card small {
     color: var(--muted);
     font-size: 12px;
 }

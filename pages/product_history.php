@@ -43,7 +43,7 @@ if ($dbReady && $pdo !== null && $productId > 0) {
                     COALESCE(pu.purchase_date, DATE(sm.created_at)) AS history_date,
                     sm.created_at AS history_created_at,
                     CASE
-                        WHEN sm.warranty_months > 0 AND sm.movement_type IN ("opening", "purchase")
+                        WHEN sm.warranty_months > 0 AND sm.movement_type IN ("opening", "purchase", "warranty_supplier_in")
                             THEN DATE_ADD(COALESCE(pu.purchase_date, DATE(sm.created_at)), INTERVAL sm.warranty_months MONTH)
                         ELSE NULL
                     END AS warranty_ends_at,
@@ -53,7 +53,7 @@ if ($dbReady && $pdo !== null && $productId > 0) {
              LEFT JOIN users u ON u.id = sm.created_by
              WHERE sm.product_id = :product_id
                AND sm.quantity_change > 0
-               AND sm.movement_type IN ("opening", "purchase", "return_in", "adjustment_in")
+               AND sm.movement_type IN ("opening", "purchase", "return_in", "adjustment_in", "warranty_supplier_in")
              ORDER BY COALESCE(pu.purchase_date, DATE(sm.created_at)) ASC, sm.id ASC
              LIMIT 200'
         );
@@ -248,6 +248,8 @@ function product_history_movement_labels(): array
         'sale' => 'Sale',
         'return_in' => 'Sales Return',
         'return_out' => 'Purchase Return',
+        'warranty_supplier_in' => 'Supplier Replacement',
+        'warranty_customer_out' => 'Customer Replacement',
         'adjustment_in' => 'Manual Increase',
         'adjustment_out' => 'Manual Decrease',
         'damage' => 'Damage / Loss',
@@ -258,8 +260,8 @@ function product_history_movement_labels(): array
 function product_history_movement_status_class(string $type): string
 {
     return match ($type) {
-        'purchase', 'opening', 'return_in', 'adjustment_in' => 'status-active',
-        'damage', 'sale', 'return_out', 'adjustment_out' => 'status-pending',
+        'purchase', 'opening', 'return_in', 'adjustment_in', 'warranty_supplier_in' => 'status-active',
+        'damage', 'sale', 'return_out', 'adjustment_out', 'warranty_customer_out' => 'status-pending',
         'stock_count' => 'status-warranty',
         default => 'status-inactive',
     };

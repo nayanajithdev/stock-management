@@ -21,9 +21,13 @@ $settings = [
     <div>
         <h1>Invoice Settings</h1>
     </div>
+    <a class="top-action" href="<?php echo e(app_url('?page=invoice-preview')); ?>">
+        <i data-lucide="eye"></i>
+        Preview Invoice
+    </a>
 </div>
 
-<section class="settings-layout">
+<section class="settings-layout settings-single-layout">
     <article class="panel" id="invoice-settings-form">
         <div class="panel-header">
             <div>
@@ -86,48 +90,4 @@ $settings = [
         <?php endif; ?>
     </article>
 
-    <aside class="panel settings-preview">
-        <div class="panel-header compact">
-            <div>
-                <p class="panel-label">Preview</p>
-                <h2>Invoice text</h2>
-            </div>
-        </div>
-
-        <div class="settings-receipt">
-            <strong><?php echo e($settings['shop_name']); ?></strong>
-            <?php if ($settings['shop_legal_name'] !== ''): ?>
-                <span><?php echo e($settings['shop_legal_name']); ?></span>
-            <?php endif; ?>
-            <?php if ($settings['shop_address'] !== ''): ?>
-                <span><?php echo nl2br(e($settings['shop_address'])); ?></span>
-            <?php endif; ?>
-            <?php if ($settings['shop_phone'] !== '' || $settings['shop_email'] !== ''): ?>
-                <span><?php echo e(trim($settings['shop_phone'] . ' ' . $settings['shop_email'])); ?></span>
-            <?php endif; ?>
-
-            <div class="settings-preview-line"></div>
-
-            <dl>
-                <div>
-                    <dt>Currency</dt>
-                    <dd><?php echo e($settings['currency']); ?></dd>
-                </div>
-                <div>
-                    <dt>Default Tax</dt>
-                    <dd><?php echo e(number_format((float) $settings['default_tax_percent'], 2)); ?>%</dd>
-                </div>
-            </dl>
-
-            <?php if ($settings['invoice_footer'] !== ''): ?>
-                <p><?php echo e($settings['invoice_footer']); ?></p>
-            <?php endif; ?>
-            <?php if ($settings['return_policy'] !== ''): ?>
-                <p><?php echo e($settings['return_policy']); ?></p>
-            <?php endif; ?>
-            <?php if ($settings['warranty_policy'] !== ''): ?>
-                <p><?php echo e($settings['warranty_policy']); ?></p>
-            <?php endif; ?>
-        </div>
-    </aside>
 </section>

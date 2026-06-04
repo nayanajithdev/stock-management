@@ -789,6 +789,10 @@ h2 {
     gap: 20px;
 }
 
+.invoice-preview-layout {
+    grid-template-columns: minmax(0, 980px);
+}
+
 .invoice-actions {
     display: flex;
     flex-wrap: wrap;
@@ -800,6 +804,10 @@ h2 {
     grid-template-columns: 380px minmax(0, 1fr);
     align-items: start;
     gap: 20px;
+}
+
+.stock-ledger-layout {
+    grid-template-columns: 1fr;
 }
 
 .customer-layout {
@@ -2562,8 +2570,38 @@ select,
 }
 
 .panel-search-note {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
     margin: 6px 0 0;
     font-size: 14px;
+}
+
+.filter-clear-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    min-height: 26px;
+    border: 1px solid rgba(14, 165, 233, .28);
+    border-radius: 999px;
+    background: rgba(14, 165, 233, .08);
+    color: var(--accent-2);
+    font-size: 12px;
+    line-height: 1;
+    padding: 0 9px 0 7px;
+    text-decoration: none;
+}
+
+.filter-clear-link:hover {
+    border-color: rgba(14, 165, 233, .52);
+    background: rgba(14, 165, 233, .14);
+    color: var(--text);
+}
+
+.filter-clear-link svg {
+    width: 14px;
+    height: 14px;
 }
 
 .table-search {

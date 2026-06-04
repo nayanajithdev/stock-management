@@ -30,7 +30,8 @@ if ($dbReady && $pdo !== null && $productId > 0) {
             'SELECT COALESCE(SUM(CASE WHEN quantity_change > 0 THEN quantity_change ELSE 0 END), 0) AS stock_in,
                     COALESCE(SUM(CASE WHEN quantity_change < 0 THEN ABS(quantity_change) ELSE 0 END), 0) AS stock_out
              FROM stock_movements
-             WHERE product_id = :product_id'
+             WHERE product_id = :product_id
+               AND (reference_type IS NULL OR reference_type <> "stock_lot")'
         );
         $summaryStatement->execute(['product_id' => $productId]);
         $summaryRow = $summaryStatement->fetch() ?: [];
@@ -60,10 +61,24 @@ if ($dbReady && $pdo !== null && $productId > 0) {
         $stockLots = $lotStatement->fetchAll();
         $summary['lot_count'] = count($stockLots);
 
-        $outboundRemaining = $summary['stock_out'];
+        $lotIds = array_map(static fn (array $lot): int => (int) $lot['id'], $stockLots);
+        $lotAdjustments = product_history_lot_adjustments($pdo, $productId, $lotIds);
+
+        $outboundStatement = $pdo->prepare(
+            'SELECT COALESCE(SUM(ABS(quantity_change)), 0)
+             FROM stock_movements
+             WHERE product_id = :product_id
+               AND quantity_change < 0
+               AND (reference_type IS NULL OR reference_type <> "stock_lot")'
+        );
+        $outboundStatement->execute(['product_id' => $productId]);
+        $outboundRemaining = (int) $outboundStatement->fetchColumn();
+
         foreach ($stockLots as $index => $lot) {
-            $lotQuantity = (int) $lot['quantity_change'];
+            $lotId = (int) $lot['id'];
+            $lotQuantity = max(0, (int) $lot['quantity_change'] + (int) ($lotAdjustments[$lotId] ?? 0));
             $deducted = min($lotQuantity, $outboundRemaining);
+            $stockLots[$index]['adjusted_lot_quantity'] = $lotQuantity;
             $stockLots[$index]['current_lot_stock'] = max(0, $lotQuantity - $deducted);
             $outboundRemaining = max(0, $outboundRemaining - $deducted);
         }
@@ -122,11 +137,12 @@ if ($dbReady && $pdo !== null && $productId > 0) {
                         <th>Reference</th>
                         <th>By</th>
                         <th>Notes</th>
+                        <th>Actions</th>
                     </tr>
                 </thead>
                 <tbody>
                     <?php if ($stockLots === []): ?>
-                        <tr><td colspan="8">No stock lots recorded for this product.</td></tr>
+                        <tr><td colspan="9">No stock lots recorded for this product.</td></tr>
                     <?php endif; ?>
 
                     <?php foreach ($stockLots as $movement): ?>
@@ -157,12 +173,70 @@ if ($dbReady && $pdo !== null && $productId > 0) {
                             <td><?php echo e($reference !== '' ? $reference : 'Manual'); ?></td>
                             <td><?php echo e($movement['created_by_name'] ?: '-'); ?></td>
                             <td><?php echo e($movement['notes'] ?? ''); ?></td>
+                            <td>
+                                <button
+                                    class="icon-button"
+                                    type="button"
+                                    aria-label="Correct this stock lot"
+                                    data-lot-correct-button
+                                    data-lot-id="<?php echo (int) $movement['id']; ?>"
+                                    data-product-id="<?php echo (int) $product['id']; ?>"
+                                    data-current-stock="<?php echo $currentLotStock; ?>"
+                                    data-lot-summary="<?php echo e($historyDateTime . ' / received ' . $quantityChange); ?>"
+                                >
+                                    <i data-lucide="sliders-horizontal"></i>
+                                </button>
+                            </td>
                         </tr>
                     <?php endforeach; ?>
                 </tbody>
             </table>
         </div>
     </section>
+<?php endif; ?>
+
+<?php if ($dbReady && is_array($product)): ?>
+    <div class="modal-backdrop" data-lot-correct-modal hidden>
+        <div class="modal-card lot-correct-modal" role="dialog" aria-modal="true" aria-labelledby="lot-correct-title">
+            <div class="panel-header">
+                <div>
+                    <h2 id="lot-correct-title">Correct stock</h2>
+                    <p class="modal-subtitle" data-lot-correct-summary>Select a stock lot.</p>
+                </div>
+                <button class="icon-button" type="button" aria-label="Close stock correction" data-lot-correct-close>
+                    <i data-lucide="x"></i>
+                </button>
+            </div>
+
+            <form class="warranty-form single-form lot-correct-form" method="post" action="<?php echo e(app_url('actions/stock_adjust.php')); ?>">
+                <?php echo csrf_field(); ?>
+                <input type="hidden" name="product_id" value="<?php echo (int) $product['id']; ?>" data-lot-correct-product>
+                <input type="hidden" name="lot_movement_id" value="" data-lot-correct-lot required>
+
+                <div class="stock-current">
+                    <span>Current lot stock</span>
+                    <strong data-lot-correct-current>0</strong>
+                </div>
+
+                <label class="field">
+                    <span>New stock count</span>
+                    <input type="number" name="exact_stock" min="0" step="1" value="0" required data-lot-correct-exact>
+                </label>
+
+                <label class="field span-2">
+                    <span>Notes</span>
+                    <textarea name="notes" rows="3" placeholder="Example: Physical count correction" required></textarea>
+                </label>
+
+                <div class="form-actions span-2">
+                    <button class="top-action" type="submit">
+                        <i data-lucide="save"></i>
+                        Save Adjustment
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
 <?php endif; ?>
 
 <?php
@@ -177,7 +251,7 @@ function product_history_movement_labels(): array
         'adjustment_in' => 'Manual Increase',
         'adjustment_out' => 'Manual Decrease',
         'damage' => 'Damage / Loss',
-        'stock_count' => 'Stock Count',
+        'stock_count' => 'Lot Correction',
     ];
 }
 
@@ -189,4 +263,30 @@ function product_history_movement_status_class(string $type): string
         'stock_count' => 'status-warranty',
         default => 'status-inactive',
     };
+}
+
+function product_history_lot_adjustments(PDO $pdo, int $productId, array $lotIds): array
+{
+    if ($lotIds === []) {
+        return [];
+    }
+
+    $placeholders = implode(',', array_fill(0, count($lotIds), '?'));
+    $statement = $pdo->prepare(
+        'SELECT reference_id, COALESCE(SUM(quantity_change), 0) AS adjustment
+         FROM stock_movements
+         WHERE product_id = ?
+           AND reference_type = "stock_lot"
+           AND reference_id IN (' . $placeholders . ')
+         GROUP BY reference_id'
+    );
+    $statement->execute(array_merge([$productId], $lotIds));
+
+    $adjustments = [];
+
+    foreach ($statement->fetchAll() as $row) {
+        $adjustments[(int) $row['reference_id']] = (int) $row['adjustment'];
+    }
+
+    return $adjustments;
 }

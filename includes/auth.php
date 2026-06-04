@@ -155,7 +155,7 @@ function auth_permission_definitions(): array
         'settings' => [
             'label' => 'Shop Settings',
             'description' => 'Update business profile, invoice settings, and system defaults.',
-            'pages' => ['settings', 'invoice-settings', 'backup'],
+            'pages' => ['settings', 'invoice-settings', 'invoice-preview', 'backup'],
         ],
     ];
 }

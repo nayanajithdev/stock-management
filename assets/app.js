@@ -2011,3 +2011,68 @@ if (warrantyClaimModal) {
         }
     });
 }
+
+const lotCorrectModal = document.querySelector('[data-lot-correct-modal]');
+
+if (lotCorrectModal) {
+    const productInput = lotCorrectModal.querySelector('[data-lot-correct-product]');
+    const lotInput = lotCorrectModal.querySelector('[data-lot-correct-lot]');
+    const currentStock = lotCorrectModal.querySelector('[data-lot-correct-current]');
+    const exactInput = lotCorrectModal.querySelector('[data-lot-correct-exact]');
+    const summary = lotCorrectModal.querySelector('[data-lot-correct-summary]');
+    const closeButton = lotCorrectModal.querySelector('[data-lot-correct-close]');
+
+    const closeLotCorrectModal = () => {
+        lotCorrectModal.hidden = true;
+        document.body.classList.remove('modal-open');
+    };
+
+    const openLotCorrectModal = (button) => {
+        const lotId = button.dataset.lotId || '';
+        const productId = button.dataset.productId || '';
+        const stock = button.dataset.currentStock || '0';
+        const lotSummary = button.dataset.lotSummary || 'Selected stock lot';
+
+        if (productInput) {
+            productInput.value = productId;
+        }
+
+        if (lotInput) {
+            lotInput.value = lotId;
+        }
+
+        if (currentStock) {
+            currentStock.textContent = stock;
+        }
+
+        if (exactInput) {
+            exactInput.value = stock;
+        }
+
+        if (summary) {
+            summary.textContent = lotSummary;
+        }
+
+        lotCorrectModal.hidden = false;
+        document.body.classList.add('modal-open');
+        exactInput?.focus();
+        exactInput?.select();
+    };
+
+    document.querySelectorAll('[data-lot-correct-button]').forEach((button) => {
+        button.addEventListener('click', () => openLotCorrectModal(button));
+    });
+
+    closeButton?.addEventListener('click', closeLotCorrectModal);
+    lotCorrectModal.addEventListener('click', (event) => {
+        if (event.target === lotCorrectModal) {
+            closeLotCorrectModal();
+        }
+    });
+
+    document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape' && !lotCorrectModal.hidden) {
+            closeLotCorrectModal();
+        }
+    });
+}

@@ -7,6 +7,7 @@ $movements = [];
 $stockSearch = trim((string) ($_GET['q'] ?? ''));
 $typeFilter = trim((string) ($_GET['movement_type'] ?? ''));
 $movementLabels = stock_movement_labels();
+$filterMovementLabels = stock_movement_filter_labels();
 $summary = [
     'stock_units' => 0,
     'stock_value' => 0.0,
@@ -14,7 +15,7 @@ $summary = [
     'manual_month' => 0,
 ];
 
-if (! array_key_exists($typeFilter, $movementLabels)) {
+if (! array_key_exists($typeFilter, $filterMovementLabels)) {
     $typeFilter = '';
 }
 
@@ -91,86 +92,7 @@ if ($dbReady && $pdo !== null) {
     </article>
 </section>
 
-<section class="stock-layout">
-    <article class="panel form-panel" id="stock-adjustment-form">
-        <div class="panel-header">
-            <div>
-                <p class="panel-label">Manual Adjustment</p>
-                <h2>Correct stock</h2>
-            </div>
-        </div>
-
-        <?php if (! $dbReady): ?>
-            <p class="empty-state">Import <code>database/schema.sql</code> before adjusting stock.</p>
-        <?php elseif ($products === []): ?>
-            <p class="empty-state">Add products before making stock adjustments.</p>
-        <?php else: ?>
-            <form class="product-form single-form" method="post" action="<?php echo e(app_url('actions/stock_adjust.php')); ?>" data-stock-adjust-form>
-                <?php echo csrf_field(); ?>
-
-                <label class="field">
-                    <span>Product</span>
-                    <select name="product_id" data-stock-product required>
-                        <option value="">Choose product</option>
-                        <?php foreach ($products as $product): ?>
-                            <?php
-                            $label = $product['sku'] . ' - ' . $product['name'];
-                            if ((string) ($product['model'] ?? '') !== '') {
-                                $label .= ' (' . $product['model'] . ')';
-                            }
-                            ?>
-                            <option value="<?php echo (int) $product['id']; ?>" data-stock="<?php echo (int) $product['current_stock']; ?>" data-cost="<?php echo e($product['cost_price']); ?>">
-                                <?php echo e($label); ?>
-                            </option>
-                        <?php endforeach; ?>
-                    </select>
-                </label>
-
-                <div class="stock-current">
-                    <span>Current Stock</span>
-                    <strong data-stock-current>Choose product</strong>
-                </div>
-
-                <label class="field">
-                    <span>Adjustment Type</span>
-                    <select name="adjustment_type" data-stock-adjust-type required>
-                        <option value="increase">Manual increase</option>
-                        <option value="decrease">Manual decrease</option>
-                        <option value="damage">Damage or loss</option>
-                        <option value="count">Set exact count</option>
-                    </select>
-                </label>
-
-                <label class="field" data-stock-quantity-field>
-                    <span>Quantity</span>
-                    <input type="number" name="quantity" value="1" min="1" step="1" data-stock-quantity>
-                </label>
-
-                <label class="field hidden-field" data-stock-exact-field>
-                    <span>Exact Stock Count</span>
-                    <input type="number" name="exact_stock" value="0" min="0" step="1" data-stock-exact>
-                </label>
-
-                <label class="field">
-                    <span>Notes</span>
-                    <textarea name="notes" rows="4" placeholder="Example: Physical count correction, damaged item, missing stock found" required></textarea>
-                </label>
-
-                <div class="adjustment-preview">
-                    <i data-lucide="activity"></i>
-                    <span data-stock-preview>Select a product to preview the stock change.</span>
-                </div>
-
-                <div class="form-actions">
-                    <button class="top-action" type="submit">
-                        <i data-lucide="save"></i>
-                        Save Adjustment
-                    </button>
-                </div>
-            </form>
-        <?php endif; ?>
-    </article>
-
+<section class="stock-layout stock-ledger-layout">
     <article class="panel table-panel">
         <div class="panel-header">
             <div>
@@ -178,10 +100,15 @@ if ($dbReady && $pdo !== null) {
                 <h2>Stock audit trail</h2>
                 <?php if ($stockSearch !== '' || $typeFilter !== ''): ?>
                     <p class="search-note panel-search-note">
-                        Showing stock movements<?php echo $stockSearch !== '' ? ' matching ' : ''; ?>
-                        <?php if ($stockSearch !== ''): ?><strong><?php echo e($stockSearch); ?></strong><?php endif; ?>
-                        <?php if ($typeFilter !== ''): ?> filtered by <strong><?php echo e($movementLabels[$typeFilter]); ?></strong><?php endif; ?>.
-                        <a class="muted-link" href="<?php echo e(app_url('?page=stock')); ?>">Clear</a>
+                        <span>
+                            Showing stock movements<?php echo $stockSearch !== '' ? ' matching ' : ''; ?>
+                            <?php if ($stockSearch !== ''): ?><strong><?php echo e($stockSearch); ?></strong><?php endif; ?>
+                            <?php if ($typeFilter !== ''): ?> filtered by <strong><?php echo e($filterMovementLabels[$typeFilter]); ?></strong><?php endif; ?>.
+                        </span>
+                        <a class="filter-clear-link" href="<?php echo e(app_url('?page=stock')); ?>">
+                            <i data-lucide="x"></i>
+                            Clear
+                        </a>
                     </p>
                 <?php endif; ?>
             </div>
@@ -191,7 +118,7 @@ if ($dbReady && $pdo !== null) {
                 <input type="search" name="q" value="<?php echo e($stockSearch); ?>" placeholder="Search product, SKU, notes">
                 <select name="movement_type">
                     <option value="">All Types</option>
-                    <?php foreach ($movementLabels as $type => $label): ?>
+                    <?php foreach ($filterMovementLabels as $type => $label): ?>
                         <option value="<?php echo e($type); ?>" <?php echo $typeFilter === $type ? 'selected' : ''; ?>><?php echo e($label); ?></option>
                     <?php endforeach; ?>
                 </select>
@@ -262,7 +189,20 @@ function stock_movement_labels(): array
         'adjustment_in' => 'Manual Increase',
         'adjustment_out' => 'Manual Decrease',
         'damage' => 'Damage / Loss',
-        'stock_count' => 'Stock Count',
+        'stock_count' => 'Lot Correction',
+    ];
+}
+
+function stock_movement_filter_labels(): array
+{
+    return [
+        'opening' => 'Opening Stock',
+        'purchase' => 'Purchase',
+        'sale' => 'Sale',
+        'return_in' => 'Sales Return',
+        'return_out' => 'Purchase Return',
+        'damage' => 'Damage / Loss',
+        'stock_count' => 'Lot Correction',
     ];
 }
 

@@ -265,6 +265,11 @@ $pages = [
         'description' => 'Configure invoice tax, footer, and policy text',
         'view' => __DIR__ . '/../pages/invoice_settings.php',
     ],
+    'invoice-preview' => [
+        'title' => 'Invoice Preview',
+        'description' => 'Preview the saved customer invoice layout',
+        'view' => __DIR__ . '/../pages/invoice_preview.php',
+    ],
     'backup' => [
         'title' => 'Backup',
         'description' => 'Download and restore verified backups',

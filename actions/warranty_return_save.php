@@ -21,18 +21,14 @@ $quantity = max(1, input_int('quantity'));
 $refundAmount = max(0.0, input_decimal('refund_amount'));
 $refundMethod = (string) ($_POST['refund_method'] ?? 'cash');
 $returnDate = trim((string) ($_POST['return_date'] ?? date('Y-m-d\TH:i')));
-$status = (string) ($_POST['status'] ?? 'sent_to_supplier');
 $issueDescription = trim((string) ($_POST['issue_description'] ?? ''));
 $notes = nullable_string((string) ($_POST['notes'] ?? ''));
 $validRefundMethods = ['cash', 'card', 'bank', 'store_credit', 'none'];
-$validStatuses = ['received', 'sent_to_supplier', 'ready_for_pickup'];
 $validOutcomes = [
     'normal_restock',
-    'damaged_refund_loss',
-    'damaged_replace_loss',
-    'warranty_refund_supplier',
-    'warranty_replace_now',
     'warranty_wait_supplier',
+    'warranty_refund_now',
+    'warranty_replace_now',
 ];
 
 if ($saleItemId <= 0 || ! in_array($outcome, $validOutcomes, true)) {
@@ -42,11 +38,6 @@ if ($saleItemId <= 0 || ! in_array($outcome, $validOutcomes, true)) {
 
 if (! in_array($refundMethod, $validRefundMethods, true)) {
     set_flash('error', 'Choose a valid refund method.');
-    redirect('?page=warranty-returns');
-}
-
-if (! in_array($status, $validStatuses, true)) {
-    set_flash('error', 'Choose a valid claim status.');
     redirect('?page=warranty-returns');
 }
 
@@ -70,8 +61,8 @@ try {
     }
 
     $available = wr_available_item_quantity($pdo, $saleItemId, (int) $saleItem['quantity']);
-    $isWarrantyOutcome = str_starts_with($outcome, 'warranty_');
-    $quantity = $isWarrantyOutcome || $outcome === 'damaged_replace_loss' ? 1 : $quantity;
+    $isWarrantyOutcome = in_array($outcome, ['warranty_wait_supplier', 'warranty_refund_now', 'warranty_replace_now'], true);
+    $quantity = $isWarrantyOutcome ? 1 : $quantity;
 
     if ($quantity > $available) {
         throw new RuntimeException('Only ' . $available . ' unit(s) are available for return or claim.');
@@ -89,7 +80,7 @@ try {
         throw new RuntimeException('Refund amount cannot exceed ' . format_money($maxRefund) . '.');
     }
 
-    $needsWarranty = in_array($outcome, ['warranty_refund_supplier', 'warranty_replace_now', 'warranty_wait_supplier'], true);
+    $needsWarranty = in_array($outcome, ['warranty_wait_supplier', 'warranty_refund_now', 'warranty_replace_now'], true);
 
     if ($needsWarranty && ! wr_item_is_in_warranty($saleItem, str_replace('T', ' ', $returnDate) . ':00')) {
         throw new RuntimeException('This item is outside the configured warranty period.');
@@ -99,9 +90,9 @@ try {
     $claimId = null;
     $summary = [];
 
-    if (in_array($outcome, ['normal_restock', 'damaged_refund_loss', 'warranty_refund_supplier'], true)) {
+    if (in_array($outcome, ['normal_restock', 'warranty_refund_now'], true)) {
         $restock = $outcome === 'normal_restock' ? 1 : 0;
-        $condition = $outcome === 'normal_restock' ? 'resellable' : ($outcome === 'warranty_refund_supplier' ? 'warranty' : 'damaged');
+        $condition = $outcome === 'normal_restock' ? 'resellable' : 'warranty';
         $returnId = wr_create_sales_return(
             $pdo,
             $saleItem,
@@ -119,23 +110,22 @@ try {
         $summary[] = 'return saved';
     }
 
-    if (in_array($outcome, ['warranty_refund_supplier', 'warranty_replace_now', 'warranty_wait_supplier', 'damaged_replace_loss'], true)) {
-        $claimStatus = $outcome === 'damaged_replace_loss' ? 'resolved' : $status;
+    if (in_array($outcome, ['warranty_wait_supplier', 'warranty_refund_now', 'warranty_replace_now'], true)) {
+        $claimStatus = $outcome === 'warranty_wait_supplier' ? 'sent_to_supplier' : 'received';
         $replacementMode = match ($outcome) {
             'warranty_replace_now' => 'replace_now',
-            'warranty_refund_supplier' => 'refund_supplier',
-            'damaged_replace_loss' => 'no_supplier_replace',
+            'warranty_refund_now' => 'refund_now',
             default => 'wait_supplier',
         };
         $customerReplacementStatus = match ($outcome) {
-            'warranty_replace_now', 'damaged_replace_loss' => 'issued',
-            'warranty_refund_supplier' => 'refunded',
+            'warranty_replace_now' => 'issued',
+            'warranty_refund_now' => 'refunded',
             default => 'pending',
         };
-        $supplierReplacementStatus = $outcome === 'damaged_replace_loss' ? 'none' : 'pending';
+        $supplierReplacementStatus = 'pending';
         $customerReplacedAt = in_array($customerReplacementStatus, ['issued', 'refunded'], true) ? date('Y-m-d H:i:s') : null;
 
-        $claimSaleItemId = $outcome === 'warranty_refund_supplier' ? null : $saleItemId;
+        $claimSaleItemId = $outcome === 'warranty_refund_now' ? null : $saleItemId;
         $claimId = wr_create_warranty_claim(
             $pdo,
             $saleItem,
@@ -153,7 +143,7 @@ try {
         );
         $summary[] = 'claim saved';
 
-        if (in_array($outcome, ['warranty_replace_now', 'damaged_replace_loss'], true)) {
+        if ($outcome === 'warranty_replace_now') {
             wr_issue_customer_replacement($pdo, $saleItem, $claimId, (int) ($currentUser['id'] ?? 0) ?: null);
             $summary[] = 'stock reduced';
         }

@@ -22,8 +22,8 @@ $permissionGroups = [
     ],
     'sales' => [
         'label' => 'Sales & Customers',
-        'description' => 'Invoices, customer accounts, credit collection, returns, and warranty claims.',
-        'keys' => ['sales', 'customers', 'credit_sales', 'returns', 'warranty'],
+        'description' => 'Invoices, customer accounts, credit collection, returns, and warranty handling.',
+        'keys' => ['sales', 'customers', 'credit_sales', 'warranty_returns'],
     ],
     'management' => [
         'label' => 'Management',

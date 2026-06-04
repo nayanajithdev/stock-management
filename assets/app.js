@@ -1262,9 +1262,9 @@ if (serviceForm) {
     let itemToken = 0;
 
     const money = (value) => Number.isFinite(value) ? value.toFixed(2) : '0.00';
-    const warrantyOutcomes = ['warranty_refund_supplier', 'warranty_replace_now', 'warranty_wait_supplier'];
-    const replacementOutcomes = ['damaged_replace_loss', 'warranty_replace_now'];
-    const refundOutcomes = ['normal_restock', 'damaged_refund_loss', 'warranty_refund_supplier'];
+    const warrantyOutcomes = ['warranty_wait_supplier', 'warranty_refund_now', 'warranty_replace_now'];
+    const replacementOutcomes = ['warranty_replace_now'];
+    const refundOutcomes = ['normal_restock', 'warranty_refund_now'];
 
     const setListMessage = (container, message) => {
         if (container) {
@@ -1393,11 +1393,9 @@ if (serviceForm) {
 
         const text = {
             normal_restock: `Refund ${money(refund)} and return ${quantity} unit(s) to sellable stock.`,
-            damaged_refund_loss: `Refund ${money(refund)}. Faulty item is not restocked; loss stays with shop.`,
-            damaged_replace_loss: 'Issue one replacement from stock. No supplier recovery is expected.',
-            warranty_refund_supplier: `Refund ${money(refund)} and keep supplier claim open for recovery.`,
-            warranty_replace_now: 'Issue one replacement now. Supplier replacement can be recorded later.',
-            warranty_wait_supplier: 'Send faulty item to supplier first. Customer replacement is pending.',
+            warranty_wait_supplier: 'Create a warranty case and mark it sent to supplier. Customer waits for the result.',
+            warranty_refund_now: `Refund ${money(refund)} now and keep the case open for supplier decision.`,
+            warranty_replace_now: 'Give one replacement from stock now. Supplier decision can be recorded later.',
         };
 
         preview.textContent = text[outcome] || 'Select an item and action.';
@@ -1413,7 +1411,7 @@ if (serviceForm) {
 
         const isRefund = refundOutcomes.includes(outcome);
         const isWarranty = warrantyOutcomes.includes(outcome);
-        const fixedOne = isWarranty || outcome === 'damaged_replace_loss';
+        const fixedOne = isWarranty;
 
         refundFields.forEach((field) => {
             field.hidden = !isRefund;
@@ -2452,11 +2450,22 @@ if (warrantyClaimModal) {
     const closeButton = warrantyClaimModal.querySelector('[data-warranty-claim-close]');
     const supplierRefundInput = warrantyClaimModal.querySelector('[data-warranty-supplier-refund]');
     const supplierRefundDateInput = warrantyClaimModal.querySelector('[data-warranty-supplier-refund-date]');
+    const supplierDecisionSelect = warrantyClaimModal.querySelector('[data-warranty-supplier-decision]');
     const replacementSummary = warrantyClaimModal.querySelector('[data-warranty-replacement-summary]');
     const supplierReplacementInput = warrantyClaimModal.querySelector('[data-warranty-supplier-replacement]');
     const customerReplacementInput = warrantyClaimModal.querySelector('[data-warranty-customer-replacement]');
     const supplierReplacementAction = warrantyClaimModal.querySelector('[data-warranty-supplier-action]');
     const customerReplacementAction = warrantyClaimModal.querySelector('[data-warranty-customer-action]');
+    const statusField = warrantyClaimModal.querySelector('[data-warranty-status-field]');
+    const resolvedField = warrantyClaimModal.querySelector('[data-warranty-resolved-field]');
+    const resolvedDateInput = warrantyClaimModal.querySelector('[data-warranty-resolved-date]');
+    const refundToggle = warrantyClaimModal.querySelector('[data-warranty-refund-toggle]');
+    const refundToggleInput = warrantyClaimModal.querySelector('[data-warranty-refund-toggle-input]');
+    const refundFields = Array.from(warrantyClaimModal.querySelectorAll('[data-warranty-refund-field]'));
+    const stockActions = warrantyClaimModal.querySelector('[data-warranty-stock-actions]');
+    const sendToSupplierOption = supplierDecisionSelect?.querySelector('option[value="send_to_supplier"]');
+    const noSupplierWarrantyOption = supplierDecisionSelect?.querySelector('option[value="no_supplier_warranty"]');
+    let activeClaimStatus = 'received';
     let activeCustomerReplacementStatus = 'pending';
     let activeSupplierReplacementStatus = 'pending';
 
@@ -2477,8 +2486,8 @@ if (warrantyClaimModal) {
 
         if (supplierStatus === 'none') {
             return customerStatus === 'issued'
-                ? 'Customer replacement issued. No supplier replacement expected.'
-                : 'No supplier replacement expected.';
+                ? 'Customer replacement issued. No supplier warranty; shop loss.'
+                : 'No supplier warranty recorded; shop loss.';
         }
 
         const customerText = customerStatus === 'issued' ? 'Customer already received replacement.' : 'Customer is waiting for replacement.';
@@ -2487,14 +2496,74 @@ if (warrantyClaimModal) {
         return `${customerText} ${supplierText}`;
     };
 
-    const configureStockAction = (input, container, completed) => {
+    const setElementHidden = (element, hidden) => {
+        if (element) {
+            element.hidden = hidden;
+        }
+    };
+
+    const money = (value) => Number.isFinite(value) ? value.toFixed(2) : '0.00';
+
+    const configureStockAction = (input, container, completed, visible = true, reset = false) => {
         if (!input) {
             return;
         }
 
-        input.checked = false;
+        if (reset) {
+            input.checked = false;
+        }
+
         input.disabled = completed;
+        setElementHidden(container, !visible);
         container?.classList.toggle('is-disabled', completed);
+    };
+
+    const syncDecisionOptions = () => {
+        if (!supplierDecisionSelect) {
+            return;
+        }
+
+        const supplierFinal = ['received', 'none'].includes(activeSupplierReplacementStatus);
+        supplierDecisionSelect.disabled = supplierFinal;
+
+        if (sendToSupplierOption) {
+            sendToSupplierOption.disabled = supplierFinal || activeClaimStatus === 'sent_to_supplier';
+        }
+
+        if (noSupplierWarrantyOption) {
+            noSupplierWarrantyOption.disabled = activeSupplierReplacementStatus === 'received';
+        }
+    };
+
+    const refreshWarrantyModalFields = () => {
+        const decision = supplierDecisionSelect?.value || '';
+        const status = statusSelect?.value || activeClaimStatus;
+        const hasSupplierRefund = Math.max(0, Number.parseFloat(supplierRefundInput?.value || '0')) > 0;
+        const showRefundFields = !!refundToggleInput?.checked || hasSupplierRefund;
+        const noSupplierCover = decision === 'no_supplier_warranty' || activeSupplierReplacementStatus === 'none';
+        const supplierFinal = ['received', 'none'].includes(activeSupplierReplacementStatus);
+        const customerFinal = ['issued', 'refunded'].includes(activeCustomerReplacementStatus);
+        const showSupplierAction = !noSupplierCover && (!supplierFinal || !!supplierReplacementInput?.checked);
+        const showCustomerAction = !noSupplierCover
+            && activeCustomerReplacementStatus !== 'refunded'
+            && (!customerFinal || !!customerReplacementInput?.checked);
+
+        setElementHidden(statusField, true);
+        setElementHidden(resolvedField, !(decision === 'no_supplier_warranty' || ['resolved', 'rejected'].includes(status)));
+
+        if (refundToggleInput) {
+            refundToggleInput.checked = showRefundFields;
+        }
+
+        refundFields.forEach((field) => setElementHidden(field, !showRefundFields));
+        configureStockAction(supplierReplacementInput, supplierReplacementAction, supplierFinal || noSupplierCover, showSupplierAction);
+        configureStockAction(customerReplacementInput, customerReplacementAction, customerFinal, showCustomerAction);
+        setElementHidden(stockActions, !(showSupplierAction || showCustomerAction));
+
+        if (noSupplierCover && supplierReplacementInput) {
+            supplierReplacementInput.checked = false;
+            supplierReplacementInput.disabled = true;
+        }
     };
 
     const syncWarrantyStatusFromActions = () => {
@@ -2523,6 +2592,7 @@ if (warrantyClaimModal) {
         const product = row.dataset.claimProduct || '';
         const refundAmount = row.dataset.claimRefundAmount || '0.00';
         const refundDate = row.dataset.claimRefundDate || new Date().toISOString().slice(0, 10);
+        activeClaimStatus = status;
         activeCustomerReplacementStatus = row.dataset.customerReplacementStatus || 'pending';
         activeSupplierReplacementStatus = row.dataset.supplierReplacementStatus || 'pending';
 
@@ -2550,12 +2620,35 @@ if (warrantyClaimModal) {
             replacementSummary.textContent = replacementText(activeCustomerReplacementStatus, activeSupplierReplacementStatus);
         }
 
-        configureStockAction(supplierReplacementInput, supplierReplacementAction, ['received', 'none'].includes(activeSupplierReplacementStatus));
-        configureStockAction(customerReplacementInput, customerReplacementAction, ['issued', 'refunded'].includes(activeCustomerReplacementStatus));
+        configureStockAction(
+            supplierReplacementInput,
+            supplierReplacementAction,
+            ['received', 'none'].includes(activeSupplierReplacementStatus),
+            true,
+            true
+        );
+        configureStockAction(
+            customerReplacementInput,
+            customerReplacementAction,
+            ['issued', 'refunded'].includes(activeCustomerReplacementStatus),
+            true,
+            true
+        );
+
+        if (supplierDecisionSelect) {
+            supplierDecisionSelect.value = '';
+        }
+
+        if (resolvedDateInput && !resolvedDateInput.value) {
+            resolvedDateInput.value = new Date().toISOString().slice(0, 10);
+        }
+
+        syncDecisionOptions();
+        refreshWarrantyModalFields();
 
         warrantyClaimModal.hidden = false;
         document.body.classList.add('modal-open');
-        statusSelect?.focus();
+        (supplierDecisionSelect && !supplierDecisionSelect.disabled ? supplierDecisionSelect : closeButton)?.focus();
     };
 
     document.querySelectorAll('[data-warranty-claim-row]').forEach((row) => {
@@ -2568,8 +2661,41 @@ if (warrantyClaimModal) {
         });
     });
 
-    supplierReplacementInput?.addEventListener('change', syncWarrantyStatusFromActions);
-    customerReplacementInput?.addEventListener('change', syncWarrantyStatusFromActions);
+    supplierReplacementInput?.addEventListener('change', () => {
+        syncWarrantyStatusFromActions();
+        refreshWarrantyModalFields();
+    });
+    customerReplacementInput?.addEventListener('change', () => {
+        syncWarrantyStatusFromActions();
+        refreshWarrantyModalFields();
+    });
+    supplierDecisionSelect?.addEventListener('change', () => {
+        if (!statusSelect) {
+            return;
+        }
+
+        if (supplierDecisionSelect.value === 'send_to_supplier') {
+            statusSelect.value = 'sent_to_supplier';
+        } else if (supplierDecisionSelect.value === 'no_supplier_warranty') {
+            statusSelect.value = 'resolved';
+            if (supplierReplacementInput) {
+                supplierReplacementInput.checked = false;
+            }
+        } else {
+            statusSelect.value = activeClaimStatus;
+        }
+
+        refreshWarrantyModalFields();
+    });
+    refundToggleInput?.addEventListener('change', () => {
+        const enabled = refundToggleInput.checked;
+
+        if (!enabled && supplierRefundInput) {
+            supplierRefundInput.value = money(0);
+        }
+
+        refundFields.forEach((field) => setElementHidden(field, !enabled));
+    });
 
     closeButton?.addEventListener('click', closeWarrantyModal);
     warrantyClaimModal.addEventListener('click', (event) => {

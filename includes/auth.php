@@ -122,11 +122,6 @@ function auth_permission_definitions(): array
             'description' => 'Create sales, view invoices, and print bills.',
             'pages' => ['sales', 'sales-history', 'sale-view'],
         ],
-        'warranty' => [
-            'label' => 'Warranty / RMA',
-            'description' => 'Create and update warranty claims.',
-            'pages' => ['warranty'],
-        ],
         'customers' => [
             'label' => 'Customers',
             'description' => 'Manage customer accounts and balances.',
@@ -137,10 +132,10 @@ function auth_permission_definitions(): array
             'description' => 'View receivables and collect customer payments.',
             'pages' => ['credit-sales', 'payment-receipt'],
         ],
-        'returns' => [
-            'label' => 'Returns',
-            'description' => 'Process sales returns and refunds.',
-            'pages' => ['returns', 'warranty-returns'],
+        'warranty_returns' => [
+            'label' => 'Warranty / Returns',
+            'description' => 'Handle customer returns, refunds, warranty exchanges, and supplier recovery.',
+            'pages' => ['warranty-returns'],
         ],
         'reports' => [
             'label' => 'Reports',
@@ -179,7 +174,7 @@ function auth_page_permission(string $page): ?string
 function auth_action_permission(string $scriptName): ?string
 {
     if ($scriptName === 'warranty_save.php') {
-        return (string) ($_POST['redirect_to'] ?? '') === '?page=warranty-returns' ? 'returns' : 'warranty';
+        return 'warranty_returns';
     }
 
     return match ($scriptName) {
@@ -190,10 +185,9 @@ function auth_action_permission(string $scriptName): ?string
         'expense_save.php', 'expense_void.php' => 'expenses',
         'stock_adjust.php' => 'stock',
         'sale_save.php', 'sale_product_search.php', 'customer_search.php' => 'sales',
-        'warranty_lookup.php' => 'warranty',
         'customer_save.php', 'customer_archive.php' => 'customers',
         'payment_collect.php' => 'credit_sales',
-        'sales_return_save.php', 'return_lookup.php', 'warranty_return_save.php', 'warranty_return_lookup.php' => 'returns',
+        'warranty_return_save.php', 'warranty_return_lookup.php' => 'warranty_returns',
         'settings_save.php', 'invoice_settings_save.php', 'backup_download.php', 'backup_restore.php' => 'settings',
         default => null,
     };
@@ -243,6 +237,10 @@ function auth_user_has_permission(PDO $pdo, ?array $user, string $permission): b
 
     if ($permissions === []) {
         return true;
+    }
+
+    if ($permission === 'warranty_returns') {
+        return $permissions['warranty_returns'] ?? $permissions['returns'] ?? $permissions['warranty'] ?? false;
     }
 
     return $permissions[$permission] ?? false;

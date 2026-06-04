@@ -176,39 +176,25 @@ if ($dbReady && $pdo !== null) {
                     </div>
 
                     <div class="service-outcome-group" data-service-damaged-outcomes hidden>
-                        <label class="service-outcome-card">
-                            <input type="radio" name="service_outcome_choice" value="damaged_refund_loss" data-service-outcome-choice>
+                        <label class="service-outcome-card" data-service-needs-warranty>
+                            <input type="radio" name="service_outcome_choice" value="warranty_wait_supplier" data-service-outcome-choice>
                             <span>
-                                <strong>Refund, no supplier warranty</strong>
-                                <small>Customer gets refund. Item is not restocked.</small>
-                            </span>
-                        </label>
-                        <label class="service-outcome-card">
-                            <input type="radio" name="service_outcome_choice" value="damaged_replace_loss" data-service-outcome-choice>
-                            <span>
-                                <strong>Replace now, shop loss</strong>
-                                <small>No supplier cover. Stock -1.</small>
+                                <strong>Return to supplier</strong>
+                                <small>Customer waits until supplier result.</small>
                             </span>
                         </label>
                         <label class="service-outcome-card" data-service-needs-warranty>
-                            <input type="radio" name="service_outcome_choice" value="warranty_refund_supplier" data-service-outcome-choice>
+                            <input type="radio" name="service_outcome_choice" value="warranty_refund_now" data-service-outcome-choice>
                             <span>
-                                <strong>Refund and send to supplier</strong>
-                                <small>Customer is refunded. Supplier result comes later.</small>
+                                <strong>Refund Now</strong>
+                                <small>Customer is refunded now. Supplier decision comes later.</small>
                             </span>
                         </label>
                         <label class="service-outcome-card" data-service-needs-warranty>
                             <input type="radio" name="service_outcome_choice" value="warranty_replace_now" data-service-outcome-choice>
                             <span>
-                                <strong>Replace now, send to supplier</strong>
-                                <small>Customer gets stock now. Supplier replaces later.</small>
-                            </span>
-                        </label>
-                        <label class="service-outcome-card" data-service-needs-warranty>
-                            <input type="radio" name="service_outcome_choice" value="warranty_wait_supplier" data-service-outcome-choice>
-                            <span>
-                                <strong>Send to supplier first</strong>
-                                <small>Customer waits until supplier result.</small>
+                                <strong>Replace Now</strong>
+                                <small>Customer gets new stock now. Stock -1.</small>
                             </span>
                         </label>
                     </div>
@@ -245,15 +231,6 @@ if ($dbReady && $pdo !== null) {
                         <label class="field" data-service-refund-fields>
                             <span>Refund Amount</span>
                             <input type="number" name="refund_amount" value="0.00" min="0" step="0.01" data-service-refund>
-                        </label>
-
-                        <label class="field" data-service-claim-fields hidden>
-                            <span>Initial Status</span>
-                            <select name="status">
-                                <option value="received">Received</option>
-                                <option value="sent_to_supplier" selected>Sent to Supplier</option>
-                                <option value="ready_for_pickup">Ready for Pickup</option>
-                            </select>
                         </label>
 
                         <label class="field span-2">
@@ -410,7 +387,7 @@ if ($dbReady && $pdo !== null) {
     <div class="modal-card claim-update-modal" role="dialog" aria-modal="true" aria-labelledby="claim-update-title">
         <div class="panel-header">
             <div>
-                <h2 id="claim-update-title">Move claim status</h2>
+                <h2 id="claim-update-title">Update warranty case</h2>
                 <p class="modal-subtitle" data-warranty-claim-summary>Select a claim from the table.</p>
             </div>
             <button class="icon-button" type="button" aria-label="Close claim update" data-warranty-claim-close>
@@ -423,7 +400,16 @@ if ($dbReady && $pdo !== null) {
             <input type="hidden" name="redirect_to" value="?page=warranty-returns">
             <input type="hidden" name="claim_id" value="" data-warranty-claim-id required>
 
-            <label class="field">
+            <label class="field span-2">
+                <span>Supplier update</span>
+                <select name="supplier_decision" data-warranty-supplier-decision>
+                    <option value="">No change</option>
+                    <option value="send_to_supplier">Send to supplier</option>
+                    <option value="no_supplier_warranty">No supplier warranty - close as shop loss</option>
+                </select>
+            </label>
+
+            <label class="field" data-warranty-status-field hidden>
                 <span>New Status</span>
                 <select name="status" required data-warranty-claim-status>
                     <option value="received">Received</option>
@@ -434,22 +420,28 @@ if ($dbReady && $pdo !== null) {
                 </select>
             </label>
 
-            <label class="field">
+            <label class="field" data-warranty-resolved-field hidden>
                 <span>Resolved Date</span>
-                <input type="date" name="resolved_date" value="<?php echo e(date('Y-m-d')); ?>">
+                <input type="date" name="resolved_date" value="<?php echo e(date('Y-m-d')); ?>" data-warranty-resolved-date>
             </label>
 
-            <label class="field">
+            <label class="checkbox-row claim-refund-toggle span-2" data-warranty-refund-toggle>
+                <input type="checkbox" data-warranty-refund-toggle-input>
+                <span>Supplier refund received</span>
+                <small>Record amount for profit calculation.</small>
+            </label>
+
+            <label class="field" data-warranty-refund-field hidden>
                 <span>Supplier Refund</span>
                 <input type="number" name="supplier_refund_amount" value="0.00" min="0" step="0.01" data-warranty-supplier-refund>
             </label>
 
-            <label class="field">
+            <label class="field" data-warranty-refund-field hidden>
                 <span>Refund Date</span>
                 <input type="date" name="supplier_refund_date" value="<?php echo e(date('Y-m-d')); ?>" data-warranty-supplier-refund-date>
             </label>
 
-            <div class="claim-stock-actions span-2">
+            <div class="claim-stock-actions span-2" data-warranty-stock-actions>
                 <div>
                     <strong>Replacement stock</strong>
                     <span data-warranty-replacement-summary>Select a claim first.</span>

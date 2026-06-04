@@ -63,6 +63,14 @@ $flash = get_flash();
 $currentPage = (string) ($_GET['page'] ?? 'dashboard');
 $scriptName = basename((string) ($_SERVER['SCRIPT_NAME'] ?? 'index.php'));
 $authPages = ['login', 'setup-owner'];
+$legacyPageRedirects = [
+    'returns' => 'warranty-returns',
+    'warranty' => 'warranty-returns',
+];
+
+if ($scriptName === 'index.php' && isset($legacyPageRedirects[$currentPage])) {
+    redirect('?page=' . $legacyPageRedirects[$currentPage]);
+}
 
 if (! $dbReady && $scriptName === 'index.php' && ! in_array($currentPage, $authPages, true)) {
     http_response_code(503);
@@ -116,13 +124,11 @@ $menuSections = [
         ['key' => 'stock', 'label' => 'Stock Movements', 'icon' => 'boxes'],
         ['key' => 'supplier-credit', 'label' => 'Supplier Credit', 'icon' => 'hand-coins'],
         ['key' => 'expenses', 'label' => 'Expenses', 'icon' => 'receipt'],
-        ['key' => 'warranty', 'label' => 'Warranty / RMA', 'icon' => 'shield-check'],
+        ['key' => 'warranty-returns', 'label' => 'Warranty / Returns', 'icon' => 'shield-check'],
     ],
     'Customers' => [
-        ['key' => 'warranty-returns', 'label' => 'Warranty / Returns', 'icon' => 'shield-check'],
         ['key' => 'customers', 'label' => 'Customer List', 'icon' => 'users'],
         ['key' => 'credit-sales', 'label' => 'Credit Sales', 'icon' => 'receipt-text'],
-        ['key' => 'returns', 'label' => 'Returns', 'icon' => 'rotate-ccw'],
     ],
     'Management' => [
         ['key' => 'reports', 'label' => 'Reports', 'icon' => 'chart-no-axes-combined'],
@@ -211,11 +217,6 @@ $pages = [
         'description' => 'View sale details and print customer invoice',
         'view' => __DIR__ . '/../pages/sale_view.php',
     ],
-    'warranty' => [
-        'title' => 'Warranty / RMA',
-        'description' => 'Track warranty claims, supplier repair status, and resolutions',
-        'view' => __DIR__ . '/../pages/warranty.php',
-    ],
     'warranty-returns' => [
         'title' => 'Warranty / Returns',
         'description' => 'Handle customer returns, warranty exchanges, supplier claims, and refunds',
@@ -235,11 +236,6 @@ $pages = [
         'title' => 'Payment Receipt',
         'description' => 'View and print customer payment receipt',
         'view' => __DIR__ . '/../pages/payment_receipt.php',
-    ],
-    'returns' => [
-        'title' => 'Returns',
-        'description' => 'Process sales returns and restock eligible items',
-        'view' => __DIR__ . '/../pages/returns.php',
     ],
     'reports' => [
         'title' => 'Reports',

@@ -572,7 +572,7 @@ foreach ($dailySales as $day) {
                     <p class="panel-label">Returns</p>
                     <h2>Refund activity</h2>
                 </div>
-                <a class="muted-link" href="<?php echo e(app_url('?page=returns')); ?>">Returns</a>
+                <a class="muted-link" href="<?php echo e(app_url('?page=warranty-returns')); ?>">Warranty / Returns</a>
             </div>
 
             <div class="table-wrap">
@@ -615,7 +615,7 @@ foreach ($dailySales as $day) {
                     <p class="panel-label">Warranty</p>
                     <h2>RMA activity</h2>
                 </div>
-                <a class="muted-link" href="<?php echo e(app_url('?page=warranty')); ?>">Warranty</a>
+                <a class="muted-link" href="<?php echo e(app_url('?page=warranty-returns')); ?>">Warranty / Returns</a>
             </div>
 
             <div class="table-wrap">

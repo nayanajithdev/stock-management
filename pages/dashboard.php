@@ -286,7 +286,7 @@ $trendBadge = $trendMode === 'weekly'
                 <span>Today paid out</span>
                 <strong><?php echo e(format_money($metrics['today_expenses'] + $metrics['today_supplier_paid'] + $metrics['today_customer_refunds'])); ?></strong>
             </a>
-            <a href="<?php echo e(app_url('?page=warranty')); ?>">
+            <a href="<?php echo e(app_url('?page=warranty-returns')); ?>">
                 <i data-lucide="shield-check"></i>
                 <span>Open warranty</span>
                 <strong><?php echo (int) $metrics['open_warranty']; ?></strong>

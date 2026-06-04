@@ -5,19 +5,19 @@ declare(strict_types=1);
 require __DIR__ . '/../includes/bootstrap.php';
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-    redirect('?page=warranty');
+    redirect('?page=warranty-returns');
 }
 
 verify_csrf();
 
 if (! $dbReady || $pdo === null) {
     set_flash('error', 'Import database/schema.sql before saving warranty claims.');
-    redirect('?page=warranty');
+    redirect('?page=warranty-returns');
 }
 
 $claimId = (int) ($_POST['claim_id'] ?? 0);
 $saleItemId = (int) ($_POST['sale_item_id'] ?? 0);
-$redirectTo = warranty_safe_redirect((string) ($_POST['redirect_to'] ?? '?page=warranty'));
+$redirectTo = warranty_safe_redirect((string) ($_POST['redirect_to'] ?? '?page=warranty-returns'));
 $status = (string) ($_POST['status'] ?? 'received');
 $receivedDate = trim((string) ($_POST['received_date'] ?? date('Y-m-d')));
 $resolvedDate = trim((string) ($_POST['resolved_date'] ?? date('Y-m-d')));
@@ -26,14 +26,21 @@ $supplierNotes = nullable_string((string) ($_POST['supplier_notes'] ?? ''));
 $supplierRefundAmount = max(0.0, input_decimal('supplier_refund_amount'));
 $supplierRefundDate = trim((string) ($_POST['supplier_refund_date'] ?? date('Y-m-d')));
 $replacementMode = (string) ($_POST['replacement_mode'] ?? 'wait_supplier');
+$supplierDecision = (string) ($_POST['supplier_decision'] ?? '');
 $markSupplierReplacementReceived = isset($_POST['supplier_replacement_received']);
 $issueCustomerReplacement = isset($_POST['customer_replacement_issued']);
 $validStatuses = ['received', 'sent_to_supplier', 'ready_for_pickup', 'resolved', 'rejected'];
 $finalStatuses = ['resolved', 'rejected'];
 $validReplacementModes = ['replace_now', 'wait_supplier'];
+$validSupplierDecisions = ['', 'send_to_supplier', 'no_supplier_warranty'];
 
 if (! in_array($status, $validStatuses, true)) {
     set_flash('error', 'Choose a valid warranty status.');
+    redirect($redirectTo);
+}
+
+if (! in_array($supplierDecision, $validSupplierDecisions, true)) {
+    set_flash('error', 'Choose a valid supplier decision.');
     redirect($redirectTo);
 }
 
@@ -71,6 +78,30 @@ try {
         $productCost = (float) $claim['cost_price'];
         $now = date('Y-m-d H:i:s');
         $stockChanges = [];
+
+        if ($supplierDecision === 'send_to_supplier') {
+            if (in_array($supplierReplacementStatus, ['received', 'none'], true)) {
+                throw new RuntimeException('Supplier handling is already finalized for this claim.');
+            }
+
+            $status = 'sent_to_supplier';
+            $stockChanges[] = 'sent to supplier';
+        }
+
+        if ($supplierDecision === 'no_supplier_warranty') {
+            if ($supplierReplacementStatus === 'received') {
+                throw new RuntimeException('Supplier replacement was already received for this claim.');
+            }
+
+            if ($markSupplierReplacementReceived) {
+                throw new RuntimeException('Cannot receive supplier replacement when there is no supplier warranty.');
+            }
+
+            $supplierReplacementStatus = 'none';
+            $supplierReplacedAt = $now;
+            $status = 'resolved';
+            $stockChanges[] = 'no supplier warranty';
+        }
 
         if ($markSupplierReplacementReceived) {
             if ($supplierReplacementStatus === 'received') {
@@ -304,22 +335,26 @@ try {
 
     app_log_activity($pdo, $currentUser, 'warranty_create', 'Created warranty claim ' . $claimNo . ' for invoice ' . $saleItem['invoice_no'] . '.');
     set_flash('success', 'Warranty claim saved as ' . $claimNo . '.');
-    redirect('?page=warranty');
+    redirect('?page=warranty-returns');
 } catch (Throwable $exception) {
     if ($pdo->inTransaction()) {
         $pdo->rollBack();
     }
 
     set_flash('error', $exception instanceof RuntimeException ? $exception->getMessage() : 'Warranty claim could not be saved.');
-    redirect($claimId > 0 ? $redirectTo : '?page=warranty' . ($saleItemId > 0 ? '&sale_item=' . $saleItemId : ''));
+    redirect($claimId > 0 ? $redirectTo : '?page=warranty-returns' . ($saleItemId > 0 ? '&sale_item=' . $saleItemId : ''));
 }
 
 function warranty_safe_redirect(string $path): string
 {
     $path = trim($path);
 
+    if ($path === '?page=warranty' || $path === '?page=returns') {
+        return '?page=warranty-returns';
+    }
+
     if ($path === '' || ! str_starts_with($path, '?page=')) {
-        return '?page=warranty';
+        return '?page=warranty-returns';
     }
 
     return $path;

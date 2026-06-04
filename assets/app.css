@@ -1611,6 +1611,23 @@ input[readonly] {
     opacity: .56;
 }
 
+.claim-stock-actions[hidden],
+.claim-stock-action[hidden],
+[data-warranty-status-field][hidden],
+[data-warranty-resolved-field][hidden],
+[data-warranty-refund-field][hidden] {
+    display: none !important;
+}
+
+.claim-refund-toggle {
+    margin: 2px 0 -2px;
+}
+
+.claim-refund-toggle small {
+    color: var(--muted);
+    font-size: 12px;
+}
+
 .service-wizard {
     display: grid;
     gap: 18px;

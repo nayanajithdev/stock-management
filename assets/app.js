@@ -1324,19 +1324,14 @@ if (serviceForm) {
     };
 
     const updateOutcomeAvailability = () => {
-        const inWarranty = !!selectedItem?.in_warranty;
         const hasStock = Number.parseInt(selectedItem?.stock ?? '0', 10) > 0;
 
         serviceForm.querySelectorAll('[data-service-needs-warranty]').forEach((card) => {
             const input = card.querySelector('input');
-            const disabled = !inWarranty;
-            card.classList.toggle('is-disabled', disabled);
+            card.classList.remove('is-disabled');
 
             if (input) {
-                input.disabled = disabled;
-                if (disabled) {
-                    input.checked = false;
-                }
+                input.disabled = false;
             }
         });
 
@@ -1497,9 +1492,9 @@ if (serviceForm) {
             `;
             button.querySelector('strong').textContent = item.label || '';
             button.querySelector('span').textContent = `Available ${item.available ?? 0} / Stock ${item.stock ?? 0} / Price ${money(Number.parseFloat(item.price || '0'))}`;
-            button.querySelector('small').textContent = item.in_warranty
-                ? `Warranty until ${item.warranty_until || ''}`
-                : 'No active warranty';
+            button.querySelector('small').textContent = item.warranty_until
+                ? `Supplier warranty until ${item.warranty_until}`
+                : 'Supplier warranty date not set';
             button.addEventListener('click', () => selectItem(item, button));
             itemList.appendChild(button);
         });

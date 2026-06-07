@@ -40,6 +40,7 @@ if ($dbReady && $pdo !== null && $productId > 0) {
 
         $lotStatement = $pdo->prepare(
             'SELECT sm.*,
+                    ' . app_lot_unit_cost_sql('sm', 'pc') . ' AS display_unit_cost,
                     COALESCE(pu.purchase_date, DATE(sm.created_at)) AS history_date,
                     sm.created_at AS history_created_at,
                     CASE
@@ -50,6 +51,7 @@ if ($dbReady && $pdo !== null && $productId > 0) {
                     u.full_name AS created_by_name
              FROM stock_movements sm
              LEFT JOIN purchases pu ON sm.reference_type = "purchase" AND pu.id = sm.reference_id
+             ' . app_purchase_cost_join_sql('sm', 'pc') . '
              LEFT JOIN users u ON u.id = sm.created_by
              WHERE sm.product_id = :product_id
                AND sm.quantity_change > 0
@@ -161,7 +163,7 @@ if ($dbReady && $pdo !== null && $productId > 0) {
                             <td><?php echo e($historyDateTime); ?></td>
                             <td><?php echo $quantityChange; ?></td>
                             <td class="<?php echo $currentLotStock <= 0 ? 'text-danger' : 'text-good'; ?>"><?php echo $currentLotStock; ?></td>
-                            <td><?php echo e(format_money($movement['unit_cost'])); ?></td>
+                            <td><?php echo e(format_money($movement['display_unit_cost'])); ?></td>
                             <td>
                                 <?php if ((int) $movement['warranty_months'] > 0 && $movement['warranty_ends_at'] !== null): ?>
                                     <?php echo (int) $movement['warranty_months']; ?> mo

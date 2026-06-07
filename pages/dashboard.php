@@ -107,7 +107,7 @@ if ($dbReady && $pdo !== null) {
     $metrics['month_net_profit'] = $metrics['month_profit'] - $metrics['month_expenses'] - $metrics['month_return_value'] + $metrics['month_return_cost_recovered'] + $metrics['month_supplier_refunds'];
     $metrics['receivable'] = dashboard_receivable_total($pdo);
     $metrics['payable'] = (float) $pdo->query('SELECT COALESCE(SUM(total - paid), 0) FROM purchases WHERE total > paid')->fetchColumn();
-    $metrics['stock_value'] = (float) $pdo->query('SELECT COALESCE(SUM(current_stock * cost_price), 0) FROM products WHERE status = "active"')->fetchColumn();
+    $metrics['stock_value'] = app_stock_value_total($pdo);
     $metrics['low_stock'] = (int) $pdo->query('SELECT COUNT(*) FROM products WHERE status = "active" AND reorder_level > 0 AND current_stock <= reorder_level')->fetchColumn();
     $metrics['open_warranty'] = (int) $pdo->query('SELECT COUNT(*) FROM warranty_claims WHERE status IN ("received", "sent_to_supplier", "ready_for_pickup")')->fetchColumn();
     $metrics['warranty_expiring'] = dashboard_warranty_expiring_lots($pdo);
@@ -367,6 +367,7 @@ function dashboard_warranty_expiring_lots(PDO $pdo): int
         'SELECT product_id, COALESCE(SUM(ABS(quantity_change)), 0) AS stock_out
          FROM stock_movements
          WHERE quantity_change < 0
+           AND (reference_type IS NULL OR reference_type <> "stock_lot")
          GROUP BY product_id'
     )->fetchAll();
     $stockOutByProduct = [];
@@ -376,7 +377,8 @@ function dashboard_warranty_expiring_lots(PDO $pdo): int
     }
 
     $lotRows = $pdo->query(
-        'SELECT sm.product_id,
+        'SELECT sm.id,
+                sm.product_id,
                 sm.quantity_change,
                 sm.warranty_months,
                 COALESCE(pu.purchase_date, DATE(sm.created_at)) AS warranty_start,
@@ -393,13 +395,27 @@ function dashboard_warranty_expiring_lots(PDO $pdo): int
          ORDER BY sm.product_id ASC, COALESCE(pu.purchase_date, DATE(sm.created_at)) ASC, sm.id ASC'
     )->fetchAll();
 
+    $adjustmentRows = $pdo->query(
+        'SELECT product_id, reference_id, COALESCE(SUM(quantity_change), 0) AS quantity_change
+         FROM stock_movements
+         WHERE reference_type = "stock_lot"
+           AND reference_id IS NOT NULL
+         GROUP BY product_id, reference_id'
+    )->fetchAll();
+    $lotAdjustments = [];
+
+    foreach ($adjustmentRows as $row) {
+        $lotAdjustments[(int) $row['product_id']][(int) $row['reference_id']] = (int) $row['quantity_change'];
+    }
+
     $today = date('Y-m-d');
     $warningCutoff = date('Y-m-d', strtotime('+30 days'));
     $expiringLots = 0;
 
     foreach ($lotRows as $lot) {
         $productId = (int) $lot['product_id'];
-        $lotQuantity = (int) $lot['quantity_change'];
+        $lotId = (int) $lot['id'];
+        $lotQuantity = max(0, (int) $lot['quantity_change'] + (int) ($lotAdjustments[$productId][$lotId] ?? 0));
         $remainingStockOut = $stockOutByProduct[$productId] ?? 0;
         $deducted = min($lotQuantity, $remainingStockOut);
         $stockOutByProduct[$productId] = max(0, $remainingStockOut - $deducted);

@@ -150,7 +150,12 @@ function auth_permission_definitions(): array
         'settings' => [
             'label' => 'Shop Settings',
             'description' => 'Update business profile, invoice settings, and system defaults.',
-            'pages' => ['settings', 'invoice-settings', 'invoice-preview', 'backup'],
+            'pages' => ['settings', 'invoice-settings', 'invoice-preview'],
+        ],
+        'backup' => [
+            'label' => 'Backup / Restore',
+            'description' => 'Download full backups and restore verified backup files.',
+            'pages' => ['backup'],
         ],
     ];
 }
@@ -188,7 +193,8 @@ function auth_action_permission(string $scriptName): ?string
         'customer_save.php', 'customer_archive.php' => 'customers',
         'payment_collect.php' => 'credit_sales',
         'warranty_return_save.php', 'warranty_return_lookup.php' => 'warranty_returns',
-        'settings_save.php', 'invoice_settings_save.php', 'backup_download.php', 'backup_restore.php' => 'settings',
+        'settings_save.php', 'invoice_settings_save.php' => 'settings',
+        'backup_download.php', 'backup_restore.php' => 'backup',
         default => null,
     };
 }

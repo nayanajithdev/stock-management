@@ -80,12 +80,6 @@ try {
         throw new RuntimeException('Refund amount cannot exceed ' . format_money($maxRefund) . '.');
     }
 
-    $needsWarranty = in_array($outcome, ['warranty_wait_supplier', 'warranty_refund_now', 'warranty_replace_now'], true);
-
-    if ($needsWarranty && ! wr_item_is_in_warranty($saleItem, str_replace('T', ' ', $returnDate) . ':00')) {
-        throw new RuntimeException('This item is outside the configured warranty period.');
-    }
-
     $returnId = null;
     $claimId = null;
     $summary = [];
@@ -204,20 +198,6 @@ function wr_available_item_quantity(PDO $pdo, int $saleItemId, int $soldQuantity
     $claimed = (int) $claimedStatement->fetchColumn();
 
     return max(0, $soldQuantity - $returned - $claimed);
-}
-
-function wr_item_is_in_warranty(array $saleItem, string $claimDate): bool
-{
-    $warrantyMonths = (int) ($saleItem['warranty_months'] ?? 0);
-
-    if ($warrantyMonths <= 0) {
-        return false;
-    }
-
-    $saleDate = new DateTimeImmutable((string) $saleItem['sale_date']);
-    $date = new DateTimeImmutable($claimDate);
-
-    return $date <= $saleDate->modify('+' . $warrantyMonths . ' months');
 }
 
 function wr_create_sales_return(PDO $pdo, array $saleItem, int $saleItemId, int $quantity, float $netUnitPrice, float $refundAmount, string $refundMethod, string $returnDate, string $condition, int $restock, string $notes, ?int $userId): int
@@ -436,9 +416,10 @@ function wr_fifo_unit_cost(PDO $pdo, int $productId, int $quantity, float $fallb
 
     $lotStatement = $pdo->prepare(
         'SELECT sm.quantity_change,
-                sm.unit_cost
+                ' . app_lot_unit_cost_sql('sm', 'pc') . ' AS unit_cost
          FROM stock_movements sm
          LEFT JOIN purchases pu ON sm.reference_type = "purchase" AND pu.id = sm.reference_id
+         ' . app_purchase_cost_join_sql('sm', 'pc') . '
          WHERE sm.product_id = :product_id
            AND sm.quantity_change > 0
            AND sm.movement_type IN ("opening", "purchase", "return_in", "adjustment_in", "warranty_supplier_in")

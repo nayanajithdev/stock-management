@@ -27,8 +27,8 @@ $permissionGroups = [
     ],
     'management' => [
         'label' => 'Management',
-        'description' => 'Expenses, reports, audit history, and shop configuration.',
-        'keys' => ['expenses', 'reports', 'activity_logs', 'settings'],
+        'description' => 'Expenses, reports, audit history, shop configuration, and backups.',
+        'keys' => ['expenses', 'reports', 'activity_logs', 'settings', 'backup'],
     ],
 ];
 $summary = [

@@ -123,7 +123,7 @@ if ($dbReady && $pdo !== null) {
     $summary['gross_profit'] = (float) ($profitRow['gross_profit'] ?? 0);
     $summary['invoices'] = (int) ($salesRow['invoices'] ?? 0);
     $summary['units_sold'] = (int) ($profitRow['units_sold'] ?? 0);
-    $summary['stock_value'] = (float) $pdo->query('SELECT COALESCE(SUM(current_stock * cost_price), 0) FROM products WHERE status = "active"')->fetchColumn();
+    $summary['stock_value'] = app_stock_value_total($pdo);
     $summary['receivable'] = report_receivable_total($pdo);
     $summary['refunds'] = (float) $returnSummary->fetchColumn();
     $summary['return_value'] = (float) $returnValueSummary->fetchColumn();
@@ -176,10 +176,10 @@ if ($dbReady && $pdo !== null) {
 
     $lowStockSql = 'SELECT sku,
                            name,
+                           id,
                            current_stock,
                            reorder_level,
-                           cost_price,
-                           current_stock * cost_price AS stock_value
+                           cost_price
                     FROM products
                     WHERE status = "active"
                       AND reorder_level > 0
@@ -195,6 +195,14 @@ if ($dbReady && $pdo !== null) {
     $lowStockStatement = $pdo->prepare($lowStockSql);
     $lowStockStatement->execute($lowStockParams);
     $lowStockItems = $lowStockStatement->fetchAll();
+    $lowStockValues = $lowStockItems === []
+        ? []
+        : app_stock_values_by_product($pdo, array_map(static fn (array $item): int => (int) $item['id'], $lowStockItems));
+
+    foreach ($lowStockItems as $index => $item) {
+        $productId = (int) $item['id'];
+        $lowStockItems[$index]['stock_value'] = (float) ($lowStockValues[$productId]['value'] ?? ((int) $item['current_stock'] * (float) $item['cost_price']));
+    }
 
     $creditSql = 'SELECT COALESCE(c.name, "Walk-in Customer") AS customer_name,
                          c.phone,

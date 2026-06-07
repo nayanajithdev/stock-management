@@ -135,3 +135,176 @@ function sale_discounted_unit_price(float|int|string|null $lineTotal, float|int|
 
     return round(sale_discounted_line_total($lineTotal, $saleSubtotal, $saleDiscount) / $quantity, 2);
 }
+
+function app_stock_value_total(PDO $pdo): float
+{
+    $values = app_stock_values_by_product($pdo);
+    $total = 0.0;
+
+    foreach ($values as $value) {
+        $total += (float) ($value['value'] ?? 0);
+    }
+
+    return round($total, 2);
+}
+
+function app_purchase_cost_join_sql(string $movementAlias = 'sm', string $costAlias = 'pc'): string
+{
+    foreach ([$movementAlias, $costAlias] as $alias) {
+        if (preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $alias) !== 1) {
+            throw new InvalidArgumentException('Invalid SQL alias.');
+        }
+    }
+
+    return 'LEFT JOIN (
+                SELECT pi.purchase_id,
+                       pi.product_id,
+                       CASE
+                           WHEN SUM(pi.quantity) > 0 THEN ROUND(
+                               GREATEST(
+                                   0,
+                                   SUM(pi.total) -
+                                   CASE
+                                       WHEN COALESCE(p.subtotal, 0) > 0
+                                           THEN LEAST(SUM(pi.total), COALESCE(p.discount, 0) * (SUM(pi.total) / p.subtotal))
+                                       ELSE 0
+                                   END
+                               ) / SUM(pi.quantity),
+                               2
+                           )
+                           ELSE NULL
+                       END AS net_unit_cost
+                FROM purchase_items pi
+                INNER JOIN purchases p ON p.id = pi.purchase_id
+                GROUP BY pi.purchase_id, pi.product_id, p.subtotal, p.discount
+            ) ' . $costAlias . ' ON ' . $movementAlias . '.reference_type = "purchase"
+                AND ' . $costAlias . '.purchase_id = ' . $movementAlias . '.reference_id
+                AND ' . $costAlias . '.product_id = ' . $movementAlias . '.product_id';
+}
+
+function app_lot_unit_cost_sql(string $movementAlias = 'sm', string $costAlias = 'pc'): string
+{
+    foreach ([$movementAlias, $costAlias] as $alias) {
+        if (preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $alias) !== 1) {
+            throw new InvalidArgumentException('Invalid SQL alias.');
+        }
+    }
+
+    return 'CASE
+                WHEN ' . $movementAlias . '.movement_type = "purchase"
+                    THEN COALESCE(' . $costAlias . '.net_unit_cost, ' . $movementAlias . '.unit_cost)
+                ELSE ' . $movementAlias . '.unit_cost
+            END';
+}
+
+function app_stock_values_by_product(PDO $pdo, array $productIds = []): array
+{
+    $productIds = array_values(array_unique(array_filter(array_map('intval', $productIds), static fn (int $id): bool => $id > 0)));
+    $productSql = 'SELECT id, current_stock, cost_price FROM products WHERE status = "active"';
+
+    if ($productIds !== []) {
+        $productSql .= ' AND id IN (' . implode(',', $productIds) . ')';
+    }
+
+    $productRows = $pdo->query($productSql)->fetchAll();
+    $products = [];
+    $values = [];
+
+    foreach ($productRows as $product) {
+        $productId = (int) $product['id'];
+        $products[$productId] = [
+            'current_stock' => max(0, (int) $product['current_stock']),
+            'fallback_cost' => max(0.0, (float) $product['cost_price']),
+        ];
+        $values[$productId] = [
+            'units' => max(0, (int) $product['current_stock']),
+            'value' => 0.0,
+        ];
+    }
+
+    if ($products === []) {
+        return [];
+    }
+
+    $idList = implode(',', array_keys($products));
+    $lotRows = $pdo->query(
+        'SELECT sm.id,
+                sm.product_id,
+                sm.quantity_change,
+                ' . app_lot_unit_cost_sql('sm', 'pc') . ' AS unit_cost
+         FROM stock_movements sm
+         LEFT JOIN purchases pu ON sm.reference_type = "purchase" AND pu.id = sm.reference_id
+         ' . app_purchase_cost_join_sql('sm', 'pc') . '
+         WHERE sm.product_id IN (' . $idList . ')
+           AND sm.quantity_change > 0
+           AND (
+                sm.movement_type IN ("opening", "purchase", "return_in", "adjustment_in", "warranty_supplier_in")
+                OR (sm.movement_type = "stock_count" AND (sm.reference_type IS NULL OR sm.reference_type <> "stock_lot"))
+           )
+         ORDER BY sm.product_id ASC, COALESCE(pu.purchase_date, DATE(sm.created_at)) ASC, sm.id ASC'
+    )->fetchAll();
+
+    $adjustmentRows = $pdo->query(
+        'SELECT product_id, reference_id, COALESCE(SUM(quantity_change), 0) AS quantity_change
+         FROM stock_movements
+         WHERE product_id IN (' . $idList . ')
+           AND reference_type = "stock_lot"
+           AND reference_id IS NOT NULL
+         GROUP BY product_id, reference_id'
+    )->fetchAll();
+
+    $outboundRows = $pdo->query(
+        'SELECT product_id, COALESCE(SUM(ABS(quantity_change)), 0) AS stock_out
+         FROM stock_movements
+         WHERE product_id IN (' . $idList . ')
+           AND quantity_change < 0
+           AND (reference_type IS NULL OR reference_type <> "stock_lot")
+         GROUP BY product_id'
+    )->fetchAll();
+
+    $lotAdjustments = [];
+    foreach ($adjustmentRows as $row) {
+        $lotAdjustments[(int) $row['product_id']][(int) $row['reference_id']] = (int) $row['quantity_change'];
+    }
+
+    $stockOutByProduct = [];
+    foreach ($outboundRows as $row) {
+        $stockOutByProduct[(int) $row['product_id']] = (int) $row['stock_out'];
+    }
+
+    $lotsByProduct = [];
+    foreach ($lotRows as $lot) {
+        $lotsByProduct[(int) $lot['product_id']][] = $lot;
+    }
+
+    foreach ($products as $productId => $product) {
+        $targetUnits = (int) $product['current_stock'];
+        $remainingOutbound = (int) ($stockOutByProduct[$productId] ?? 0);
+        $valuedUnits = 0;
+        $stockValue = 0.0;
+
+        foreach ($lotsByProduct[$productId] ?? [] as $lot) {
+            $lotId = (int) $lot['id'];
+            $lotQuantity = max(0, (int) $lot['quantity_change'] + (int) ($lotAdjustments[$productId][$lotId] ?? 0));
+            $deducted = min($lotQuantity, $remainingOutbound);
+            $remainingOutbound = max(0, $remainingOutbound - $deducted);
+            $availableQuantity = $lotQuantity - $deducted;
+
+            if ($availableQuantity <= 0 || $valuedUnits >= $targetUnits) {
+                continue;
+            }
+
+            $unitsToValue = min($availableQuantity, $targetUnits - $valuedUnits);
+            $stockValue += $unitsToValue * max(0.0, (float) $lot['unit_cost']);
+            $valuedUnits += $unitsToValue;
+        }
+
+        if ($valuedUnits < $targetUnits) {
+            $stockValue += ($targetUnits - $valuedUnits) * (float) $product['fallback_cost'];
+        }
+
+        $values[$productId]['value'] = round($stockValue, 2);
+    }
+
+    return $values;
+}

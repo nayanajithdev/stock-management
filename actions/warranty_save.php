@@ -428,9 +428,10 @@ function warranty_fifo_unit_cost(PDO $pdo, int $productId, int $quantity, float 
 
     $lotStatement = $pdo->prepare(
         'SELECT sm.quantity_change,
-                sm.unit_cost
+                ' . app_lot_unit_cost_sql('sm', 'pc') . ' AS unit_cost
          FROM stock_movements sm
          LEFT JOIN purchases pu ON sm.reference_type = "purchase" AND pu.id = sm.reference_id
+         ' . app_purchase_cost_join_sql('sm', 'pc') . '
          WHERE sm.product_id = :product_id
            AND sm.quantity_change > 0
            AND sm.movement_type IN ("opening", "purchase", "return_in", "adjustment_in", "warranty_supplier_in")

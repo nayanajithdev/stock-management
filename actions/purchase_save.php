@@ -78,6 +78,7 @@ if ($discount > $subtotal) {
 }
 
 $total = $subtotal - $discount;
+$items = purchase_apply_discount_to_items($items, $subtotal, $discount, $total);
 
 if ($paid > $total) {
     set_flash('error', 'Paid amount cannot be higher than purchase total.');
@@ -139,7 +140,7 @@ try {
             throw new RuntimeException('One of the selected products is not active.');
         }
 
-        $lineTotal = $item['quantity'] * $item['unit_cost'];
+        $lineTotal = $item['total'];
         $newStock = (int) $product['current_stock'] + (int) $item['quantity'];
 
         $itemStatement->execute([
@@ -153,7 +154,7 @@ try {
 
         $stockUpdate->execute([
             'current_stock' => $newStock,
-            'unit_cost' => $item['unit_cost'],
+            'unit_cost' => $item['net_unit_cost'],
             'id' => $item['product_id'],
         ]);
 
@@ -161,7 +162,7 @@ try {
             'product_id' => $item['product_id'],
             'quantity_change' => $item['quantity'],
             'stock_after' => $newStock,
-            'unit_cost' => $item['unit_cost'],
+            'unit_cost' => $item['net_unit_cost'],
             'warranty_months' => $item['warranty_months'],
             'reference_id' => $purchaseId,
             'notes' => 'Stock received' . ($invoiceNo !== null ? ' from invoice ' . $invoiceNo : ''),
@@ -181,4 +182,49 @@ try {
 
     set_flash('error', $exception instanceof RuntimeException ? $exception->getMessage() : 'Purchase could not be saved.');
     redirect('?page=purchases');
+}
+
+function purchase_apply_discount_to_items(array $items, float $subtotal, float $discount, float $total): array
+{
+    $subtotal = round(max(0.0, $subtotal), 2);
+    $discount = round(max(0.0, $discount), 2);
+    $total = round(max(0.0, $total), 2);
+    $netSum = 0.0;
+    $lastIndex = null;
+
+    foreach ($items as $index => $item) {
+        $quantity = max(1, (int) $item['quantity']);
+        $grossUnitCost = round(max(0.0, (float) $item['unit_cost']), 2);
+        $grossLineTotal = round($quantity * $grossUnitCost, 2);
+        $discountShare = 0.0;
+
+        if ($discount > 0.0 && $subtotal > 0.0 && $grossLineTotal > 0.0) {
+            $discountShare = min($grossLineTotal, $discount * ($grossLineTotal / $subtotal));
+        }
+
+        $netLineTotal = round($grossLineTotal - $discountShare, 2);
+
+        $items[$index]['gross_unit_cost'] = $grossUnitCost;
+        $items[$index]['gross_total'] = $grossLineTotal;
+        $items[$index]['line_discount'] = round($grossLineTotal - $netLineTotal, 2);
+        $items[$index]['total'] = $grossLineTotal;
+        $items[$index]['net_total'] = $netLineTotal;
+        $items[$index]['net_unit_cost'] = round($netLineTotal / $quantity, 2);
+
+        $netSum += $netLineTotal;
+        $lastIndex = $index;
+    }
+
+    if ($lastIndex !== null) {
+        $difference = round($total - $netSum, 2);
+
+        if (abs($difference) >= 0.01) {
+            $quantity = max(1, (int) $items[$lastIndex]['quantity']);
+            $items[$lastIndex]['net_total'] = round(max(0.0, (float) $items[$lastIndex]['net_total'] + $difference), 2);
+            $items[$lastIndex]['line_discount'] = round((float) $items[$lastIndex]['gross_total'] - (float) $items[$lastIndex]['net_total'], 2);
+            $items[$lastIndex]['net_unit_cost'] = round((float) $items[$lastIndex]['net_total'] / $quantity, 2);
+        }
+    }
+
+    return $items;
 }

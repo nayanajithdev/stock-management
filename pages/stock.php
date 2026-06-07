@@ -28,7 +28,7 @@ if ($dbReady && $pdo !== null) {
     )->fetchAll();
 
     $summary['stock_units'] = (int) $pdo->query('SELECT COALESCE(SUM(current_stock), 0) FROM products WHERE status = "active"')->fetchColumn();
-    $summary['stock_value'] = (float) $pdo->query('SELECT COALESCE(SUM(current_stock * cost_price), 0) FROM products WHERE status = "active"')->fetchColumn();
+    $summary['stock_value'] = app_stock_value_total($pdo);
     $summary['low_stock'] = (int) $pdo->query('SELECT COUNT(*) FROM products WHERE status = "active" AND reorder_level > 0 AND current_stock <= reorder_level')->fetchColumn();
     $summary['manual_month'] = (int) $pdo->query(
         'SELECT COUNT(*)
@@ -38,11 +38,13 @@ if ($dbReady && $pdo !== null) {
     )->fetchColumn();
 
     $movementSql = 'SELECT sm.*,
+                           ' . app_lot_unit_cost_sql('sm', 'pc') . ' AS display_unit_cost,
                            p.sku,
                            p.name AS product_name,
                            p.model
                     FROM stock_movements sm
-                    INNER JOIN products p ON p.id = sm.product_id';
+                    INNER JOIN products p ON p.id = sm.product_id
+                    ' . app_purchase_cost_join_sql('sm', 'pc');
     $where = [];
     $params = [];
 
@@ -166,7 +168,7 @@ if ($dbReady && $pdo !== null) {
                             <td><span class="status <?php echo e(stock_movement_status_class((string) $movement['movement_type'])); ?>"><?php echo e($movementLabels[$movement['movement_type']] ?? ucfirst((string) $movement['movement_type'])); ?></span></td>
                             <td class="<?php echo $quantityChange < 0 ? 'text-danger' : 'text-good'; ?>"><?php echo e(($quantityChange > 0 ? '+' : '') . $quantityChange); ?></td>
                             <td><?php echo (int) $movement['stock_after']; ?></td>
-                            <td><?php echo e(format_money($movement['unit_cost'])); ?></td>
+                            <td><?php echo e(format_money($movement['display_unit_cost'])); ?></td>
                             <td><?php echo e($reference !== '' ? $reference : 'Manual'); ?></td>
                             <td><?php echo e($movement['notes'] ?? ''); ?></td>
                         </tr>

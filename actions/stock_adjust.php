@@ -121,7 +121,7 @@ try {
             'product_id' => $productId,
             'quantity_change' => $quantityChange,
             'stock_after' => $newStock,
-            'unit_cost' => (float) $lot['unit_cost'],
+            'unit_cost' => (float) $lot['display_unit_cost'],
             'warranty_months' => (int) $lot['warranty_months'],
             'reference_id' => $lotMovementId,
             'notes' => 'Lot correction: ' . $notes,
@@ -195,12 +195,14 @@ try {
 function stock_adjust_fetch_lot(PDO $pdo, int $productId, int $lotMovementId): ?array
 {
     $statement = $pdo->prepare(
-        'SELECT *
-         FROM stock_movements
-         WHERE id = :id
-           AND product_id = :product_id
-           AND quantity_change > 0
-           AND movement_type IN ("opening", "purchase", "return_in", "adjustment_in", "warranty_supplier_in")
+        'SELECT sm.*,
+                ' . app_lot_unit_cost_sql('sm', 'pc') . ' AS display_unit_cost
+         FROM stock_movements sm
+         ' . app_purchase_cost_join_sql('sm', 'pc') . '
+         WHERE sm.id = :id
+           AND sm.product_id = :product_id
+           AND sm.quantity_change > 0
+           AND sm.movement_type IN ("opening", "purchase", "return_in", "adjustment_in", "warranty_supplier_in")
          LIMIT 1'
     );
     $statement->execute([

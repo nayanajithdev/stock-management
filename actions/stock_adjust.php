@@ -17,51 +17,22 @@ if (! $dbReady || $pdo === null) {
 
 $productId = (int) ($_POST['product_id'] ?? 0);
 $lotMovementId = (int) ($_POST['lot_movement_id'] ?? 0);
-$adjustmentType = (string) ($_POST['adjustment_type'] ?? '');
-$quantity = input_int('quantity');
 $exactStock = input_int('exact_stock');
 $notes = trim((string) ($_POST['notes'] ?? ''));
-$redirectTo = '?page=stock';
+$redirectTo = $productId > 0 ? '?page=product-history&id=' . $productId : '?page=products';
 
-if ($lotMovementId > 0 && $productId > 0) {
-    $redirectTo = '?page=product-history&id=' . $productId;
-}
-
-$adjustmentTypes = [
-    'increase' => [
-        'movement_type' => 'adjustment_in',
-        'label' => 'Manual increase',
-        'direction' => 1,
-    ],
-    'decrease' => [
-        'movement_type' => 'adjustment_out',
-        'label' => 'Manual decrease',
-        'direction' => -1,
-    ],
-    'damage' => [
-        'movement_type' => 'damage',
-        'label' => 'Damage or loss',
-        'direction' => -1,
-    ],
-    'count' => [
-        'movement_type' => 'stock_count',
-        'label' => 'Stock count correction',
-        'direction' => 0,
-    ],
-];
-
-if ($productId <= 0 || ($lotMovementId <= 0 && ! isset($adjustmentTypes[$adjustmentType]))) {
-    set_flash('error', 'Choose a valid product and adjustment type.');
+if ($productId <= 0 || $lotMovementId <= 0) {
+    set_flash('error', 'Choose a valid stock lot to correct.');
     redirect($redirectTo);
 }
 
 if ($notes === '') {
-    set_flash('error', 'Notes are required for manual stock adjustments.');
+    set_flash('error', 'Notes are required for stock lot corrections.');
     redirect($redirectTo);
 }
 
-if ($lotMovementId <= 0 && $adjustmentType !== 'count' && $quantity <= 0) {
-    set_flash('error', 'Quantity must be greater than zero.');
+if ($exactStock < 0) {
+    set_flash('error', 'New stock count cannot be below zero.');
     redirect($redirectTo);
 }
 
@@ -77,78 +48,24 @@ try {
     }
 
     $currentStock = (int) $product['current_stock'];
-    $typeConfig = $adjustmentTypes[$adjustmentType] ?? null;
+    $lot = stock_adjust_fetch_lot($pdo, $productId, $lotMovementId);
 
-    if ($lotMovementId > 0) {
-        $lot = stock_adjust_fetch_lot($pdo, $productId, $lotMovementId);
-
-        if (! is_array($lot)) {
-            throw new RuntimeException('Selected stock lot was not found.');
-        }
-
-        $currentLotStock = stock_adjust_current_lot_stock($pdo, $productId, $lotMovementId);
-        $newLotStock = $exactStock;
-        $quantityChange = $newLotStock - $currentLotStock;
-
-        if ($quantityChange === 0) {
-            throw new RuntimeException('This lot already has the selected stock count.');
-        }
-
-        $newStock = $currentStock + $quantityChange;
-
-        if ($newStock < 0) {
-            throw new RuntimeException('Product stock cannot go below zero.');
-        }
-
-        $updateStatement = $pdo->prepare(
-            'UPDATE products
-             SET current_stock = :current_stock,
-                 updated_at = CURRENT_TIMESTAMP
-             WHERE id = :id'
-        );
-        $updateStatement->execute([
-            'current_stock' => $newStock,
-            'id' => $productId,
-        ]);
-
-        $movementStatement = $pdo->prepare(
-            'INSERT INTO stock_movements
-                (product_id, movement_type, quantity_change, stock_after, unit_cost, warranty_months, reference_type, reference_id, notes, created_by)
-             VALUES
-                (:product_id, "stock_count", :quantity_change, :stock_after, :unit_cost, :warranty_months, "stock_lot", :reference_id, :notes, :created_by)'
-        );
-        $movementStatement->execute([
-            'product_id' => $productId,
-            'quantity_change' => $quantityChange,
-            'stock_after' => $newStock,
-            'unit_cost' => (float) $lot['display_unit_cost'],
-            'warranty_months' => (int) $lot['warranty_months'],
-            'reference_id' => $lotMovementId,
-            'notes' => 'Lot correction: ' . $notes,
-            'created_by' => (int) ($currentUser['id'] ?? 0) ?: null,
-        ]);
-
-        $pdo->commit();
-
-        app_log_activity($pdo, $currentUser, 'stock_lot_adjust', 'Adjusted stock lot for ' . $product['name'] . ' by ' . $quantityChange . ' unit(s).');
-        set_flash('success', 'Stock lot corrected successfully.');
-        redirect($redirectTo);
+    if (! is_array($lot)) {
+        throw new RuntimeException('Selected stock lot was not found.');
     }
 
-    if ($adjustmentType === 'count') {
-        $newStock = $exactStock;
-        $quantityChange = $newStock - $currentStock;
+    $currentLotStock = stock_adjust_current_lot_stock($pdo, $productId, $lotMovementId);
+    $newLotStock = $exactStock;
+    $quantityChange = $newLotStock - $currentLotStock;
 
-        if ($quantityChange === 0) {
-            throw new RuntimeException('Exact stock count is already the current stock.');
-        }
-    } else {
-        $quantityChange = (int) $typeConfig['direction'] * $quantity;
-        $newStock = $currentStock + $quantityChange;
+    if ($quantityChange === 0) {
+        throw new RuntimeException('This lot already has the selected stock count.');
     }
+
+    $newStock = $currentStock + $quantityChange;
 
     if ($newStock < 0) {
-        throw new RuntimeException('Stock cannot go below zero.');
+        throw new RuntimeException('Product stock cannot go below zero.');
     }
 
     $updateStatement = $pdo->prepare(
@@ -164,24 +81,25 @@ try {
 
     $movementStatement = $pdo->prepare(
         'INSERT INTO stock_movements
-            (product_id, movement_type, quantity_change, stock_after, unit_cost, reference_type, reference_id, notes, created_by)
+            (product_id, movement_type, quantity_change, stock_after, unit_cost, warranty_months, reference_type, reference_id, notes, created_by)
          VALUES
-            (:product_id, :movement_type, :quantity_change, :stock_after, :unit_cost, "manual_adjustment", NULL, :notes, :created_by)'
+            (:product_id, "stock_count", :quantity_change, :stock_after, :unit_cost, :warranty_months, "stock_lot", :reference_id, :notes, :created_by)'
     );
     $movementStatement->execute([
         'product_id' => $productId,
-        'movement_type' => $typeConfig['movement_type'],
         'quantity_change' => $quantityChange,
         'stock_after' => $newStock,
-        'unit_cost' => (float) $product['cost_price'],
-        'notes' => $typeConfig['label'] . ': ' . $notes,
+        'unit_cost' => (float) $lot['display_unit_cost'],
+        'warranty_months' => (int) $lot['warranty_months'],
+        'reference_id' => $lotMovementId,
+        'notes' => 'Lot correction: ' . $notes,
         'created_by' => (int) ($currentUser['id'] ?? 0) ?: null,
     ]);
 
     $pdo->commit();
 
-    app_log_activity($pdo, $currentUser, 'stock_adjust', 'Adjusted stock for ' . $product['name'] . ' by ' . $quantityChange . ' unit(s).');
-    set_flash('success', 'Stock adjusted successfully.');
+    app_log_activity($pdo, $currentUser, 'stock_lot_adjust', 'Adjusted stock lot for ' . $product['name'] . ' by ' . $quantityChange . ' unit(s).');
+    set_flash('success', 'Stock lot corrected successfully.');
     redirect($redirectTo);
 } catch (Throwable $exception) {
     if ($pdo->inTransaction()) {

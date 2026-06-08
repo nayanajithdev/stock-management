@@ -178,10 +178,6 @@ function auth_page_permission(string $page): ?string
 
 function auth_action_permission(string $scriptName): ?string
 {
-    if ($scriptName === 'warranty_save.php') {
-        return 'warranty_returns';
-    }
-
     return match ($scriptName) {
         'product_save.php', 'product_delete.php' => 'products',
         'master_save.php', 'master_archive.php' => 'inventory_setup',
@@ -192,7 +188,7 @@ function auth_action_permission(string $scriptName): ?string
         'sale_save.php', 'sale_product_search.php', 'customer_search.php' => 'sales',
         'customer_save.php', 'customer_archive.php' => 'customers',
         'payment_collect.php' => 'credit_sales',
-        'warranty_return_save.php', 'warranty_return_lookup.php' => 'warranty_returns',
+        'warranty_return_save.php', 'warranty_return_update.php', 'warranty_return_lookup.php' => 'warranty_returns',
         'settings_save.php', 'invoice_settings_save.php' => 'settings',
         'backup_download.php', 'backup_restore.php' => 'backup',
         default => null,

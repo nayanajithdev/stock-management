@@ -966,6 +966,8 @@ h2 {
 }
 
 .trend-segmented {
+    box-sizing: border-box;
+    min-height: 38px;
     padding: 3px;
 }
 
@@ -977,12 +979,15 @@ h2 {
 }
 
 .trend-week-form {
+    display: flex;
+    align-items: center;
     margin: 0;
 }
 
 .trend-week-input {
-    width: 142px;
-    height: 32px;
+    box-sizing: border-box;
+    width: 150px;
+    height: 38px;
     border: 1px solid var(--line);
     border-radius: 999px;
     background: #111820;
@@ -990,6 +995,7 @@ h2 {
     color-scheme: dark;
     font-size: 13px;
     font-weight: 600;
+    line-height: 1;
     outline: none;
     padding: 0 12px;
 }
@@ -1678,8 +1684,7 @@ input[readonly] {
     display: none;
 }
 
-[data-service-refund-fields][hidden],
-[data-service-claim-fields][hidden] {
+[data-service-refund-fields][hidden] {
     display: none !important;
 }
 
@@ -2838,6 +2843,58 @@ select,
     margin-top: 4px;
 }
 
+.lot-correct-modal {
+    width: min(100%, 560px);
+}
+
+.lot-correct-modal .panel-header {
+    align-items: flex-start;
+    margin-bottom: 18px;
+}
+
+.lot-correct-modal .panel-header h2 {
+    line-height: 1.15;
+}
+
+.lot-correct-form.single-form {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px 14px;
+    margin-top: 0;
+}
+
+.lot-correct-form .field,
+.lot-correct-form .stock-current-field {
+    min-width: 0;
+}
+
+.lot-correct-form .stock-current {
+    height: 42px;
+    min-height: 42px;
+    justify-content: flex-end;
+    padding: 0 12px;
+}
+
+.lot-correct-form .stock-current strong {
+    font-size: 16px;
+    font-weight: 650;
+    line-height: 1;
+}
+
+.lot-correct-form textarea {
+    min-height: 92px;
+}
+
+.lot-correct-form .form-actions {
+    align-items: center;
+    justify-content: flex-end;
+    padding-top: 0;
+}
+
+.lot-correct-form .top-action {
+    min-width: 190px;
+    justify-content: center;
+}
+
 .modal-subtitle {
     margin: 8px 0 0;
     color: var(--muted);
@@ -2881,6 +2938,25 @@ td {
     margin-top: 4px;
     color: var(--muted);
     font-size: 13px;
+}
+
+.reference-note-cell {
+    min-width: 260px;
+}
+
+.reference-note-cell span {
+    display: block;
+}
+
+.reference-note-cell .reference-text {
+    color: var(--accent-2);
+    font-weight: 650;
+}
+
+.reference-note-cell .note-text {
+    margin-top: 6px;
+    color: var(--text);
+    line-height: 1.35;
 }
 
 .table-actions {
@@ -3241,6 +3317,10 @@ td {
     }
 
     .warranty-form {
+        grid-template-columns: 1fr;
+    }
+
+    .lot-correct-form.single-form {
         grid-template-columns: 1fr;
     }
 

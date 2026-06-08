@@ -136,15 +136,14 @@ if ($dbReady && $pdo !== null && $productId > 0) {
                         <th>Current Stock</th>
                         <th>Unit Cost</th>
                         <th>Warranty</th>
-                        <th>Reference</th>
                         <th>By</th>
-                        <th>Notes</th>
+                        <th>Reference / Note</th>
                         <th>Actions</th>
                     </tr>
                 </thead>
                 <tbody>
                     <?php if ($stockLots === []): ?>
-                        <tr><td colspan="9">No stock lots recorded for this product.</td></tr>
+                        <tr><td colspan="8">No stock lots recorded for this product.</td></tr>
                     <?php endif; ?>
 
                     <?php foreach ($stockLots as $movement): ?>
@@ -172,9 +171,11 @@ if ($dbReady && $pdo !== null && $productId > 0) {
                                     -
                                 <?php endif; ?>
                             </td>
-                            <td><?php echo e($reference !== '' ? $reference : 'Manual'); ?></td>
                             <td><?php echo e($movement['created_by_name'] ?: '-'); ?></td>
-                            <td><?php echo e($movement['notes'] ?? ''); ?></td>
+                            <td class="reference-note-cell">
+                                <span class="reference-text"><?php echo e($reference !== '' ? $reference : 'Manual'); ?></span>
+                                <span class="note-text"><?php echo e(trim((string) ($movement['notes'] ?? '')) !== '' ? (string) $movement['notes'] : '-'); ?></span>
+                            </td>
                             <td>
                                 <button
                                     class="icon-button"
@@ -215,9 +216,11 @@ if ($dbReady && $pdo !== null && $productId > 0) {
                 <input type="hidden" name="product_id" value="<?php echo (int) $product['id']; ?>" data-lot-correct-product>
                 <input type="hidden" name="lot_movement_id" value="" data-lot-correct-lot required>
 
-                <div class="stock-current">
+                <div class="field stock-current-field">
                     <span>Current lot stock</span>
-                    <strong data-lot-correct-current>0</strong>
+                    <div class="stock-current">
+                        <strong data-lot-correct-current>0</strong>
+                    </div>
                 </div>
 
                 <label class="field">

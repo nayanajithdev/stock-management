@@ -395,9 +395,8 @@ if ($dbReady && $pdo !== null) {
             </button>
         </div>
 
-        <form class="warranty-form single-form" method="post" action="<?php echo e(app_url('actions/warranty_save.php')); ?>">
+        <form class="warranty-form single-form" method="post" action="<?php echo e(app_url('actions/warranty_return_update.php')); ?>">
             <?php echo csrf_field(); ?>
-            <input type="hidden" name="redirect_to" value="?page=warranty-returns">
             <input type="hidden" name="claim_id" value="" data-warranty-claim-id required>
 
             <label class="field span-2">

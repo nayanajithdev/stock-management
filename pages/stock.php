@@ -12,7 +12,6 @@ $summary = [
     'stock_units' => 0,
     'stock_value' => 0.0,
     'low_stock' => 0,
-    'manual_month' => 0,
 ];
 
 if (! array_key_exists($typeFilter, $filterMovementLabels)) {
@@ -30,13 +29,6 @@ if ($dbReady && $pdo !== null) {
     $summary['stock_units'] = (int) $pdo->query('SELECT COALESCE(SUM(current_stock), 0) FROM products WHERE status = "active"')->fetchColumn();
     $summary['stock_value'] = app_stock_value_total($pdo);
     $summary['low_stock'] = (int) $pdo->query('SELECT COUNT(*) FROM products WHERE status = "active" AND reorder_level > 0 AND current_stock <= reorder_level')->fetchColumn();
-    $summary['manual_month'] = (int) $pdo->query(
-        'SELECT COUNT(*)
-         FROM stock_movements
-         WHERE reference_type = "manual_adjustment"
-           AND created_at >= DATE_FORMAT(CURRENT_DATE, "%Y-%m-01")'
-    )->fetchColumn();
-
     $movementSql = 'SELECT sm.*,
                            ' . app_lot_unit_cost_sql('sm', 'pc') . ' AS display_unit_cost,
                            p.sku,

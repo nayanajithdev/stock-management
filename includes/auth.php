@@ -2,6 +2,11 @@
 
 declare(strict_types=1);
 
+const AUTH_LOGIN_WINDOW_MINUTES = 15;
+const AUTH_LOGIN_IDENTIFIER_LIMIT = 5;
+const AUTH_LOGIN_IP_LIMIT = 25;
+const AUTH_LOGIN_ATTEMPT_RETENTION_DAYS = 7;
+
 function auth_users_have_email_column(PDO $pdo): bool
 {
     $statement = $pdo->prepare(
@@ -57,6 +62,7 @@ function auth_current_user(PDO $pdo): ?array
     }
 
     if ((string) $user['status'] !== 'active') {
+        app_log_security_event('inactive_user_logout', 'Inactive account session blocked for user #' . (int) $user['id'] . '.', $user);
         auth_logout_session();
         set_flash('error', 'Your account is inactive. Contact the owner.');
 
@@ -77,6 +83,161 @@ function auth_logout_session(): void
 {
     unset($_SESSION['user_id'], $_SESSION['user_role']);
     session_regenerate_id(true);
+}
+
+function auth_login_identifier(string $login): string
+{
+    return substr(strtolower(trim($login)), 0, 190);
+}
+
+function auth_client_ip(): string
+{
+    $ipAddress = (string) ($_SERVER['REMOTE_ADDR'] ?? '');
+
+    if (filter_var($ipAddress, FILTER_VALIDATE_IP)) {
+        return substr($ipAddress, 0, 45);
+    }
+
+    return 'unknown';
+}
+
+function auth_prune_login_attempts(PDO $pdo): void
+{
+    if (! app_tables_exist($pdo, ['login_attempts'])) {
+        return;
+    }
+
+    try {
+        $pdo->exec(
+            'DELETE FROM login_attempts
+             WHERE attempted_at < DATE_SUB(NOW(), INTERVAL ' . AUTH_LOGIN_ATTEMPT_RETENTION_DAYS . ' DAY)'
+        );
+    } catch (Throwable) {
+        return;
+    }
+}
+
+function auth_login_lockout(PDO $pdo, string $identifier, string $ipAddress): ?array
+{
+    if ($identifier === '' || ! app_tables_exist($pdo, ['login_attempts'])) {
+        return null;
+    }
+
+    $identifierWindow = auth_login_failure_window($pdo, $identifier, $ipAddress);
+    $ipWindow = auth_login_failure_window($pdo, null, $ipAddress);
+
+    $minutes = 0;
+
+    if ($identifierWindow['fail_count'] >= AUTH_LOGIN_IDENTIFIER_LIMIT) {
+        $minutes = max($minutes, $identifierWindow['remaining_minutes']);
+    }
+
+    if ($ipWindow['fail_count'] >= AUTH_LOGIN_IP_LIMIT) {
+        $minutes = max($minutes, $ipWindow['remaining_minutes']);
+    }
+
+    if ($minutes <= 0) {
+        return null;
+    }
+
+    return [
+        'remaining_minutes' => $minutes,
+    ];
+}
+
+function auth_login_failure_window(PDO $pdo, ?string $identifier, string $ipAddress): array
+{
+    try {
+        if ($identifier === null) {
+            $statement = $pdo->prepare(
+                'SELECT COUNT(*) AS fail_count,
+                        COALESCE(GREATEST(1, ' . AUTH_LOGIN_WINDOW_MINUTES . ' - TIMESTAMPDIFF(MINUTE, MIN(attempted_at), NOW())), ' . AUTH_LOGIN_WINDOW_MINUTES . ') AS remaining_minutes
+                 FROM login_attempts
+                 WHERE was_success = 0
+                   AND ip_address = :ip_address
+                   AND attempted_at >= DATE_SUB(NOW(), INTERVAL ' . AUTH_LOGIN_WINDOW_MINUTES . ' MINUTE)'
+            );
+            $statement->execute(['ip_address' => $ipAddress]);
+        } else {
+            $statement = $pdo->prepare(
+                'SELECT COUNT(*) AS fail_count,
+                        COALESCE(GREATEST(1, ' . AUTH_LOGIN_WINDOW_MINUTES . ' - TIMESTAMPDIFF(MINUTE, MIN(attempted_at), NOW())), ' . AUTH_LOGIN_WINDOW_MINUTES . ') AS remaining_minutes
+                 FROM login_attempts
+                 WHERE was_success = 0
+                   AND login_identifier = :login_identifier
+                   AND ip_address = :ip_address
+                   AND attempted_at >= DATE_SUB(NOW(), INTERVAL ' . AUTH_LOGIN_WINDOW_MINUTES . ' MINUTE)'
+            );
+            $statement->execute([
+                'login_identifier' => $identifier,
+                'ip_address' => $ipAddress,
+            ]);
+        }
+
+        $row = $statement->fetch();
+    } catch (Throwable) {
+        return [
+            'fail_count' => 0,
+            'remaining_minutes' => 0,
+        ];
+    }
+
+    if (! is_array($row)) {
+        return [
+            'fail_count' => 0,
+            'remaining_minutes' => 0,
+        ];
+    }
+
+    return [
+        'fail_count' => (int) ($row['fail_count'] ?? 0),
+        'remaining_minutes' => max(1, (int) ($row['remaining_minutes'] ?? AUTH_LOGIN_WINDOW_MINUTES)),
+    ];
+}
+
+function auth_record_login_attempt(PDO $pdo, string $identifier, string $ipAddress, ?int $userId, bool $success, ?string $failureReason = null): void
+{
+    if ($identifier === '' || ! app_tables_exist($pdo, ['login_attempts'])) {
+        return;
+    }
+
+    try {
+        $statement = $pdo->prepare(
+            'INSERT INTO login_attempts (user_id, login_identifier, ip_address, was_success, failure_reason)
+             VALUES (:user_id, :login_identifier, :ip_address, :was_success, :failure_reason)'
+        );
+        $statement->execute([
+            'user_id' => $userId,
+            'login_identifier' => $identifier,
+            'ip_address' => $ipAddress,
+            'was_success' => $success ? 1 : 0,
+            'failure_reason' => $success ? null : substr((string) $failureReason, 0, 80),
+        ]);
+    } catch (Throwable) {
+        return;
+    }
+}
+
+function auth_clear_login_failures(PDO $pdo, string $identifier, string $ipAddress): void
+{
+    if ($identifier === '' || ! app_tables_exist($pdo, ['login_attempts'])) {
+        return;
+    }
+
+    try {
+        $statement = $pdo->prepare(
+            'DELETE FROM login_attempts
+             WHERE login_identifier = :login_identifier
+               AND ip_address = :ip_address
+               AND was_success = 0'
+        );
+        $statement->execute([
+            'login_identifier' => $identifier,
+            'ip_address' => $ipAddress,
+        ]);
+    } catch (Throwable) {
+        return;
+    }
 }
 
 function auth_permission_definitions(): array
@@ -281,6 +442,11 @@ function auth_require_permission(PDO $pdo, ?array $user, string $permission): vo
         return;
     }
 
+    app_log_security_event(
+        'permission_denied',
+        'Denied permission "' . substr($permission, 0, 60) . '" for ' . app_security_request_target() . '.',
+        $user
+    );
     set_flash('error', 'You do not have permission to access that module.');
     redirect('?page=dashboard');
 }
@@ -291,6 +457,7 @@ function auth_require_owner(?array $currentUser): void
         return;
     }
 
+    app_log_security_event('owner_required_denied', 'Denied owner-only access for ' . app_security_request_target() . '.', $currentUser);
     set_flash('error', 'Only the owner can manage users.');
     redirect('?page=dashboard');
 }

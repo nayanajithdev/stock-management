@@ -58,6 +58,46 @@ function get_flash(): ?array
     return is_array($flash) ? $flash : null;
 }
 
+function app_security_request_target(): string
+{
+    $method = strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'));
+    $uri = (string) ($_SERVER['REQUEST_URI'] ?? $_SERVER['SCRIPT_NAME'] ?? '');
+    $uri = preg_replace('/[^\x20-\x7E]/', '', $uri) ?? '';
+
+    return trim($method . ' ' . substr($uri, 0, 140));
+}
+
+function app_security_client_ip(): string
+{
+    if (function_exists('auth_client_ip')) {
+        return auth_client_ip();
+    }
+
+    $ipAddress = (string) ($_SERVER['REMOTE_ADDR'] ?? '');
+
+    return filter_var($ipAddress, FILTER_VALIDATE_IP) ? substr($ipAddress, 0, 45) : 'unknown';
+}
+
+function app_log_security_event(string $action, string $description, ?array $user = null): void
+{
+    $pdo = $GLOBALS['pdo'] ?? null;
+
+    if (! $pdo instanceof PDO || ! function_exists('app_log_activity')) {
+        return;
+    }
+
+    $currentUser = $user ?? ($GLOBALS['currentUser'] ?? null);
+    $actor = is_array($currentUser) ? $currentUser : null;
+    $ipAddress = app_security_client_ip();
+    $description = trim($description);
+
+    if ($ipAddress !== '') {
+        $description .= ' IP ' . $ipAddress . '.';
+    }
+
+    app_log_activity($pdo, $actor, $action, $description);
+}
+
 function csrf_token(): string
 {
     if (! isset($_SESSION['csrf_token']) || ! is_string($_SESSION['csrf_token']) || strlen($_SESSION['csrf_token']) < 32) {
@@ -77,6 +117,7 @@ function verify_csrf(): void
     $submitted = (string) ($_POST['csrf_token'] ?? '');
 
     if (! hash_equals(csrf_token(), $submitted)) {
+        app_log_security_event('csrf_failed', 'Blocked invalid CSRF request: ' . app_security_request_target() . '.');
         set_flash('error', 'Your form expired. Please try again.');
         redirect('?page=dashboard');
     }

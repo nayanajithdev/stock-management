@@ -66,6 +66,7 @@ function app_database_ready(PDO $pdo): bool
     if (! app_tables_exist($pdo, [
         'users',
         'user_permissions',
+        'login_attempts',
         'settings',
         'categories',
         'brands',
@@ -90,6 +91,9 @@ function app_database_ready(PDO $pdo): bool
     }
 
     return app_column_exists($pdo, 'users', 'email')
+        && app_column_exists($pdo, 'login_attempts', 'login_identifier')
+        && app_column_exists($pdo, 'login_attempts', 'ip_address')
+        && app_column_exists($pdo, 'login_attempts', 'was_success')
         && app_column_exists($pdo, 'products', 'item_tracking')
         && app_column_exists($pdo, 'purchase_items', 'warranty_months')
         && app_column_exists($pdo, 'stock_movements', 'warranty_months')
@@ -174,6 +178,21 @@ CREATE TABLE IF NOT EXISTS user_permissions (
     updated_at TIMESTAMP NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (user_id, permission_key),
     CONSTRAINT fk_user_permissions_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+SQL,
+        'login_attempts' => <<<'SQL'
+CREATE TABLE IF NOT EXISTS login_attempts (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    user_id INT UNSIGNED NULL,
+    login_identifier VARCHAR(190) NOT NULL,
+    ip_address VARCHAR(45) NOT NULL,
+    was_success TINYINT(1) NOT NULL DEFAULT 0,
+    failure_reason VARCHAR(80) NULL,
+    attempted_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_login_attempts_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
+    INDEX idx_login_attempts_identifier_ip (login_identifier, ip_address, attempted_at),
+    INDEX idx_login_attempts_ip (ip_address, attempted_at),
+    INDEX idx_login_attempts_attempted_at (attempted_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
 SQL,
         'categories' => <<<'SQL'
@@ -523,6 +542,14 @@ function app_add_missing_columns(PDO $pdo): void
             'allowed' => 'TINYINT(1) NOT NULL DEFAULT 1',
             'updated_at' => 'TIMESTAMP NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP',
         ],
+        'login_attempts' => [
+            'user_id' => 'INT UNSIGNED NULL',
+            'login_identifier' => 'VARCHAR(190) NOT NULL DEFAULT \'\'',
+            'ip_address' => 'VARCHAR(45) NOT NULL DEFAULT \'\'',
+            'was_success' => 'TINYINT(1) NOT NULL DEFAULT 0',
+            'failure_reason' => 'VARCHAR(80) NULL',
+            'attempted_at' => 'TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP',
+        ],
         'categories' => [
             'name' => 'VARCHAR(120) NOT NULL DEFAULT \'\'',
             'description' => 'VARCHAR(255) NULL',
@@ -747,6 +774,9 @@ function app_add_missing_indexes(PDO $pdo): void
 {
     $indexes = [
         ['customers', 'idx_customers_phone', 'ALTER TABLE customers ADD INDEX idx_customers_phone (phone)'],
+        ['login_attempts', 'idx_login_attempts_identifier_ip', 'ALTER TABLE login_attempts ADD INDEX idx_login_attempts_identifier_ip (login_identifier, ip_address, attempted_at)'],
+        ['login_attempts', 'idx_login_attempts_ip', 'ALTER TABLE login_attempts ADD INDEX idx_login_attempts_ip (ip_address, attempted_at)'],
+        ['login_attempts', 'idx_login_attempts_attempted_at', 'ALTER TABLE login_attempts ADD INDEX idx_login_attempts_attempted_at (attempted_at)'],
         ['products', 'idx_products_name', 'ALTER TABLE products ADD INDEX idx_products_name (name)'],
         ['products', 'idx_products_status', 'ALTER TABLE products ADD INDEX idx_products_status (status)'],
         ['product_serials', 'idx_product_serials_status', 'ALTER TABLE product_serials ADD INDEX idx_product_serials_status (status)'],

@@ -11,6 +11,7 @@ function backup_known_tables(): array
     return [
         'users',
         'user_permissions',
+        'login_attempts',
         'categories',
         'brands',
         'suppliers',
@@ -170,9 +171,32 @@ function backup_identifier(string $identifier): string
     return '`' . str_replace('`', '``', $identifier) . '`';
 }
 
-function backup_filename(string $extension): string
+function backup_filename(string $extension, string $shopName = ''): string
 {
-    return 'stock-management-backup-' . date('Ymd-His') . '.' . $extension;
+    $shopSlug = backup_filename_slug($shopName);
+    $prefix = $shopSlug !== '' ? $shopSlug : 'stock-management';
+
+    return $prefix . '-backup-' . date('Ymd-His') . '.' . $extension;
+}
+
+function backup_filename_slug(string $value): string
+{
+    $value = trim($value);
+
+    if ($value === '') {
+        return '';
+    }
+
+    $ascii = @iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $value);
+
+    if (is_string($ascii) && $ascii !== '') {
+        $value = $ascii;
+    }
+
+    $value = preg_replace('/[^A-Za-z0-9]+/', '-', $value) ?? '';
+    $value = trim($value, '-');
+
+    return substr($value, 0, 60);
 }
 
 function backup_create_full_zip(PDO $pdo): string
@@ -420,7 +444,7 @@ function backup_verify_sql(string $sql): void
         throw new RuntimeException('SQL backup version is not supported.');
     }
 
-    $requiredTables = backup_known_tables();
+    $requiredTables = array_values(array_diff(backup_known_tables(), ['login_attempts']));
     $createdTables = [];
 
     foreach (backup_split_sql_statements($sql) as $statement) {

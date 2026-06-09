@@ -69,8 +69,8 @@ document.querySelectorAll('a[aria-disabled="true"]').forEach((link) => {
 });
 
 document.querySelectorAll('[data-backup-file-input]').forEach((input) => {
-    const picker = input.closest('.backup-file-picker');
-    const fileName = picker?.querySelector('[data-backup-file-name]');
+    const field = input.closest('.backup-native-file, .backup-file-picker');
+    const fileName = field?.querySelector('[data-backup-file-name]');
 
     input.addEventListener('change', () => {
         if (!fileName) {

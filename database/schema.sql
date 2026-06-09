@@ -25,6 +25,20 @@ CREATE TABLE IF NOT EXISTS user_permissions (
     CONSTRAINT fk_user_permissions_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS login_attempts (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    user_id INT UNSIGNED NULL,
+    login_identifier VARCHAR(190) NOT NULL,
+    ip_address VARCHAR(45) NOT NULL,
+    was_success TINYINT(1) NOT NULL DEFAULT 0,
+    failure_reason VARCHAR(80) NULL,
+    attempted_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_login_attempts_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
+    INDEX idx_login_attempts_identifier_ip (login_identifier, ip_address, attempted_at),
+    INDEX idx_login_attempts_ip (ip_address, attempted_at),
+    INDEX idx_login_attempts_attempted_at (attempted_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS categories (
     id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     name VARCHAR(120) NOT NULL UNIQUE,

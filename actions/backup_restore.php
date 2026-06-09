@@ -17,11 +17,13 @@ if (! $dbReady || $pdo === null) {
 }
 
 if ((string) ($_POST['confirm_restore'] ?? '') !== '1') {
+    app_log_security_event('backup_restore_denied', 'Backup restore submitted without confirmation.', $currentUser);
     set_flash('error', 'Confirm that you understand this restore will replace the current database.');
     redirect('?page=backup');
 }
 
 try {
+    app_log_security_event('backup_restore_attempt', 'Started backup restore verification.', $currentUser);
     $upload = backup_read_upload();
     $verifiedBackup = backup_verify_uploaded_backup($upload);
 
@@ -38,6 +40,7 @@ try {
     set_flash('success', 'Backup restored. Sign in again to continue.');
     redirect('?page=login');
 } catch (Throwable $exception) {
+    app_log_security_event('backup_restore_failed', 'Backup restore failed: ' . substr($exception->getMessage(), 0, 140), $currentUser);
     set_flash('error', $exception->getMessage());
     redirect('?page=backup');
 }

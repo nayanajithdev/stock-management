@@ -17,11 +17,12 @@ if (! $dbReady || $pdo === null) {
 
 $type = (string) ($_GET['type'] ?? 'sql');
 $zipPath = null;
+$shopName = (string) ($config['shop_name'] ?? '');
 
 try {
     if ($type === 'full') {
         $zipPath = backup_create_full_zip($pdo);
-        $filename = backup_filename('zip');
+        $filename = backup_filename('zip', $shopName);
 
         app_log_activity($pdo, $currentUser, 'backup_download', 'Downloaded full backup.');
 
@@ -42,7 +43,7 @@ try {
     }
 
     $sql = backup_generate_sql($pdo, 'sql');
-    $filename = backup_filename('sql');
+    $filename = backup_filename('sql', $shopName);
 
     app_log_activity($pdo, $currentUser, 'backup_download', 'Downloaded SQL backup.');
 

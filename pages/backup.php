@@ -29,13 +29,12 @@ if ($dbReady && $pdo !== null) {
     <article class="panel backup-panel">
         <div class="panel-header">
             <div>
-                <h2>Download backup</h2>
+                <p class="panel-label">Database backup</p>
+                <h2>Download current backup</h2>
             </div>
             <?php if ($dbReady): ?>
                 <div class="backup-meta-row">
                     <span><?php echo count($tableCounts); ?> tables</span>
-                    <span><?php echo (int) $recordCount; ?> records</span>
-                    <span><?php echo $shopImagePath !== '' ? 'Shop image included' : 'No shop image'; ?></span>
                 </div>
             <?php endif; ?>
         </div>
@@ -43,25 +42,21 @@ if ($dbReady && $pdo !== null) {
         <?php if (! $dbReady): ?>
             <p class="empty-state">Import <code>database/schema.sql</code> before creating backups.</p>
         <?php else: ?>
-            <div class="backup-summary-grid">
-                <div>
-                    <strong>SQL backup</strong>
-                    <span>Database structure and records.</span>
-                </div>
-                <div>
-                    <strong>Full backup</strong>
-                    <span>Database plus shop profile image.</span>
-                </div>
+            <div class="backup-info-box">
+                <strong>What this download contains</strong>
+                <span>SQL backup includes current database structure and saved records.</span>
+                <span><?php echo e(implode(', ', backup_table_names($pdo))); ?></span>
+                <span>Full backup also includes the current shop profile image<?php echo $shopImagePath !== '' ? ': ' . e(basename($shopImagePath)) : ' when available'; ?>.</span>
             </div>
 
             <div class="backup-actions">
                 <a class="top-action" href="<?php echo e(app_url('actions/backup_download.php?type=sql')); ?>">
                     <i data-lucide="database"></i>
-                    Download SQL
+                    Download Backup (.sql)
                 </a>
                 <a class="top-action" href="<?php echo e(app_url('actions/backup_download.php?type=full')); ?>">
                     <i data-lucide="archive"></i>
-                    Download Full Backup
+                    Download Full Backup (.zip)
                 </a>
             </div>
         <?php endif; ?>
@@ -70,7 +65,8 @@ if ($dbReady && $pdo !== null) {
     <article class="panel backup-panel">
         <div class="panel-header">
             <div>
-                <h2>Restore backup</h2>
+                <p class="panel-label">Recovery</p>
+                <h2>Upload and restore backup</h2>
             </div>
         </div>
 
@@ -85,26 +81,21 @@ if ($dbReady && $pdo !== null) {
             <form class="backup-restore-form" method="post" action="<?php echo e(app_url('actions/backup_restore.php')); ?>" enctype="multipart/form-data">
                 <?php echo csrf_field(); ?>
 
-                <label class="backup-file-picker">
-                    <input class="backup-file-input" type="file" name="backup_file" accept=".sql,.zip" required data-backup-file-input>
-                    <span class="backup-file-icon"><i data-lucide="file-archive"></i></span>
-                    <span class="backup-file-copy">
-                        <strong>Select backup file</strong>
-                        <small data-backup-file-name>No file selected</small>
-                    </span>
+                <label class="field backup-native-file">
+                    <span>Backup File (.sql or .zip)</span>
+                    <input type="file" name="backup_file" accept=".sql,.zip" required data-backup-file-input>
+                    <small data-backup-file-name>No file selected</small>
                 </label>
 
-                <div class="backup-restore-actions">
-                    <label class="checkbox-field backup-confirm-field">
-                        <input type="checkbox" name="confirm_restore" value="1" required>
-                        <span>Replace current database</span>
-                    </label>
+                <label class="checkbox-field backup-confirm-field">
+                    <input type="checkbox" name="confirm_restore" value="1" required>
+                    <span>I understand this will replace the current database.</span>
+                </label>
 
-                    <button class="top-action danger-action" type="submit">
-                        <i data-lucide="upload"></i>
-                        Upload and Restore Backup
-                    </button>
-                </div>
+                <button class="top-action danger-action backup-restore-submit" type="submit">
+                    <i data-lucide="upload"></i>
+                    Upload and Restore Backup
+                </button>
             </form>
         <?php endif; ?>
     </article>

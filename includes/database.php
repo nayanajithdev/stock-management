@@ -25,6 +25,21 @@ function app_pdo(?string &$error = null): ?PDO
     }
 }
 
+function app_set_database_timezone(PDO $pdo, string $timezone): void
+{
+    try {
+        $dateTimezone = new DateTimeZone($timezone);
+        $offsetSeconds = $dateTimezone->getOffset(new DateTimeImmutable('now', $dateTimezone));
+        $sign = $offsetSeconds < 0 ? '-' : '+';
+        $offsetSeconds = abs($offsetSeconds);
+        $offset = sprintf('%s%02d:%02d', $sign, intdiv($offsetSeconds, 3600), intdiv($offsetSeconds % 3600, 60));
+
+        $pdo->exec('SET time_zone = ' . $pdo->quote($offset));
+    } catch (Throwable) {
+        return;
+    }
+}
+
 function app_tables_exist(PDO $pdo, array $tables): bool
 {
     foreach ($tables as $table) {

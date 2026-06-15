@@ -59,6 +59,10 @@ if ($pdo !== null && app_tables_exist($pdo, ['settings'])) {
 
 date_default_timezone_set((string) ($config['timezone'] ?? 'Asia/Colombo'));
 
+if ($pdo !== null) {
+    app_set_database_timezone($pdo, (string) ($config['timezone'] ?? 'Asia/Colombo'));
+}
+
 $flash = get_flash();
 $currentPage = (string) ($_GET['page'] ?? 'dashboard');
 $scriptName = basename((string) ($_SERVER['SCRIPT_NAME'] ?? 'index.php'));

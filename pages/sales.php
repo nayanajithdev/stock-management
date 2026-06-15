@@ -124,7 +124,11 @@ if ($dbReady && $pdo !== null) {
                 </div>
 
                 <div class="form-actions">
-                    <button class="top-action" type="submit">
+                    <button class="top-action" type="submit" name="after_save" value="print">
+                        <i data-lucide="printer"></i>
+                        Save and Print
+                    </button>
+                    <button class="top-action" type="submit" name="after_save" value="stay">
                         <i data-lucide="save"></i>
                         Save Invoice
                     </button>

@@ -320,6 +320,14 @@ $balance = is_array($sale) ? sale_receivable_balance($sale['total'], $sale['paid
             </article>
         </aside>
     </section>
+
+    <?php if ((string) ($_GET['print'] ?? '') === '1'): ?>
+        <script>
+            window.addEventListener('load', () => {
+                window.setTimeout(() => window.print(), 250);
+            });
+        </script>
+    <?php endif; ?>
 <?php endif; ?>
 
 <?php

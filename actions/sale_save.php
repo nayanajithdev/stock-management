@@ -20,6 +20,7 @@ $customerName = trim((string) ($_POST['customer_name'] ?? ''));
 $customerPhone = nullable_string((string) ($_POST['customer_phone'] ?? ''));
 $saleDate = trim((string) ($_POST['sale_date'] ?? date('Y-m-d\TH:i')));
 $paymentMethod = (string) ($_POST['payment_method'] ?? 'cash');
+$afterSave = (string) ($_POST['after_save'] ?? 'stay');
 $discount = max(0.0, input_decimal('discount'));
 $tax = max(0.0, input_decimal('tax'));
 $paid = max(0.0, input_decimal('paid'));
@@ -235,6 +236,10 @@ try {
 
     app_log_activity($pdo, $currentUser, 'sale_create', 'Created invoice ' . $invoiceNo . ' for ' . format_money($total) . '.');
     set_flash('success', 'Sale saved as invoice ' . $invoiceNo . '.');
+    if ($afterSave === 'print') {
+        redirect('?page=sale-view&id=' . $saleId . '&print=1');
+    }
+
     redirect('?page=sales');
 } catch (Throwable $exception) {
     if ($pdo->inTransaction()) {

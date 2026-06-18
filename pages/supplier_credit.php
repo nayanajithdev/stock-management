@@ -1,6 +1,7 @@
 <?php
 /** @var ?PDO $pdo */
 /** @var bool $dbReady */
+/** @var ?array $currentUser */
 
 $creditSearch = trim((string) ($_GET['q'] ?? ''));
 $statusFilter = (string) ($_GET['purchase_status'] ?? 'open');
@@ -8,6 +9,7 @@ $collectPurchaseId = (int) ($_GET['collect'] ?? 0);
 $supplierTab = (string) ($_GET['tab'] ?? 'outstanding');
 $allowedStatuses = ['open', 'partial', 'credit', 'all'];
 $allowedTabs = ['outstanding', 'payments'];
+$canViewProductCost = $dbReady && $pdo instanceof PDO && auth_can_view_product_cost($pdo, $currentUser ?? null);
 
 if (! in_array($statusFilter, $allowedStatuses, true)) {
     $statusFilter = 'open';
@@ -118,6 +120,11 @@ if ($dbReady && $pdo !== null) {
     </div>
 </div>
 
+<?php if (! $canViewProductCost): ?>
+    <section class="panel">
+        <p class="empty-state">Product Cost permission is required to view supplier purchase balances and payments.</p>
+    </section>
+<?php else: ?>
 <section class="stats-grid compact-stats" aria-label="Supplier credit summary">
     <article class="stat-card">
         <div>
@@ -336,6 +343,7 @@ if ($dbReady && $pdo !== null) {
         </article>
     </div>
 </section>
+<?php endif; ?>
 
 <?php
 function supplier_credit_status_class(string $status, float $balance): string

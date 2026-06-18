@@ -15,6 +15,11 @@ if (! $dbReady || $pdo === null) {
     redirect('?page=purchases');
 }
 
+if (! auth_can_view_product_cost($pdo, $currentUser ?? null)) {
+    set_flash('error', 'Product Cost permission is required to receive supplier stock.');
+    redirect('?page=purchases');
+}
+
 $supplierId = ($_POST['supplier_id'] ?? '') !== '' ? (int) $_POST['supplier_id'] : null;
 $invoiceNo = nullable_string((string) ($_POST['invoice_no'] ?? ''));
 $purchaseDate = trim((string) ($_POST['purchase_date'] ?? date('Y-m-d')));

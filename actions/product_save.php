@@ -15,6 +15,7 @@ if (! $dbReady || $pdo === null) {
     redirect('?page=products');
 }
 
+$canManageProductCost = auth_can_view_product_cost($pdo, $currentUser ?? null);
 $productId = ($_POST['product_id'] ?? '') !== '' ? (int) $_POST['product_id'] : null;
 $name = trim((string) ($_POST['name'] ?? ''));
 $sku = trim((string) ($_POST['sku'] ?? ''));
@@ -26,7 +27,8 @@ $brandName = trim((string) ($_POST['brand_name'] ?? ''));
 $categoryId = null;
 $brandId = null;
 $supplierId = ($_POST['supplier_id'] ?? '') !== '' ? (int) $_POST['supplier_id'] : null;
-$costPrice = input_decimal('cost_price');
+$postedCostPrice = input_decimal('cost_price');
+$costPrice = $postedCostPrice;
 $sellingPrice = input_decimal('selling_price');
 $wholesalePrice = input_decimal('wholesale_price');
 $warrantyMonths = input_int('warranty_months');
@@ -41,14 +43,18 @@ if ($name === '' || $sku === '') {
     redirect($formRedirect);
 }
 
-if ($costPrice < 0 || $sellingPrice < 0 || $wholesalePrice < 0) {
+if ($postedCostPrice < 0 || $sellingPrice < 0 || $wholesalePrice < 0) {
     set_flash('error', 'Product prices cannot be negative.');
     redirect($formRedirect);
 }
 
-if ($sellingPrice < $costPrice) {
-    set_flash('error', 'Selling price should be equal to or higher than cost price.');
-    redirect($formRedirect);
+if (! $canManageProductCost) {
+    if ($productId === null && ($postedCostPrice > 0.0 || $openingStock > 0)) {
+        set_flash('error', 'Product Cost permission is required to add opening stock or set product cost.');
+        redirect($formRedirect);
+    }
+
+    $costPrice = 0.0;
 }
 
 try {
@@ -58,6 +64,20 @@ try {
 
     if ($productId !== null) {
         $pdo->beginTransaction();
+        $existingStatement = $pdo->prepare('SELECT cost_price FROM products WHERE id = :id LIMIT 1');
+        $existingStatement->execute(['id' => $productId]);
+        $existingProduct = $existingStatement->fetch();
+
+        if (! is_array($existingProduct)) {
+            throw new RuntimeException('Selected product was not found.');
+        }
+
+        $costPrice = (float) $existingProduct['cost_price'];
+
+        if ($canManageProductCost && $sellingPrice < $costPrice) {
+            throw new RuntimeException('Selling price should be equal to or higher than current cost price.');
+        }
+
         $categoryId = resolve_product_master_id($pdo, 'categories', $categoryName);
         $brandId = resolve_product_master_id($pdo, 'brands', $brandName);
 
@@ -71,7 +91,6 @@ try {
                  name = :name,
                  model = :model,
                  description = :description,
-                 cost_price = :cost_price,
                  selling_price = :selling_price,
                  wholesale_price = :wholesale_price,
                  warranty_months = :warranty_months,
@@ -90,7 +109,6 @@ try {
             'name' => $name,
             'model' => $model,
             'description' => $description,
-            'cost_price' => $costPrice,
             'selling_price' => $sellingPrice,
             'wholesale_price' => $wholesalePrice,
             'warranty_months' => $warrantyMonths,
@@ -107,6 +125,11 @@ try {
     }
 
     $pdo->beginTransaction();
+
+    if ($canManageProductCost && $sellingPrice < $costPrice) {
+        throw new RuntimeException('Selling price should be equal to or higher than cost price.');
+    }
+
     $categoryId = resolve_product_master_id($pdo, 'categories', $categoryName);
     $brandId = resolve_product_master_id($pdo, 'brands', $brandName);
 

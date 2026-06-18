@@ -17,8 +17,8 @@ $permissionGroups = [
     ],
     'inventory' => [
         'label' => 'Inventory & Stock',
-        'description' => 'Products, setup records, purchasing, stock movements, and supplier credit.',
-        'keys' => ['products', 'inventory_setup', 'purchases', 'supplier_credit', 'stock'],
+        'description' => 'Products, setup records, costs, purchasing, stock movements, and supplier credit.',
+        'keys' => ['products', 'product_cost', 'inventory_setup', 'purchases', 'supplier_credit', 'stock'],
     ],
     'sales' => [
         'label' => 'Sales & Customers',
@@ -206,7 +206,7 @@ $showUserForm = $canManageUsers && ($isEditing || (string) ($_GET['modal'] ?? ''
                                         <?php foreach ($groupPermissionKeys as $permissionKey): ?>
                                             <?php
                                             $permission = $permissionDefinitions[$permissionKey];
-                                            $checked = $editingPermissions === [] ? true : ($editingPermissions[$permissionKey] ?? false);
+                                            $checked = $editingPermissions === [] ? $permissionKey !== 'product_cost' : ($editingPermissions[$permissionKey] ?? false);
                                             $isRequired = $permissionKey === 'dashboard';
                                             ?>
                                             <label class="permission-card <?php echo $checked ? 'checked' : ''; ?> <?php echo $isRequired ? 'required' : ''; ?>">

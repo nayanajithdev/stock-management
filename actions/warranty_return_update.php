@@ -15,6 +15,7 @@ if (! $dbReady || $pdo === null) {
     redirect('?page=warranty-returns');
 }
 
+$canManageProductCost = auth_can_view_product_cost($pdo, $currentUser ?? null);
 $claimId = (int) ($_POST['claim_id'] ?? 0);
 $status = (string) ($_POST['status'] ?? 'received');
 $resolvedDate = trim((string) ($_POST['resolved_date'] ?? date('Y-m-d')));
@@ -30,6 +31,11 @@ $validSupplierDecisions = ['', 'send_to_supplier', 'no_supplier_warranty'];
 
 if ($claimId <= 0) {
     set_flash('error', 'Choose a warranty or return case to update.');
+    redirect('?page=warranty-returns');
+}
+
+if ($supplierRefundAmount > 0.0 && ! $canManageProductCost) {
+    set_flash('error', 'Product Cost permission is required to record supplier refund amounts.');
     redirect('?page=warranty-returns');
 }
 
@@ -76,6 +82,11 @@ try {
     $productCost = (float) $claim['cost_price'];
     $now = date('Y-m-d H:i:s');
     $stockChanges = [];
+
+    if (! $canManageProductCost) {
+        $supplierRefundAmount = (float) ($claim['supplier_refund_amount'] ?? 0);
+        $supplierRefundDate = (string) ($claim['supplier_refund_date'] ?? date('Y-m-d'));
+    }
 
     if ($supplierDecision === 'send_to_supplier') {
         if (in_array($supplierReplacementStatus, ['received', 'none'], true)) {
@@ -280,10 +291,11 @@ function warranty_return_fifo_unit_cost(PDO $pdo, int $productId, int $quantity,
 
     $lotStatement = $pdo->prepare(
         'SELECT sm.quantity_change,
-                ' . app_lot_unit_cost_sql('sm', 'pc') . ' AS unit_cost
+                ' . app_lot_unit_cost_sql('sm', 'pc', 'lco') . ' AS unit_cost
          FROM stock_movements sm
          LEFT JOIN purchases pu ON sm.reference_type = "purchase" AND pu.id = sm.reference_id
          ' . app_purchase_cost_join_sql('sm', 'pc') . '
+         ' . app_lot_cost_override_join_sql('sm', 'lco') . '
          WHERE sm.product_id = :product_id
            AND sm.quantity_change > 0
            AND sm.movement_type IN ("opening", "purchase", "return_in", "adjustment_in", "warranty_supplier_in")

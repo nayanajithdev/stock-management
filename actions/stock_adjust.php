@@ -15,9 +15,11 @@ if (! $dbReady || $pdo === null) {
     redirect('?page=stock');
 }
 
+$canManageProductCost = auth_can_view_product_cost($pdo, $currentUser ?? null);
 $productId = (int) ($_POST['product_id'] ?? 0);
 $lotMovementId = (int) ($_POST['lot_movement_id'] ?? 0);
 $exactStock = input_int('exact_stock');
+$postedUnitCost = array_key_exists('lot_unit_cost', $_POST) ? input_decimal('lot_unit_cost') : null;
 $notes = trim((string) ($_POST['notes'] ?? ''));
 $redirectTo = $productId > 0 ? '?page=product-history&id=' . $productId : '?page=products';
 
@@ -57,9 +59,24 @@ try {
     $currentLotStock = stock_adjust_current_lot_stock($pdo, $productId, $lotMovementId);
     $newLotStock = $exactStock;
     $quantityChange = $newLotStock - $currentLotStock;
+    $currentUnitCost = round(max(0.0, (float) $lot['display_unit_cost']), 2);
+    $newUnitCost = $currentUnitCost;
 
-    if ($quantityChange === 0) {
-        throw new RuntimeException('This lot already has the selected stock count.');
+    if ($canManageProductCost && $postedUnitCost !== null) {
+        $newUnitCost = round((float) $postedUnitCost, 2);
+    }
+
+    if ($newUnitCost < 0.0) {
+        throw new RuntimeException('Lot unit cost cannot be below zero.');
+    }
+
+    $costChanged = abs($newUnitCost - $currentUnitCost) >= 0.01;
+
+    if ($quantityChange === 0 && ! $costChanged) {
+        $sameValueMessage = $canManageProductCost
+            ? 'This lot already has the selected stock count and unit cost.'
+            : 'This lot already has the selected stock count.';
+        throw new RuntimeException($sameValueMessage);
     }
 
     $newStock = $currentStock + $quantityChange;
@@ -79,6 +96,11 @@ try {
         'id' => $productId,
     ]);
 
+    $movementNotes = 'Lot correction: ' . $notes;
+    if ($costChanged) {
+        $movementNotes .= ' Unit cost ' . format_money($currentUnitCost) . ' to ' . format_money($newUnitCost) . '.';
+    }
+
     $movementStatement = $pdo->prepare(
         'INSERT INTO stock_movements
             (product_id, movement_type, quantity_change, stock_after, unit_cost, warranty_months, reference_type, reference_id, notes, created_by)
@@ -89,16 +111,24 @@ try {
         'product_id' => $productId,
         'quantity_change' => $quantityChange,
         'stock_after' => $newStock,
-        'unit_cost' => (float) $lot['display_unit_cost'],
+        'unit_cost' => $newUnitCost,
         'warranty_months' => (int) $lot['warranty_months'],
         'reference_id' => $lotMovementId,
-        'notes' => 'Lot correction: ' . $notes,
+        'notes' => $movementNotes,
         'created_by' => (int) ($currentUser['id'] ?? 0) ?: null,
     ]);
 
     $pdo->commit();
 
-    app_log_activity($pdo, $currentUser, 'stock_lot_adjust', 'Adjusted stock lot for ' . $product['name'] . ' by ' . $quantityChange . ' unit(s).');
+    $activityParts = [];
+    if ($quantityChange !== 0) {
+        $activityParts[] = 'quantity by ' . $quantityChange . ' unit(s)';
+    }
+    if ($costChanged) {
+        $activityParts[] = 'unit cost from ' . format_money($currentUnitCost) . ' to ' . format_money($newUnitCost);
+    }
+
+    app_log_activity($pdo, $currentUser, 'stock_lot_adjust', 'Adjusted stock lot for ' . $product['name'] . ': ' . implode(', ', $activityParts) . '.');
     set_flash('success', 'Stock lot corrected successfully.');
     redirect($redirectTo);
 } catch (Throwable $exception) {
@@ -114,9 +144,10 @@ function stock_adjust_fetch_lot(PDO $pdo, int $productId, int $lotMovementId): ?
 {
     $statement = $pdo->prepare(
         'SELECT sm.*,
-                ' . app_lot_unit_cost_sql('sm', 'pc') . ' AS display_unit_cost
+                ' . app_lot_unit_cost_sql('sm', 'pc', 'lco') . ' AS display_unit_cost
          FROM stock_movements sm
          ' . app_purchase_cost_join_sql('sm', 'pc') . '
+         ' . app_lot_cost_override_join_sql('sm', 'lco') . '
          WHERE sm.id = :id
            AND sm.product_id = :product_id
            AND sm.quantity_change > 0

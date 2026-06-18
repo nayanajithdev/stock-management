@@ -15,6 +15,11 @@ if (! $dbReady || $pdo === null) {
     redirect('?page=supplier-credit');
 }
 
+if (! auth_can_view_product_cost($pdo, $currentUser ?? null)) {
+    set_flash('error', 'Product Cost permission is required to record supplier payments.');
+    redirect('?page=dashboard');
+}
+
 $purchaseId = (int) ($_POST['purchase_id'] ?? 0);
 $amount = max(0.0, input_decimal('amount'));
 $paymentMethod = (string) ($_POST['payment_method'] ?? 'cash');

@@ -1,9 +1,12 @@
 <?php
 /** @var ?PDO $pdo */
 /** @var bool $dbReady */
+/** @var ?array $currentUser */
 
 $purchaseSearch = trim((string) ($_GET['q'] ?? ''));
 $purchases = [];
+$canViewProductCost = $dbReady && $pdo instanceof PDO && auth_can_view_product_cost($pdo, $currentUser ?? null);
+$purchaseHistoryColspan = $canViewProductCost ? 10 : 5;
 
 if ($dbReady && $pdo !== null) {
     $purchaseSql = 'SELECT p.*,
@@ -69,17 +72,19 @@ if ($dbReady && $pdo !== null) {
                         <th>Supplier</th>
                         <th>Items</th>
                         <th>Units</th>
-                        <th>Total</th>
-                        <th>Paid</th>
-                        <th>Balance</th>
-                        <th>Status</th>
-                        <th>Action</th>
+                        <?php if ($canViewProductCost): ?>
+                            <th>Total</th>
+                            <th>Paid</th>
+                            <th>Balance</th>
+                            <th>Status</th>
+                            <th>Action</th>
+                        <?php endif; ?>
                     </tr>
                 </thead>
                 <tbody>
                     <?php if ($purchases === []): ?>
                         <tr>
-                            <td colspan="10">No purchases recorded yet.</td>
+                            <td colspan="<?php echo $purchaseHistoryColspan; ?>">No purchases recorded yet.</td>
                         </tr>
                     <?php endif; ?>
 
@@ -91,19 +96,21 @@ if ($dbReady && $pdo !== null) {
                             <td><?php echo e($purchase['supplier_name'] ?: 'No supplier'); ?></td>
                             <td><?php echo (int) $purchase['item_count']; ?></td>
                             <td><?php echo (int) $purchase['total_units']; ?></td>
-                            <td><?php echo e(format_money($purchase['total'])); ?></td>
-                            <td><?php echo e(format_money($purchase['paid'])); ?></td>
-                            <td class="<?php echo $balance > 0 ? 'text-danger' : ''; ?>"><?php echo e(format_money($balance)); ?></td>
-                            <td><span class="status <?php echo e(purchase_history_payment_status_class((string) $purchase['status'], $balance)); ?>"><?php echo e($balance > 0 ? ucfirst((string) $purchase['status']) : 'Closed'); ?></span></td>
-                            <td>
-                                <?php if ($balance > 0): ?>
-                                    <a class="icon-button" href="<?php echo e(app_url('?page=supplier-credit&collect=' . (int) $purchase['id'] . '#supplier-payment-form')); ?>" aria-label="Pay supplier">
-                                        <i data-lucide="hand-coins"></i>
-                                    </a>
-                                <?php else: ?>
-                                    <span class="muted-link">Closed</span>
-                                <?php endif; ?>
-                            </td>
+                            <?php if ($canViewProductCost): ?>
+                                <td><?php echo e(format_money($purchase['total'])); ?></td>
+                                <td><?php echo e(format_money($purchase['paid'])); ?></td>
+                                <td class="<?php echo $balance > 0 ? 'text-danger' : ''; ?>"><?php echo e(format_money($balance)); ?></td>
+                                <td><span class="status <?php echo e(purchase_history_payment_status_class((string) $purchase['status'], $balance)); ?>"><?php echo e($balance > 0 ? ucfirst((string) $purchase['status']) : 'Closed'); ?></span></td>
+                                <td>
+                                    <?php if ($balance > 0): ?>
+                                        <a class="icon-button" href="<?php echo e(app_url('?page=supplier-credit&collect=' . (int) $purchase['id'] . '#supplier-payment-form')); ?>" aria-label="Pay supplier">
+                                            <i data-lucide="hand-coins"></i>
+                                        </a>
+                                    <?php else: ?>
+                                        <span class="muted-link">Closed</span>
+                                    <?php endif; ?>
+                                </td>
+                            <?php endif; ?>
                         </tr>
                     <?php endforeach; ?>
                 </tbody>

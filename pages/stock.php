@@ -1,6 +1,7 @@
 <?php
 /** @var ?PDO $pdo */
 /** @var bool $dbReady */
+/** @var ?array $currentUser */
 
 $products = [];
 $movements = [];
@@ -8,6 +9,8 @@ $stockSearch = trim((string) ($_GET['q'] ?? ''));
 $typeFilter = trim((string) ($_GET['movement_type'] ?? ''));
 $movementLabels = stock_movement_labels();
 $filterMovementLabels = stock_movement_filter_labels();
+$canViewProductCost = $dbReady && $pdo instanceof PDO && auth_can_view_product_cost($pdo, $currentUser ?? null);
+$movementTableColspan = $canViewProductCost ? 8 : 7;
 $summary = [
     'stock_units' => 0,
     'stock_value' => 0.0,
@@ -20,23 +23,30 @@ if (! array_key_exists($typeFilter, $filterMovementLabels)) {
 
 if ($dbReady && $pdo !== null) {
     $products = $pdo->query(
-        'SELECT id, sku, name, model, current_stock, cost_price
+        'SELECT id, sku, name, model, current_stock
          FROM products
          WHERE status = "active"
          ORDER BY name ASC'
     )->fetchAll();
 
     $summary['stock_units'] = (int) $pdo->query('SELECT COALESCE(SUM(current_stock), 0) FROM products WHERE status = "active"')->fetchColumn();
-    $summary['stock_value'] = app_stock_value_total($pdo);
+    if ($canViewProductCost) {
+        $summary['stock_value'] = app_stock_value_total($pdo);
+    }
     $summary['low_stock'] = (int) $pdo->query('SELECT COUNT(*) FROM products WHERE status = "active" AND reorder_level > 0 AND current_stock <= reorder_level')->fetchColumn();
+    $costSelect = $canViewProductCost
+        ? ', ' . app_lot_unit_cost_sql('sm', 'pc', 'lco') . ' AS display_unit_cost'
+        : '';
+    $costJoins = $canViewProductCost
+        ? app_purchase_cost_join_sql('sm', 'pc') . ' ' . app_lot_cost_override_join_sql('sm', 'lco')
+        : '';
     $movementSql = 'SELECT sm.*,
-                           ' . app_lot_unit_cost_sql('sm', 'pc') . ' AS display_unit_cost,
                            p.sku,
                            p.name AS product_name,
-                           p.model
+                           p.model' . $costSelect . '
                     FROM stock_movements sm
                     INNER JOIN products p ON p.id = sm.product_id
-                    ' . app_purchase_cost_join_sql('sm', 'pc');
+                    ' . $costJoins;
     $where = [];
     $params = [];
 
@@ -131,7 +141,9 @@ if ($dbReady && $pdo !== null) {
                         <th>Type</th>
                         <th>Change</th>
                         <th>Stock After</th>
-                        <th>Unit Cost</th>
+                        <?php if ($canViewProductCost): ?>
+                            <th>Unit Cost</th>
+                        <?php endif; ?>
                         <th>Reference</th>
                         <th>Notes</th>
                     </tr>
@@ -139,7 +151,7 @@ if ($dbReady && $pdo !== null) {
                 <tbody>
                     <?php if ($movements === []): ?>
                         <tr>
-                            <td colspan="8">No stock movements found.</td>
+                            <td colspan="<?php echo $movementTableColspan; ?>">No stock movements found.</td>
                         </tr>
                     <?php endif; ?>
 
@@ -160,7 +172,9 @@ if ($dbReady && $pdo !== null) {
                             <td><span class="status <?php echo e(stock_movement_status_class((string) $movement['movement_type'])); ?>"><?php echo e($movementLabels[$movement['movement_type']] ?? ucfirst((string) $movement['movement_type'])); ?></span></td>
                             <td class="<?php echo $quantityChange < 0 ? 'text-danger' : 'text-good'; ?>"><?php echo e(($quantityChange > 0 ? '+' : '') . $quantityChange); ?></td>
                             <td><?php echo (int) $movement['stock_after']; ?></td>
-                            <td><?php echo e(format_money($movement['display_unit_cost'])); ?></td>
+                            <?php if ($canViewProductCost): ?>
+                                <td><?php echo e(format_money($movement['display_unit_cost'])); ?></td>
+                            <?php endif; ?>
                             <td><?php echo e($reference !== '' ? $reference : 'Manual'); ?></td>
                             <td><?php echo e($movement['notes'] ?? ''); ?></td>
                         </tr>

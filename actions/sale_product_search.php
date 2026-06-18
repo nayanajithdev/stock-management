@@ -12,6 +12,7 @@ if (! $dbReady || $pdo === null) {
     sale_product_search_json(503, ['products' => []]);
 }
 
+$canViewProductCost = auth_can_view_product_cost($pdo, $currentUser ?? null);
 $query = trim((string) ($_GET['q'] ?? ''));
 $categoryId = max(0, (int) ($_GET['category_id'] ?? 0));
 
@@ -154,7 +155,8 @@ foreach ($statement->fetchAll() as $product) {
         'model' => $model,
         'category' => (string) ($product['category_name'] ?? ''),
         'stock' => (int) $product['current_stock'],
-        'cost' => (float) $product['cost_price'],
+        'cost' => $canViewProductCost ? (float) $product['cost_price'] : null,
+        'cost_hidden' => ! $canViewProductCost,
         'price' => (float) $product['selling_price'],
         'warranty' => (int) $product['warranty_months'],
     ];

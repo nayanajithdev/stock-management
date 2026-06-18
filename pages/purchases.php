@@ -1,8 +1,10 @@
 <?php
 /** @var ?PDO $pdo */
 /** @var bool $dbReady */
+/** @var ?array $currentUser */
 
 $hasProducts = false;
+$canViewProductCost = $dbReady && $pdo instanceof PDO && auth_can_view_product_cost($pdo, $currentUser ?? null);
 $summary = [
     'month_total' => 0.0,
     'month_paid' => 0.0,
@@ -46,29 +48,41 @@ if ($dbReady && $pdo !== null) {
             <i data-lucide="history"></i>
             View Stock History
         </a>
-        <a class="top-action" href="<?php echo e(app_url('?page=supplier-credit')); ?>">
-            <i data-lucide="hand-coins"></i>
-            Supplier Credit
-        </a>
+        <?php if ($canViewProductCost): ?>
+            <a class="top-action" href="<?php echo e(app_url('?page=supplier-credit')); ?>">
+                <i data-lucide="hand-coins"></i>
+                Supplier Credit
+            </a>
+        <?php endif; ?>
     </div>
 </div>
 
 <section class="stats-grid compact-stats" aria-label="Purchase summary">
+    <?php if ($canViewProductCost): ?>
+        <article class="stat-card">
+            <div>
+                <span>This Month Purchases</span>
+                <strong><?php echo e(format_money($summary['month_total'])); ?></strong>
+            </div>
+            <div class="stat-icon"><i data-lucide="shopping-cart"></i></div>
+            <small>Total stock-in value</small>
+        </article>
+        <article class="stat-card">
+            <div>
+                <span>Balance</span>
+                <strong><?php echo e(format_money($summary['month_balance'])); ?></strong>
+            </div>
+            <div class="stat-icon"><i data-lucide="receipt-text"></i></div>
+            <small>Still payable</small>
+        </article>
+    <?php endif; ?>
     <article class="stat-card">
         <div>
-            <span>This Month Purchases</span>
-            <strong><?php echo e(format_money($summary['month_total'])); ?></strong>
+            <span>Units Received</span>
+            <strong><?php echo (int) $summary['stock_in_units']; ?></strong>
         </div>
-        <div class="stat-icon"><i data-lucide="shopping-cart"></i></div>
-        <small>Total stock-in value</small>
-    </article>
-    <article class="stat-card">
-        <div>
-            <span>Balance</span>
-            <strong><?php echo e(format_money($summary['month_balance'])); ?></strong>
-        </div>
-        <div class="stat-icon"><i data-lucide="receipt-text"></i></div>
-        <small>Still payable</small>
+        <div class="stat-icon"><i data-lucide="boxes"></i></div>
+        <small>This month</small>
     </article>
 </section>
 
@@ -84,6 +98,8 @@ if ($dbReady && $pdo !== null) {
 
         <?php if (! $dbReady): ?>
             <p class="empty-state">Import <code>database/schema.sql</code> before receiving stock.</p>
+        <?php elseif (! $canViewProductCost): ?>
+            <p class="empty-state">Product Cost permission is required to receive supplier stock because purchases set stock lot costs and supplier balances.</p>
         <?php elseif (! $hasProducts): ?>
             <p class="empty-state">Add products first, then return here to receive stock.</p>
         <?php else: ?>

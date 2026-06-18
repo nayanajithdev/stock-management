@@ -1,6 +1,7 @@
 <?php
 /** @var ?PDO $pdo */
 /** @var bool $dbReady */
+/** @var ?array $currentUser */
 
 $search = trim((string) ($_GET['q'] ?? ''));
 $actionFilter = trim((string) ($_GET['action'] ?? ''));
@@ -14,6 +15,7 @@ $logs = [];
 $users = [];
 $actions = [];
 $totalLogs = 0;
+$canViewProductCost = $dbReady && $pdo instanceof PDO && auth_can_view_product_cost($pdo, $currentUser ?? null);
 
 if ($dbReady && $pdo !== null) {
     $users = $pdo->query(
@@ -22,14 +24,33 @@ if ($dbReady && $pdo !== null) {
          ORDER BY role = "owner" DESC, full_name ASC'
     )->fetchAll();
 
-    $actions = $pdo->query(
-        'SELECT DISTINCT action
-         FROM activity_logs
-         ORDER BY action ASC'
-    )->fetchAll(PDO::FETCH_COLUMN);
-
     $where = [];
     $params = [];
+
+    if (! $canViewProductCost) {
+        $sensitivePlaceholders = [];
+
+        foreach (activity_cost_sensitive_actions() as $index => $action) {
+            $key = 'cost_action_' . $index;
+            $sensitivePlaceholders[] = ':' . $key;
+            $params[$key] = $action;
+        }
+
+        if ($sensitivePlaceholders !== []) {
+            $where[] = 'al.action NOT IN (' . implode(', ', $sensitivePlaceholders) . ')';
+        }
+    }
+
+    $actionSql = 'SELECT DISTINCT al.action FROM activity_logs al';
+    $actionWhereSql = $where === [] ? '' : ' WHERE ' . implode(' AND ', $where);
+    $actionStatement = $pdo->prepare($actionSql . $actionWhereSql . ' ORDER BY al.action ASC');
+
+    foreach ($params as $key => $value) {
+        $actionStatement->bindValue(':' . $key, $value, PDO::PARAM_STR);
+    }
+
+    $actionStatement->execute();
+    $actions = $actionStatement->fetchAll(PDO::FETCH_COLUMN);
 
     if ($search !== '') {
         $where[] = '(al.description LIKE :search OR al.action LIKE :search OR u.full_name LIKE :search OR u.username LIKE :search)';
@@ -257,4 +278,15 @@ function activity_page_query(int $pageNumber): string
     $query['p'] = max(1, $pageNumber);
 
     return http_build_query($query);
+}
+
+function activity_cost_sensitive_actions(): array
+{
+    return [
+        'backup_download',
+        'backup_restore',
+        'purchase_create',
+        'supplier_payment_collect',
+        'stock_lot_adjust',
+    ];
 }

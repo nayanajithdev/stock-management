@@ -223,19 +223,52 @@ function app_purchase_cost_join_sql(string $movementAlias = 'sm', string $costAl
                 AND ' . $costAlias . '.product_id = ' . $movementAlias . '.product_id';
 }
 
-function app_lot_unit_cost_sql(string $movementAlias = 'sm', string $costAlias = 'pc'): string
+function app_lot_cost_override_join_sql(string $movementAlias = 'sm', string $overrideAlias = 'lco'): string
 {
-    foreach ([$movementAlias, $costAlias] as $alias) {
+    foreach ([$movementAlias, $overrideAlias] as $alias) {
         if (preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $alias) !== 1) {
             throw new InvalidArgumentException('Invalid SQL alias.');
         }
     }
 
-    return 'CASE
+    return 'LEFT JOIN (
+                SELECT latest.product_id,
+                       latest.reference_id,
+                       latest_change.unit_cost
+                FROM (
+                    SELECT product_id,
+                           reference_id,
+                           MAX(id) AS id
+                    FROM stock_movements
+                    WHERE movement_type = "stock_count"
+                      AND reference_type = "stock_lot"
+                      AND reference_id IS NOT NULL
+                    GROUP BY product_id, reference_id
+                ) latest
+                INNER JOIN stock_movements latest_change ON latest_change.id = latest.id
+            ) ' . $overrideAlias . ' ON ' . $overrideAlias . '.product_id = ' . $movementAlias . '.product_id
+                AND ' . $overrideAlias . '.reference_id = ' . $movementAlias . '.id';
+}
+
+function app_lot_unit_cost_sql(string $movementAlias = 'sm', string $costAlias = 'pc', ?string $overrideAlias = null): string
+{
+    foreach (array_filter([$movementAlias, $costAlias, $overrideAlias]) as $alias) {
+        if (preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $alias) !== 1) {
+            throw new InvalidArgumentException('Invalid SQL alias.');
+        }
+    }
+
+    $baseSql = 'CASE
                 WHEN ' . $movementAlias . '.movement_type = "purchase"
                     THEN COALESCE(' . $costAlias . '.net_unit_cost, ' . $movementAlias . '.unit_cost)
                 ELSE ' . $movementAlias . '.unit_cost
             END';
+
+    if ($overrideAlias !== null) {
+        return 'COALESCE(' . $overrideAlias . '.unit_cost, ' . $baseSql . ')';
+    }
+
+    return $baseSql;
 }
 
 function app_stock_values_by_product(PDO $pdo, array $productIds = []): array
@@ -272,10 +305,11 @@ function app_stock_values_by_product(PDO $pdo, array $productIds = []): array
         'SELECT sm.id,
                 sm.product_id,
                 sm.quantity_change,
-                ' . app_lot_unit_cost_sql('sm', 'pc') . ' AS unit_cost
+                ' . app_lot_unit_cost_sql('sm', 'pc', 'lco') . ' AS unit_cost
          FROM stock_movements sm
          LEFT JOIN purchases pu ON sm.reference_type = "purchase" AND pu.id = sm.reference_id
          ' . app_purchase_cost_join_sql('sm', 'pc') . '
+         ' . app_lot_cost_override_join_sql('sm', 'lco') . '
          WHERE sm.product_id IN (' . $idList . ')
            AND sm.quantity_change > 0
            AND (

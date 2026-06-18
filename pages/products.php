@@ -2,6 +2,7 @@
 /** @var ?PDO $pdo */
 /** @var bool $dbReady */
 /** @var array $config */
+/** @var ?array $currentUser */
 
 $search = trim((string) ($_GET['product_search'] ?? ''));
 $statusFilter = (string) ($_GET['product_status'] ?? 'active');
@@ -24,6 +25,8 @@ $categories = [];
 $brands = [];
 $suppliers = [];
 $editingProduct = null;
+$canViewProductCost = $dbReady && $pdo instanceof PDO && auth_can_view_product_cost($pdo, $currentUser ?? null);
+$productTableColspan = $canViewProductCost ? 9 : 8;
 $summary = [
     'products' => 0,
     'low_stock' => 0,
@@ -39,7 +42,9 @@ if ($dbReady && $pdo !== null) {
     $summary['products'] = (int) $pdo->query('SELECT COUNT(*) FROM products WHERE status = "active"')->fetchColumn();
     $summary['low_stock'] = (int) $pdo->query('SELECT COUNT(*) FROM products WHERE status = "active" AND reorder_level > 0 AND current_stock <= reorder_level')->fetchColumn();
     $summary['stock_units'] = (int) $pdo->query('SELECT COALESCE(SUM(current_stock), 0) FROM products WHERE status = "active"')->fetchColumn();
-    $summary['stock_value'] = app_stock_value_total($pdo);
+    if ($canViewProductCost) {
+        $summary['stock_value'] = app_stock_value_total($pdo);
+    }
 
     $where = [];
     $params = [];
@@ -68,7 +73,25 @@ if ($dbReady && $pdo !== null) {
         $where[] = 'p.reorder_level > 0 AND p.current_stock <= p.reorder_level';
     }
 
-    $sql = 'SELECT p.*, c.name AS category_name, b.name AS brand_name, s.name AS supplier_name
+    $latestCostSelect = $canViewProductCost
+        ? ',
+                   COALESCE((
+                       SELECT ' . app_lot_unit_cost_sql('sm_latest', 'pc_latest', 'lco_latest') . '
+                       FROM stock_movements sm_latest
+                       LEFT JOIN purchases pu_latest ON sm_latest.reference_type = "purchase" AND pu_latest.id = sm_latest.reference_id
+                       ' . app_purchase_cost_join_sql('sm_latest', 'pc_latest') . '
+                       ' . app_lot_cost_override_join_sql('sm_latest', 'lco_latest') . '
+                       WHERE sm_latest.product_id = p.id
+                         AND sm_latest.quantity_change > 0
+                         AND sm_latest.movement_type IN ("opening", "purchase")
+                       ORDER BY COALESCE(pu_latest.purchase_date, DATE(sm_latest.created_at)) DESC, sm_latest.id DESC
+                       LIMIT 1
+                   ), p.cost_price) AS latest_cost_price'
+        : '';
+    $sql = 'SELECT p.*,
+                   c.name AS category_name,
+                   b.name AS brand_name,
+                   s.name AS supplier_name' . $latestCostSelect . '
             FROM products p
             LEFT JOIN categories c ON c.id = p.category_id
             LEFT JOIN brands b ON b.id = p.brand_id
@@ -225,10 +248,26 @@ if ($stockFilter !== '') {
                     <input type="text" name="model" value="<?php echo e($editingProduct['model'] ?? ''); ?>" placeholder="M185">
                 </label>
 
-                <label class="field">
-                    <span>Cost Price</span>
-                    <input type="number" name="cost_price" value="<?php echo e($editingProduct['cost_price'] ?? '0.00'); ?>" min="0" step="0.01">
-                </label>
+                <?php if ($canViewProductCost): ?>
+                    <label class="field">
+                        <span class="field-info-label">
+                            Cost Price
+                            <?php if ($editingProduct !== null): ?>
+                                <span class="info-tooltip" tabindex="0" aria-label="Product cost price cannot be changed from this form. Open Stock History to adjust the cost price for each stock lot.">
+                                    <i data-lucide="info"></i>
+                                    <span class="info-tooltip-popover" role="tooltip">
+                                        Product cost price cannot be changed from this form. Open
+                                        <a href="<?php echo e(app_url('?page=product-history&id=' . (int) $editingProduct['id'])); ?>">Stock History</a>
+                                        to adjust the cost price for each stock lot.
+                                    </span>
+                                </span>
+                            <?php endif; ?>
+                        </span>
+                        <input type="number" name="cost_price" value="<?php echo e($editingProduct['cost_price'] ?? '0.00'); ?>" min="0" step="0.01" <?php echo $editingProduct !== null ? 'readonly aria-readonly="true"' : ''; ?>>
+                    </label>
+                <?php elseif ($editingProduct === null): ?>
+                    <input type="hidden" name="cost_price" value="0.00">
+                <?php endif; ?>
 
                 <label class="field">
                     <span>Selling Price</span>
@@ -250,7 +289,7 @@ if ($stockFilter !== '') {
                     <input type="number" name="reorder_level" value="<?php echo e($editingProduct['reorder_level'] ?? ($config['default_reorder_level'] ?? '0')); ?>" min="0" step="1">
                 </label>
 
-                <?php if ($editingProduct === null): ?>
+                <?php if ($editingProduct === null && $canViewProductCost): ?>
                     <label class="field">
                         <span>Purchase Date</span>
                         <input type="date" name="purchase_date" value="<?php echo e(date('Y-m-d')); ?>" required>
@@ -260,6 +299,8 @@ if ($stockFilter !== '') {
                         <span>Opening Stock</span>
                         <input type="number" name="opening_stock" value="0" min="0" step="1">
                     </label>
+                <?php elseif ($editingProduct === null): ?>
+                    <input type="hidden" name="opening_stock" value="0">
                 <?php endif; ?>
 
                 <label class="checkbox-row span-4">
@@ -309,14 +350,16 @@ if ($stockFilter !== '') {
         <div class="stat-icon"><i data-lucide="boxes"></i></div>
         <small>Total quantity on hand</small>
     </article>
-    <article class="stat-card">
-        <div>
-            <span>Stock Value</span>
-            <strong><?php echo e(format_money($summary['stock_value'])); ?></strong>
-        </div>
-        <div class="stat-icon"><i data-lucide="badge-dollar-sign"></i></div>
-        <small>Cost value on hand</small>
-    </article>
+    <?php if ($canViewProductCost): ?>
+        <article class="stat-card">
+            <div>
+                <span>Stock Value</span>
+                <strong><?php echo e(format_money($summary['stock_value'])); ?></strong>
+            </div>
+            <div class="stat-icon"><i data-lucide="badge-dollar-sign"></i></div>
+            <small>Cost value on hand</small>
+        </article>
+    <?php endif; ?>
 </section>
 
 <section class="product-layout product-catalog-layout">
@@ -412,7 +455,19 @@ if ($stockFilter !== '') {
                             </details>
                         </th>
                         <th>Reorder</th>
-                        <th>Cost</th>
+                        <?php if ($canViewProductCost): ?>
+                            <th>
+                                <span class="th-info-label">
+                                    Cost
+                                    <span class="info-tooltip" tabindex="0" aria-label="Cost shows the latest purchase lot price. Open stock history to review or adjust each stock lot cost and related details.">
+                                        <i data-lucide="info"></i>
+                                        <span class="info-tooltip-popover" role="tooltip">
+                                            Cost shows the latest purchase lot price. Open stock history to review or adjust each stock lot cost and related details.
+                                        </span>
+                                    </span>
+                                </span>
+                            </th>
+                        <?php endif; ?>
                         <th>Sell</th>
                         <th>Actions</th>
                     </tr>
@@ -420,7 +475,7 @@ if ($stockFilter !== '') {
                 <tbody>
                     <?php if ($products === []): ?>
                         <tr>
-                            <td colspan="9">No products found.</td>
+                            <td colspan="<?php echo $productTableColspan; ?>">No products found.</td>
                         </tr>
                     <?php endif; ?>
 
@@ -436,7 +491,9 @@ if ($stockFilter !== '') {
                             <td><?php echo e($product['category_name'] ?? ''); ?></td>
                             <td class="<?php echo $isLow ? 'text-danger' : ''; ?>"><?php echo (int) $product['current_stock']; ?></td>
                             <td><?php echo (int) $product['reorder_level']; ?></td>
-                            <td><?php echo e(format_money($product['cost_price'])); ?></td>
+                            <?php if ($canViewProductCost): ?>
+                                <td><?php echo e(format_money($product['latest_cost_price'] ?? $product['cost_price'])); ?></td>
+                            <?php endif; ?>
                             <td><?php echo e(format_money($product['selling_price'])); ?></td>
                             <td>
                                 <div class="table-actions">

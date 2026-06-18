@@ -391,7 +391,7 @@ if (purchaseForm) {
                 productInput.value = product.label || '';
             }
 
-            if (costInput) {
+            if (costInput && !product.cost_hidden) {
                 costInput.value = money(Number.parseFloat(product.cost || '0'));
             }
 
@@ -466,7 +466,20 @@ if (purchaseForm) {
                     <span></span>
                 `;
                 button.querySelector('strong').textContent = product.label || '';
-                button.querySelector('span').textContent = `${product.category ? `${product.category} / ` : ''}Stock ${product.stock ?? 0} / Cost ${money(Number.parseFloat(product.cost || '0'))} / Warranty ${product.warranty ?? 0} mo`;
+                const metaParts = [];
+
+                if (product.category) {
+                    metaParts.push(product.category);
+                }
+
+                metaParts.push(`Stock ${product.stock ?? 0}`);
+
+                if (!product.cost_hidden) {
+                    metaParts.push(`Cost ${money(Number.parseFloat(product.cost || '0'))}`);
+                }
+
+                metaParts.push(`Warranty ${product.warranty ?? 0} mo`);
+                button.querySelector('span').textContent = metaParts.join(' / ');
                 button.addEventListener('mousedown', (event) => event.preventDefault());
                 button.addEventListener('click', () => selectProduct(product));
                 suggestions.appendChild(button);
@@ -2001,6 +2014,7 @@ if (lotCorrectModal) {
     const lotInput = lotCorrectModal.querySelector('[data-lot-correct-lot]');
     const currentStock = lotCorrectModal.querySelector('[data-lot-correct-current]');
     const exactInput = lotCorrectModal.querySelector('[data-lot-correct-exact]');
+    const costInput = lotCorrectModal.querySelector('[data-lot-correct-cost]');
     const summary = lotCorrectModal.querySelector('[data-lot-correct-summary]');
     const closeButton = lotCorrectModal.querySelector('[data-lot-correct-close]');
 
@@ -2013,6 +2027,7 @@ if (lotCorrectModal) {
         const lotId = button.dataset.lotId || '';
         const productId = button.dataset.productId || '';
         const stock = button.dataset.currentStock || '0';
+        const lotCost = button.dataset.lotCost || '0.00';
         const lotSummary = button.dataset.lotSummary || 'Selected stock lot';
 
         if (productInput) {
@@ -2029,6 +2044,10 @@ if (lotCorrectModal) {
 
         if (exactInput) {
             exactInput.value = stock;
+        }
+
+        if (costInput) {
+            costInput.value = lotCost;
         }
 
         if (summary) {

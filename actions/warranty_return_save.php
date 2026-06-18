@@ -416,10 +416,11 @@ function wr_fifo_unit_cost(PDO $pdo, int $productId, int $quantity, float $fallb
 
     $lotStatement = $pdo->prepare(
         'SELECT sm.quantity_change,
-                ' . app_lot_unit_cost_sql('sm', 'pc') . ' AS unit_cost
+                ' . app_lot_unit_cost_sql('sm', 'pc', 'lco') . ' AS unit_cost
          FROM stock_movements sm
          LEFT JOIN purchases pu ON sm.reference_type = "purchase" AND pu.id = sm.reference_id
          ' . app_purchase_cost_join_sql('sm', 'pc') . '
+         ' . app_lot_cost_override_join_sql('sm', 'lco') . '
          WHERE sm.product_id = :product_id
            AND sm.quantity_change > 0
            AND sm.movement_type IN ("opening", "purchase", "return_in", "adjustment_in", "warranty_supplier_in")

@@ -1,11 +1,14 @@
 <?php
 /** @var ?PDO $pdo */
 /** @var bool $dbReady */
+/** @var ?array $currentUser */
 
 $productId = (int) ($_GET['id'] ?? 0);
 $product = null;
 $stockLots = [];
 $movementLabels = product_history_movement_labels();
+$canViewProductCost = $dbReady && $pdo instanceof PDO && auth_can_view_product_cost($pdo, $currentUser ?? null);
+$stockHistoryColspan = $canViewProductCost ? 8 : 7;
 $summary = [
     'lot_count' => 0,
     'stock_in' => 0,
@@ -40,7 +43,7 @@ if ($dbReady && $pdo !== null && $productId > 0) {
 
         $lotStatement = $pdo->prepare(
             'SELECT sm.*,
-                    ' . app_lot_unit_cost_sql('sm', 'pc') . ' AS display_unit_cost,
+                    ' . app_lot_unit_cost_sql('sm', 'pc', 'lco') . ' AS display_unit_cost,
                     COALESCE(pu.purchase_date, DATE(sm.created_at)) AS history_date,
                     sm.created_at AS history_created_at,
                     CASE
@@ -52,6 +55,7 @@ if ($dbReady && $pdo !== null && $productId > 0) {
              FROM stock_movements sm
              LEFT JOIN purchases pu ON sm.reference_type = "purchase" AND pu.id = sm.reference_id
              ' . app_purchase_cost_join_sql('sm', 'pc') . '
+             ' . app_lot_cost_override_join_sql('sm', 'lco') . '
              LEFT JOIN users u ON u.id = sm.created_by
              WHERE sm.product_id = :product_id
                AND sm.quantity_change > 0
@@ -134,7 +138,9 @@ if ($dbReady && $pdo !== null && $productId > 0) {
                         <th>Date</th>
                         <th>Received</th>
                         <th>Current Stock</th>
-                        <th>Unit Cost</th>
+                        <?php if ($canViewProductCost): ?>
+                            <th>Unit Cost</th>
+                        <?php endif; ?>
                         <th>Warranty</th>
                         <th>By</th>
                         <th>Reference / Note</th>
@@ -143,7 +149,7 @@ if ($dbReady && $pdo !== null && $productId > 0) {
                 </thead>
                 <tbody>
                     <?php if ($stockLots === []): ?>
-                        <tr><td colspan="8">No stock lots recorded for this product.</td></tr>
+                        <tr><td colspan="<?php echo $stockHistoryColspan; ?>">No stock lots recorded for this product.</td></tr>
                     <?php endif; ?>
 
                     <?php foreach ($stockLots as $movement): ?>
@@ -162,7 +168,9 @@ if ($dbReady && $pdo !== null && $productId > 0) {
                             <td><?php echo e($historyDateTime); ?></td>
                             <td><?php echo $quantityChange; ?></td>
                             <td class="<?php echo $currentLotStock <= 0 ? 'text-danger' : 'text-good'; ?>"><?php echo $currentLotStock; ?></td>
-                            <td><?php echo e(format_money($movement['display_unit_cost'])); ?></td>
+                            <?php if ($canViewProductCost): ?>
+                                <td><?php echo e(format_money($movement['display_unit_cost'])); ?></td>
+                            <?php endif; ?>
                             <td>
                                 <?php if ((int) $movement['warranty_months'] > 0 && $movement['warranty_ends_at'] !== null): ?>
                                     <?php echo (int) $movement['warranty_months']; ?> mo
@@ -185,6 +193,9 @@ if ($dbReady && $pdo !== null && $productId > 0) {
                                     data-lot-id="<?php echo (int) $movement['id']; ?>"
                                     data-product-id="<?php echo (int) $product['id']; ?>"
                                     data-current-stock="<?php echo $currentLotStock; ?>"
+                                    <?php if ($canViewProductCost): ?>
+                                        data-lot-cost="<?php echo e(number_format((float) $movement['display_unit_cost'], 2, '.', '')); ?>"
+                                    <?php endif; ?>
                                     data-lot-summary="<?php echo e($historyDateTime . ' / received ' . $quantityChange); ?>"
                                 >
                                     <i data-lucide="sliders-horizontal"></i>
@@ -227,6 +238,13 @@ if ($dbReady && $pdo !== null && $productId > 0) {
                     <span>New stock count</span>
                     <input type="number" name="exact_stock" min="0" step="1" value="0" required data-lot-correct-exact>
                 </label>
+
+                <?php if ($canViewProductCost): ?>
+                    <label class="field span-2">
+                        <span>Lot unit cost</span>
+                        <input type="number" name="lot_unit_cost" min="0" step="0.01" value="0.00" required data-lot-correct-cost>
+                    </label>
+                <?php endif; ?>
 
                 <label class="field span-2">
                     <span>Notes</span>

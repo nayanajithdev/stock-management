@@ -1,11 +1,13 @@
 <?php
 /** @var ?PDO $pdo */
 /** @var bool $dbReady */
+/** @var ?array $currentUser */
 
 $claimSearch = trim((string) ($_GET['q'] ?? ''));
 $claims = [];
 $returns = [];
 $hasServiceItems = false;
+$canViewProductCost = $dbReady && $pdo instanceof PDO && auth_can_view_product_cost($pdo, $currentUser ?? null);
 
 if ($dbReady && $pdo !== null) {
     $hasServiceItems = (int) $pdo->query(
@@ -303,8 +305,8 @@ if ($dbReady && $pdo !== null) {
                             data-claim-status="<?php echo e($claim['status']); ?>"
                             data-claim-customer="<?php echo e($claim['customer_name'] ?: 'Walk-in Customer'); ?>"
                             data-claim-product="<?php echo e($claim['sku'] . ' - ' . $claim['product_name']); ?>"
-                            data-claim-refund-amount="<?php echo e(number_format($supplierRefundAmount, 2, '.', '')); ?>"
-                            data-claim-refund-date="<?php echo e($claim['supplier_refund_date'] ?? date('Y-m-d')); ?>"
+                            data-claim-refund-amount="<?php echo $canViewProductCost ? e(number_format($supplierRefundAmount, 2, '.', '')) : '0.00'; ?>"
+                            data-claim-refund-date="<?php echo $canViewProductCost ? e($claim['supplier_refund_date'] ?? date('Y-m-d')) : e(date('Y-m-d')); ?>"
                             data-customer-replacement-status="<?php echo e($claim['customer_replacement_status'] ?? 'pending'); ?>"
                             data-supplier-replacement-status="<?php echo e($claim['supplier_replacement_status'] ?? 'pending'); ?>"
                         >
@@ -328,7 +330,7 @@ if ($dbReady && $pdo !== null) {
                             <td>
                                 <span class="status <?php echo e(wr_warranty_status_class((string) $claim['status'])); ?>"><?php echo e(wr_warranty_status_label((string) $claim['status'])); ?></span>
                                 <span class="table-subtitle"><?php echo e(wr_replacement_summary($claim)); ?></span>
-                                <?php if ($supplierRefundAmount > 0): ?>
+                                <?php if ($canViewProductCost && $supplierRefundAmount > 0): ?>
                                     <span class="table-subtitle">Supplier refund <?php echo e(format_money($supplierRefundAmount)); ?></span>
                                 <?php endif; ?>
                             </td>
@@ -424,21 +426,23 @@ if ($dbReady && $pdo !== null) {
                 <input type="date" name="resolved_date" value="<?php echo e(date('Y-m-d')); ?>" data-warranty-resolved-date>
             </label>
 
-            <label class="checkbox-row claim-refund-toggle span-2" data-warranty-refund-toggle>
-                <input type="checkbox" data-warranty-refund-toggle-input>
-                <span>Supplier refund received</span>
-                <small>Record amount for profit calculation.</small>
-            </label>
+            <?php if ($canViewProductCost): ?>
+                <label class="checkbox-row claim-refund-toggle span-2" data-warranty-refund-toggle>
+                    <input type="checkbox" data-warranty-refund-toggle-input>
+                    <span>Supplier refund received</span>
+                    <small>Record amount for profit calculation.</small>
+                </label>
 
-            <label class="field" data-warranty-refund-field hidden>
-                <span>Supplier Refund</span>
-                <input type="number" name="supplier_refund_amount" value="0.00" min="0" step="0.01" data-warranty-supplier-refund>
-            </label>
+                <label class="field" data-warranty-refund-field hidden>
+                    <span>Supplier Refund</span>
+                    <input type="number" name="supplier_refund_amount" value="0.00" min="0" step="0.01" data-warranty-supplier-refund>
+                </label>
 
-            <label class="field" data-warranty-refund-field hidden>
-                <span>Refund Date</span>
-                <input type="date" name="supplier_refund_date" value="<?php echo e(date('Y-m-d')); ?>" data-warranty-supplier-refund-date>
-            </label>
+                <label class="field" data-warranty-refund-field hidden>
+                    <span>Refund Date</span>
+                    <input type="date" name="supplier_refund_date" value="<?php echo e(date('Y-m-d')); ?>" data-warranty-supplier-refund-date>
+                </label>
+            <?php endif; ?>
 
             <div class="claim-stock-actions span-2" data-warranty-stock-actions>
                 <div>

@@ -253,6 +253,11 @@ function auth_permission_definitions(): array
             'description' => 'Create, update, archive, and view products.',
             'pages' => ['products', 'product-history'],
         ],
+        'product_cost' => [
+            'label' => 'Product Cost',
+            'description' => 'View stock value, purchase cost, supplier balances, lot cost, backups, and profit details.',
+            'pages' => [],
+        ],
         'inventory_setup' => [
             'label' => 'Inventory Setup',
             'description' => 'Manage categories, brands, and suppliers.',
@@ -398,6 +403,14 @@ function auth_user_has_permission(PDO $pdo, ?array $user, string $permission): b
 
     $permissions = auth_user_permissions($pdo, (int) ($user['id'] ?? 0));
 
+    if ($permission === 'product_cost') {
+        return $permissions['product_cost'] ?? false;
+    }
+
+    if (in_array($permission, ['purchases', 'supplier_credit', 'backup'], true)) {
+        return ($permissions[$permission] ?? false) && ($permissions['product_cost'] ?? false);
+    }
+
     if ($permissions === []) {
         return true;
     }
@@ -407,6 +420,11 @@ function auth_user_has_permission(PDO $pdo, ?array $user, string $permission): b
     }
 
     return $permissions[$permission] ?? false;
+}
+
+function auth_can_view_product_cost(PDO $pdo, ?array $user): bool
+{
+    return auth_user_has_permission($pdo, $user, 'product_cost');
 }
 
 function auth_visible_menu_sections(PDO $pdo, ?array $user, array $menuSections): array
@@ -420,6 +438,11 @@ function auth_visible_menu_sections(PDO $pdo, ?array $user, array $menuSections)
 
         foreach ($items as $item) {
             $permission = auth_page_permission((string) ($item['key'] ?? ''));
+            $requiresProductCost = in_array((string) ($item['key'] ?? ''), ['purchases', 'supplier-credit'], true);
+
+            if ($requiresProductCost && ! auth_can_view_product_cost($pdo, $user)) {
+                continue;
+            }
 
             if ($permission === null || auth_user_has_permission($pdo, $user, $permission)) {
                 $visibleItems[] = $item;

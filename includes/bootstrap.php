@@ -248,7 +248,7 @@ $pages = [
     ],
     'users' => [
         'title' => 'Users & Roles',
-        'description' => 'Manage owner and manager accounts',
+        'description' => 'Manage owner and staff accounts',
         'view' => __DIR__ . '/../pages/users.php',
     ],
     'profile' => [

@@ -70,7 +70,7 @@ try {
         $ownerId = (int) $pdo->lastInsertId();
     }
 
-    $cleanupOwners = $pdo->prepare('UPDATE users SET role = "manager" WHERE role = "owner" AND id <> :owner_id');
+    $cleanupOwners = $pdo->prepare('UPDATE users SET role = "full_manager" WHERE role = "owner" AND id <> :owner_id');
     $cleanupOwners->execute(['owner_id' => $ownerId]);
 
     app_save_settings($pdo, [

@@ -19,6 +19,7 @@ if (! $dbReady || $pdo === null) {
 $fullName = trim((string) ($_POST['full_name'] ?? ''));
 $email = trim((string) ($_POST['email'] ?? ''));
 $username = trim((string) ($_POST['username'] ?? ''));
+$role = (string) ($_POST['role'] ?? 'cashier');
 $password = (string) ($_POST['password'] ?? '');
 $passwordConfirm = (string) ($_POST['password_confirm'] ?? '');
 $userId = ($_POST['user_id'] ?? '') !== '' ? (int) $_POST['user_id'] : null;
@@ -27,7 +28,7 @@ $submittedPermissions = $_POST['permissions'] ?? [];
 $formRedirect = '?page=users' . ($userId !== null ? '&edit=' . $userId : '&modal=user');
 
 try {
-    validate_manager_input($fullName, $email, $username, $password, $passwordConfirm, $userId !== null);
+    validate_staff_input($fullName, $email, $username, $role, $password, $passwordConfirm, $userId !== null);
 
     if (! in_array($status, ['active', 'inactive'], true)) {
         throw new RuntimeException('Choose a valid user status.');
@@ -56,12 +57,14 @@ try {
                 SET full_name = :full_name,
                     email = :email,
                     username = :username,
+                    role = :role,
                     status = :status,
                     updated_at = CURRENT_TIMESTAMP';
         $params = [
             'full_name' => $fullName,
             'email' => $email,
             'username' => $username,
+            'role' => $role,
             'status' => $status,
             'id' => $userId,
         ];
@@ -71,35 +74,36 @@ try {
             $params['password_hash'] = password_hash($password, PASSWORD_DEFAULT);
         }
 
-        $sql .= ' WHERE id = :id AND role = "manager"';
+        $sql .= ' WHERE id = :id AND role <> "owner"';
         $statement = $pdo->prepare($sql);
         $statement->execute($params);
 
-        save_manager_permissions($pdo, $userId, is_array($submittedPermissions) ? $submittedPermissions : []);
+        save_user_permissions($pdo, $userId, is_array($submittedPermissions) ? $submittedPermissions : auth_role_default_permissions($role));
         $pdo->commit();
 
-        app_log_activity($pdo, $currentUser, 'user_update', 'Updated manager account for ' . $fullName . '.');
-        set_flash('success', 'Manager account updated.');
+        app_log_activity($pdo, $currentUser, 'user_update', 'Updated ' . auth_role_label($role) . ' account for ' . $fullName . '.');
+        set_flash('success', 'User account updated.');
         redirect('?page=users&edit=' . $userId);
     }
 
     $statement = $pdo->prepare(
         'INSERT INTO users (full_name, email, username, password_hash, role, status)
-         VALUES (:full_name, :email, :username, :password_hash, "manager", :status)'
+         VALUES (:full_name, :email, :username, :password_hash, :role, :status)'
     );
     $statement->execute([
         'full_name' => $fullName,
         'email' => $email,
         'username' => $username,
         'password_hash' => password_hash($password, PASSWORD_DEFAULT),
+        'role' => $role,
         'status' => $status,
     ]);
     $newUserId = (int) $pdo->lastInsertId();
-    save_manager_permissions($pdo, $newUserId, is_array($submittedPermissions) ? $submittedPermissions : []);
+    save_user_permissions($pdo, $newUserId, is_array($submittedPermissions) ? $submittedPermissions : auth_role_default_permissions($role));
     $pdo->commit();
 
-    app_log_activity($pdo, $currentUser, 'user_create', 'Created manager account for ' . $fullName . '.');
-    set_flash('success', 'Manager account created.');
+    app_log_activity($pdo, $currentUser, 'user_create', 'Created ' . auth_role_label($role) . ' account for ' . $fullName . '.');
+    set_flash('success', 'User account created.');
     redirect('?page=users');
 } catch (PDOException $exception) {
     if ($pdo->inTransaction()) {
@@ -109,7 +113,7 @@ try {
     if ($exception->getCode() === '23000') {
         set_flash('error', 'Email or username already exists.');
     } else {
-        set_flash('error', 'Manager account could not be saved.');
+        set_flash('error', 'User account could not be saved.');
     }
 
     redirect($formRedirect);
@@ -122,10 +126,14 @@ try {
     redirect($formRedirect);
 }
 
-function validate_manager_input(string $fullName, string $email, string $username, string $password, string $passwordConfirm, bool $isUpdate): void
+function validate_staff_input(string $fullName, string $email, string $username, string $role, string $password, string $passwordConfirm, bool $isUpdate): void
 {
     if ($fullName === '' || $email === '' || $username === '') {
         throw new RuntimeException('Full name, email, and username are required.');
+    }
+
+    if (! in_array($role, auth_staff_role_keys(), true)) {
+        throw new RuntimeException('Choose a valid user role.');
     }
 
     if (! filter_var($email, FILTER_VALIDATE_EMAIL)) {
@@ -153,7 +161,7 @@ function validate_manager_input(string $fullName, string $email, string $usernam
     }
 }
 
-function save_manager_permissions(PDO $pdo, int $userId, array $submittedPermissions): void
+function save_user_permissions(PDO $pdo, int $userId, array $submittedPermissions): void
 {
     $permissionKeys = auth_permission_keys();
     $statement = $pdo->prepare(

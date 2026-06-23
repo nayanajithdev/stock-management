@@ -117,6 +117,7 @@ document.querySelectorAll('[data-permission-panel]').forEach((panel) => {
     const optionalCheckboxes = checkboxes.filter((checkbox) => !checkbox.disabled);
     const groupToggles = Array.from(panel.querySelectorAll('[data-permission-group-toggle]'));
     const actionButtons = Array.from(panel.querySelectorAll('[data-permission-action]'));
+    const roleSelect = panel.closest('form')?.querySelector('[data-role-permission-select]');
 
     const syncPermissionState = () => {
         checkboxes.forEach((checkbox) => {
@@ -161,6 +162,17 @@ document.querySelectorAll('[data-permission-panel]').forEach((panel) => {
 
             syncPermissionState();
         });
+    });
+
+    roleSelect?.addEventListener('change', () => {
+        const selectedOption = roleSelect.options[roleSelect.selectedIndex];
+        const rolePermissionKeys = new Set((selectedOption?.dataset.permissionKeys || '').split(',').filter(Boolean));
+
+        checkboxes.forEach((checkbox) => {
+            checkbox.checked = rolePermissionKeys.has(checkbox.value);
+        });
+
+        syncPermissionState();
     });
 
     syncPermissionState();

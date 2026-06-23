@@ -7,7 +7,7 @@
         <?php
         $canOpenSales = isset($pdo) && $pdo instanceof PDO && auth_user_has_permission($pdo, $currentUser, 'sales');
         $profileName = trim((string) ($currentUser['full_name'] ?? 'User'));
-        $profileRole = (string) ($currentUser['role_label'] ?? auth_role_label((string) ($currentUser['role'] ?? 'manager')));
+        $profileRole = (string) ($currentUser['role_label'] ?? auth_role_label((string) ($currentUser['role'] ?? 'cashier')));
         ?>
         <?php if ($canOpenSales): ?>
             <a class="top-action topbar-sales-link <?php echo $currentPage === 'sales' ? 'active' : ''; ?>" href="<?php echo e(app_url('?page=sales')); ?>">

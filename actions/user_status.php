@@ -48,13 +48,13 @@ $update = $pdo->prepare(
      SET status = :status,
          updated_at = CURRENT_TIMESTAMP
      WHERE id = :id
-       AND role = "manager"'
+       AND role <> "owner"'
 );
 $update->execute([
     'status' => $status,
     'id' => $userId,
 ]);
 
-app_log_activity($pdo, $currentUser, 'user_status_update', 'Changed manager ID ' . $userId . ' to ' . $status . '.');
+app_log_activity($pdo, $currentUser, 'user_status_update', 'Changed ' . auth_role_label((string) $user['role']) . ' ID ' . $userId . ' to ' . $status . '.');
 set_flash('success', 'User status updated. Inactive users are logged out on their next request.');
 redirect('?page=users');

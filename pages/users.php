@@ -9,10 +9,11 @@ $users = [];
 $editingUser = null;
 $editingPermissions = [];
 $permissionDefinitions = auth_permission_definitions();
+$staffRoleDefinitions = auth_staff_role_definitions();
 $permissionGroups = [
     'core' => [
         'label' => 'Core Access',
-        'description' => 'Required starting point for every manager.',
+        'description' => 'Required starting point for every staff user.',
         'keys' => ['dashboard'],
     ],
     'inventory' => [
@@ -33,7 +34,7 @@ $permissionGroups = [
 ];
 $summary = [
     'owners' => 0,
-    'managers' => 0,
+    'staff' => 0,
     'active' => 0,
     'inactive' => 0,
 ];
@@ -41,7 +42,7 @@ $canManageUsers = ($currentUser['role'] ?? '') === 'owner';
 
 if ($dbReady && $pdo !== null) {
     $summary['owners'] = (int) $pdo->query('SELECT COUNT(*) FROM users WHERE role = "owner"')->fetchColumn();
-    $summary['managers'] = (int) $pdo->query('SELECT COUNT(*) FROM users WHERE role = "manager"')->fetchColumn();
+    $summary['staff'] = (int) $pdo->query('SELECT COUNT(*) FROM users WHERE role <> "owner"')->fetchColumn();
     $summary['active'] = (int) $pdo->query('SELECT COUNT(*) FROM users WHERE status = "active"')->fetchColumn();
     $summary['inactive'] = (int) $pdo->query('SELECT COUNT(*) FROM users WHERE status = "inactive"')->fetchColumn();
 
@@ -64,7 +65,7 @@ if ($dbReady && $pdo !== null) {
             'SELECT id, full_name, email, username, role, status
              FROM users
              WHERE id = :id
-               AND role = "manager"
+               AND role <> "owner"
              LIMIT 1'
         );
         $editStatement->execute(['id' => $editUserId]);
@@ -87,7 +88,7 @@ $showUserForm = $canManageUsers && ($isEditing || (string) ($_GET['modal'] ?? ''
     <?php if ($canManageUsers && ! $showUserForm): ?>
         <a class="top-action" href="<?php echo e(app_url('?page=users&modal=user#user-form')); ?>">
             <i data-lucide="user-plus"></i>
-            New Manager
+            New User
         </a>
     <?php elseif ($showUserForm): ?>
         <a class="top-action" href="<?php echo e(app_url('?page=users')); ?>">
@@ -102,14 +103,14 @@ $showUserForm = $canManageUsers && ($isEditing || (string) ($_GET['modal'] ?? ''
         <article class="panel">
             <div class="panel-header">
                 <div>
-                    <p class="panel-label">Manager Account</p>
-                    <h2><?php echo $isEditing ? 'Edit manager' : 'Create manager'; ?></h2>
+                    <p class="panel-label">Staff Account</p>
+                    <h2><?php echo $isEditing ? 'Edit user' : 'Create user'; ?></h2>
                 </div>
                 <div class="modal-actions">
                     <?php if ($isEditing): ?>
-                        <a class="muted-link" href="<?php echo e(app_url('?page=users&modal=user#user-form')); ?>">New manager</a>
+                        <a class="muted-link" href="<?php echo e(app_url('?page=users&modal=user#user-form')); ?>">New user</a>
                     <?php endif; ?>
-                    <a class="icon-button" href="<?php echo e(app_url('?page=users')); ?>" aria-label="Close manager form">
+                    <a class="icon-button" href="<?php echo e(app_url('?page=users')); ?>" aria-label="Close user form">
                         <i data-lucide="x"></i>
                     </a>
                 </div>
@@ -141,7 +142,31 @@ $showUserForm = $canManageUsers && ($isEditing || (string) ($_GET['modal'] ?? ''
 
                     <label class="field">
                         <span>Role</span>
-                        <input type="text" value="Manager" readonly>
+                        <?php
+                        $selectedRole = (string) ($editingUser['role'] ?? 'cashier');
+                        if (! isset($staffRoleDefinitions[$selectedRole])) {
+                            $selectedRole = 'full_manager';
+                        }
+                        $defaultPermissionKeys = auth_role_default_permissions($selectedRole);
+                        ?>
+                        <select name="role" data-role-permission-select required>
+                            <?php foreach ($staffRoleDefinitions as $roleKey => $roleDefinition): ?>
+                                <?php
+                                $rolePermissionKeys = array_values(array_filter(
+                                    $roleDefinition['permissions'],
+                                    static fn (string $permissionKey): bool => isset($permissionDefinitions[$permissionKey])
+                                ));
+                                ?>
+                                <option
+                                    value="<?php echo e($roleKey); ?>"
+                                    data-permission-keys="<?php echo e(implode(',', $rolePermissionKeys)); ?>"
+                                    <?php echo $selectedRole === $roleKey ? 'selected' : ''; ?>
+                                >
+                                    <?php echo e($roleDefinition['label']); ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                        <small>Changing role applies recommended permissions. You can adjust access below.</small>
                     </label>
 
                     <label class="field">
@@ -166,7 +191,7 @@ $showUserForm = $canManageUsers && ($isEditing || (string) ($_GET['modal'] ?? ''
                         <div class="permission-panel-header">
                             <div>
                                 <strong>Module Permissions</strong>
-                                <span>Owner always has full access. These permissions apply to this manager only.</span>
+                                <span>Owner always has full access. These permissions apply to this user only.</span>
                             </div>
 
                             <div class="permission-actions">
@@ -206,7 +231,9 @@ $showUserForm = $canManageUsers && ($isEditing || (string) ($_GET['modal'] ?? ''
                                         <?php foreach ($groupPermissionKeys as $permissionKey): ?>
                                             <?php
                                             $permission = $permissionDefinitions[$permissionKey];
-                                            $checked = $editingPermissions === [] ? $permissionKey !== 'product_cost' : ($editingPermissions[$permissionKey] ?? false);
+                                            $checked = $editingPermissions === []
+                                                ? in_array($permissionKey, $defaultPermissionKeys, true)
+                                                : ($editingPermissions[$permissionKey] ?? false);
                                             $isRequired = $permissionKey === 'dashboard';
                                             ?>
                                             <label class="permission-card <?php echo $checked ? 'checked' : ''; ?> <?php echo $isRequired ? 'required' : ''; ?>">
@@ -238,7 +265,7 @@ $showUserForm = $canManageUsers && ($isEditing || (string) ($_GET['modal'] ?? ''
                         <a class="ghost-button" href="<?php echo e(app_url('?page=users')); ?>">Cancel</a>
                         <button class="top-action" type="submit">
                             <i data-lucide="save"></i>
-                            <?php echo $isEditing ? 'Update Manager' : 'Save Manager'; ?>
+                            <?php echo $isEditing ? 'Update User' : 'Save User'; ?>
                         </button>
                     </div>
                 </form>

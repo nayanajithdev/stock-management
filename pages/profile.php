@@ -7,7 +7,7 @@ $profileUser = is_array($currentUser) ? $currentUser : [];
 $profileName = (string) ($profileUser['full_name'] ?? '');
 $profileEmail = (string) ($profileUser['email'] ?? '');
 $profileUsername = (string) ($profileUser['username'] ?? '');
-$profileRole = auth_role_label((string) ($profileUser['role'] ?? 'manager'));
+$profileRole = auth_role_label((string) ($profileUser['role'] ?? 'cashier'));
 ?>
 
 <div class="page-heading">

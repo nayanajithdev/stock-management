@@ -331,6 +331,64 @@ function auth_permission_keys(): array
     return array_keys(auth_permission_definitions());
 }
 
+function auth_staff_role_definitions(): array
+{
+    return [
+        'cashier' => [
+            'label' => 'Cashier',
+            'description' => 'Sales, customers, payments, returns, and warranty intake. No product cost access.',
+            'permissions' => ['dashboard', 'sales', 'customers', 'credit_sales', 'warranty_returns'],
+        ],
+        'stock_clerk' => [
+            'label' => 'Stock Clerk',
+            'description' => 'Products, inventory setup, stock movements, and warranty handling. No product cost access.',
+            'permissions' => ['dashboard', 'products', 'inventory_setup', 'stock', 'warranty_returns'],
+        ],
+        'purchase_manager' => [
+            'label' => 'Purchase Manager',
+            'description' => 'Purchasing, product costs, supplier credit, inventory setup, and stock control.',
+            'permissions' => ['dashboard', 'products', 'product_cost', 'inventory_setup', 'purchases', 'supplier_credit', 'stock'],
+        ],
+        'full_manager' => [
+            'label' => 'Full Manager',
+            'description' => 'All modules including reports, backups, settings, and product cost.',
+            'permissions' => auth_permission_keys(),
+        ],
+    ];
+}
+
+function auth_staff_role_keys(): array
+{
+    return array_keys(auth_staff_role_definitions());
+}
+
+function auth_is_staff_role(string $role): bool
+{
+    return in_array($role, auth_staff_role_keys(), true) || $role === 'manager';
+}
+
+function auth_role_default_permissions(string $role): array
+{
+    $roles = auth_staff_role_definitions();
+
+    if (isset($roles[$role])) {
+        return $roles[$role]['permissions'];
+    }
+
+    if ($role === 'owner') {
+        return auth_permission_keys();
+    }
+
+    if ($role === 'manager') {
+        return array_values(array_filter(
+            auth_permission_keys(),
+            static fn (string $permission): bool => $permission !== 'product_cost'
+        ));
+    }
+
+    return ['dashboard'];
+}
+
 function auth_page_permission(string $page): ?string
 {
     foreach (auth_permission_definitions() as $key => $definition) {
@@ -403,16 +461,29 @@ function auth_user_has_permission(PDO $pdo, ?array $user, string $permission): b
 
     $permissions = auth_user_permissions($pdo, (int) ($user['id'] ?? 0));
 
+    if ($permissions === []) {
+        $defaultPermissions = auth_role_default_permissions((string) ($user['role'] ?? ''));
+
+        if ($permission === 'warranty_returns') {
+            return in_array('warranty_returns', $defaultPermissions, true)
+                || in_array('returns', $defaultPermissions, true)
+                || in_array('warranty', $defaultPermissions, true);
+        }
+
+        if (in_array($permission, ['purchases', 'supplier_credit', 'backup'], true)) {
+            return in_array($permission, $defaultPermissions, true)
+                && in_array('product_cost', $defaultPermissions, true);
+        }
+
+        return in_array($permission, $defaultPermissions, true);
+    }
+
     if ($permission === 'product_cost') {
         return $permissions['product_cost'] ?? false;
     }
 
     if (in_array($permission, ['purchases', 'supplier_credit', 'backup'], true)) {
         return ($permissions[$permission] ?? false) && ($permissions['product_cost'] ?? false);
-    }
-
-    if ($permissions === []) {
-        return true;
     }
 
     if ($permission === 'warranty_returns') {
@@ -487,6 +558,12 @@ function auth_require_owner(?array $currentUser): void
 
 function auth_role_label(string $role): string
 {
+    $staffRoles = auth_staff_role_definitions();
+
+    if (isset($staffRoles[$role])) {
+        return $staffRoles[$role]['label'];
+    }
+
     return match ($role) {
         'owner' => 'Owner',
         'manager' => 'Manager',

@@ -25,6 +25,7 @@ $metrics = [
     'today_sales' => 0.0,
     'today_orders' => 0,
     'today_paid' => 0.0,
+    'today_sold_cost' => 0.0,
     'today_collections' => 0.0,
     'today_customer_refunds' => 0.0,
     'today_expenses' => 0.0,
@@ -106,6 +107,12 @@ if ($dbReady && $pdo !== null) {
 
         $metrics['today_supplier_paid'] = (float) $pdo->query('SELECT COALESCE(SUM(amount), 0) FROM supplier_payments WHERE DATE(payment_date) = CURRENT_DATE')->fetchColumn();
         $metrics['today_supplier_refunds'] = (float) $pdo->query('SELECT COALESCE(SUM(supplier_refund_amount), 0) FROM warranty_claims WHERE supplier_refund_date = CURRENT_DATE')->fetchColumn();
+        $metrics['today_sold_cost'] = (float) $pdo->query(
+            'SELECT COALESCE(SUM(si.quantity * si.unit_cost), 0)
+             FROM sale_items si
+             INNER JOIN sales s ON s.id = si.sale_id
+             WHERE DATE(s.sale_date) = CURRENT_DATE'
+        )->fetchColumn();
         $metrics['month_profit'] = (float) ($monthProfitRow['profit'] ?? 0);
         $metrics['month_return_cost_recovered'] = (float) $pdo->query(
             'SELECT COALESCE(SUM(sri.quantity * sri.unit_cost), 0)
@@ -129,10 +136,10 @@ if ($dbReady && $pdo !== null) {
             'icon' => 'badge-dollar-sign',
         ],
         [
-            'label' => 'Cash In Today',
-            'value' => format_money($cashInToday),
-            'meta' => $canViewProductCost ? 'Sales, collections, supplier refunds' : 'Sales and collections',
-            'icon' => 'wallet',
+            'label' => $canViewProductCost ? 'Today Sold Cost' : 'Cash In Today',
+            'value' => format_money($canViewProductCost ? $metrics['today_sold_cost'] : $cashInToday),
+            'meta' => $canViewProductCost ? "Item cost from today's invoices" : 'Sales and collections',
+            'icon' => $canViewProductCost ? 'package-check' : 'wallet',
         ],
         [
             'label' => 'Customer Due',

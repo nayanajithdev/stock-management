@@ -256,7 +256,7 @@ function auth_permission_definitions(): array
         'product_cost' => [
             'label' => 'Product Cost',
             'description' => 'View stock value, purchase cost, supplier balances, lot cost, backups, and profit details.',
-            'pages' => [],
+            'pages' => ['zero-cost-products'],
         ],
         'inventory_setup' => [
             'label' => 'Inventory Setup',

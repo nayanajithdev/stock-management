@@ -9,6 +9,7 @@ $items = [];
 $payments = [];
 $returns = [];
 $warrantyClaims = [];
+$invoiceHasWarranty = false;
 
 if ($dbReady && $pdo !== null && $saleId > 0) {
     $saleStatement = $pdo->prepare(
@@ -44,8 +45,7 @@ if ($dbReady && $pdo !== null && $saleId > 0) {
             'SELECT si.*,
                     p.sku,
                     p.name AS product_name,
-                    p.model,
-                    p.warranty_months
+                    p.model
              FROM sale_items si
              INNER JOIN products p ON p.id = si.product_id
              WHERE si.sale_id = :sale_id
@@ -53,6 +53,11 @@ if ($dbReady && $pdo !== null && $saleId > 0) {
         );
         $itemStatement->execute(['sale_id' => $saleId]);
         $items = $itemStatement->fetchAll();
+        $invoiceHasWarranty = array_reduce(
+            $items,
+            static fn (bool $hasWarranty, array $item): bool => $hasWarranty || (int) ($item['warranty_months'] ?? 0) > 0,
+            false
+        );
 
         $paymentStatement = $pdo->prepare(
             'SELECT *
@@ -168,7 +173,9 @@ $balance = is_array($sale) ? sale_receivable_balance($sale['total'], $sale['paid
                     <thead>
                         <tr>
                             <th>Item</th>
-                            <th>Warranty</th>
+                            <?php if ($invoiceHasWarranty): ?>
+                                <th>Warranty</th>
+                            <?php endif; ?>
                             <th>Qty</th>
                             <th>Price</th>
                             <th>Disc.</th>
@@ -182,7 +189,13 @@ $balance = is_array($sale) ? sale_receivable_balance($sale['total'], $sale['paid
                                     <strong class="table-title"><?php echo e($item['sku'] . ' - ' . $item['product_name']); ?></strong>
                                     <span class="table-subtitle"><?php echo e($item['model'] ?? ''); ?></span>
                                 </td>
-                                <td><?php echo (int) $item['warranty_months']; ?> mo.</td>
+                                <?php if ($invoiceHasWarranty): ?>
+                                    <td>
+                                        <?php if ((int) ($item['warranty_months'] ?? 0) > 0): ?>
+                                            <?php echo (int) $item['warranty_months']; ?> month warranty
+                                        <?php endif; ?>
+                                    </td>
+                                <?php endif; ?>
                                 <td><?php echo (int) $item['quantity']; ?></td>
                                 <td><?php echo e(format_money($item['unit_price'])); ?></td>
                                 <td><?php echo e(format_money($item['discount'])); ?></td>

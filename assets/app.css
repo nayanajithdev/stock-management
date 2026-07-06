@@ -40,6 +40,16 @@ textarea {
     font: inherit;
 }
 
+input[type="number"] {
+    -moz-appearance: textfield;
+}
+
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+    margin: 0;
+    -webkit-appearance: none;
+}
+
 .app-shell {
     display: grid;
     grid-template-columns: 286px minmax(0, 1fr);
@@ -1287,7 +1297,7 @@ meter {
 
 .sale-row {
     display: grid;
-    grid-template-columns: minmax(360px, 720px) 68px 78px minmax(130px, 1fr) minmax(130px, 1fr) minmax(130px, 1fr) 40px;
+    grid-template-columns: minmax(340px, 720px) 104px 68px 78px minmax(118px, 1fr) minmax(118px, 1fr) minmax(118px, 1fr) 40px;
     align-items: end;
     gap: 10px;
 }
@@ -2345,6 +2355,14 @@ input[readonly][aria-readonly="true"] {
     margin-top: 20px;
 }
 
+.sales-history-filter {
+    display: grid;
+    grid-template-columns: minmax(220px, 1.3fr) minmax(150px, .7fr) 150px 150px auto auto;
+    align-items: end;
+    gap: 14px;
+    margin-top: 20px;
+}
+
 .expense-filter-form {
     display: grid;
     grid-template-columns: minmax(190px, 1fr) 160px 130px 150px 150px auto;
@@ -3192,7 +3210,8 @@ td {
     }
 
     .report-filter-form,
-    .activity-filter-form {
+    .activity-filter-form,
+    .sales-history-filter {
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
@@ -3223,7 +3242,7 @@ td {
     }
 
     .sale-row {
-        grid-template-columns: 1fr 68px 78px 120px 110px 120px 40px;
+        grid-template-columns: 1fr 104px 68px 78px 120px 110px 120px 40px;
     }
 
     .form-panel {
@@ -3410,6 +3429,7 @@ td {
 
     .report-filter-form,
     .activity-filter-form,
+    .sales-history-filter,
     .expense-filter-form,
     .report-bar-row {
         grid-template-columns: 1fr;

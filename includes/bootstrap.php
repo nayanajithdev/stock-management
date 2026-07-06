@@ -176,6 +176,11 @@ $pages = [
         'description' => 'View stock movement history and warranty tracking for one product',
         'view' => __DIR__ . '/../pages/product_history.php',
     ],
+    'zero-cost-products' => [
+        'title' => 'Zero Cost Products',
+        'description' => 'Temporary list of products with zero latest cost',
+        'view' => __DIR__ . '/../pages/zero_cost_products.php',
+    ],
     'inventory-setup' => [
         'title' => 'Inventory Setup',
         'description' => 'Manage categories, brands, and suppliers',

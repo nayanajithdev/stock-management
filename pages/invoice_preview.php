@@ -109,7 +109,7 @@ $paid = $total;
                                 <strong class="table-title"><?php echo e($item['sku'] . ' - ' . $item['name']); ?></strong>
                                 <span class="table-subtitle"><?php echo e($item['model']); ?></span>
                             </td>
-                            <td><?php echo (int) $item['warranty_months']; ?> mo.</td>
+                            <td><?php echo (int) $item['warranty_months']; ?> month warranty</td>
                             <td><?php echo (int) $item['quantity']; ?></td>
                             <td><?php echo e(format_money($item['unit_price'])); ?></td>
                             <td><?php echo e(format_money($item['discount'])); ?></td>

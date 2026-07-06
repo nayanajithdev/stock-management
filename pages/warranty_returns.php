@@ -34,13 +34,17 @@ if ($dbReady && $pdo !== null) {
                         p.sku,
                         p.name AS product_name,
                         p.model,
-                        p.warranty_months,
+                        si.warranty_months,
                         s.invoice_no,
                         s.sale_date,
-                        DATE_ADD(DATE(s.sale_date), INTERVAL p.warranty_months MONTH) AS warranty_until
+                        CASE
+                            WHEN si.warranty_months > 0 THEN DATE_ADD(DATE(s.sale_date), INTERVAL si.warranty_months MONTH)
+                            ELSE NULL
+                        END AS warranty_until
                  FROM warranty_claims wc
                  LEFT JOIN customers c ON c.id = wc.customer_id
                  INNER JOIN products p ON p.id = wc.product_id
+                 LEFT JOIN sale_items si ON si.id = wc.sale_item_id
                  LEFT JOIN sales s ON s.id = wc.sale_id';
     $claimParams = [];
 

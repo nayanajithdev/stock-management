@@ -200,12 +200,12 @@ function warranty_return_lookup_items(PDO $pdo, int $saleId): array
                 p.name AS product_name,
                 p.model,
                 p.current_stock,
-                p.warranty_months,
+                si.warranty_months,
                 COALESCE(r.returned_quantity, 0) AS returned_quantity,
                 COALESCE(w.claimed_quantity, 0) AS claimed_quantity,
                 si.quantity - COALESCE(r.returned_quantity, 0) - COALESCE(w.claimed_quantity, 0) AS available_quantity,
                 CASE
-                    WHEN p.warranty_months > 0 THEN DATE_ADD(DATE(s.sale_date), INTERVAL p.warranty_months MONTH)
+                    WHEN si.warranty_months > 0 THEN DATE_ADD(DATE(s.sale_date), INTERVAL si.warranty_months MONTH)
                     ELSE NULL
                 END AS warranty_until
          FROM sale_items si

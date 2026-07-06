@@ -11,8 +11,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 verify_csrf();
 
 if (! $dbReady || $pdo === null) {
-    set_flash('error', 'Import database/schema.sql before saving sales.');
-    redirect('?page=sales');
+    sale_save_fail('Import database/schema.sql before saving sales.');
 }
 
 $customerId = ($_POST['customer_id'] ?? '') !== '' ? (int) $_POST['customer_id'] : null;
@@ -27,22 +26,20 @@ $paid = max(0.0, input_decimal('paid'));
 $productIds = $_POST['product_id'] ?? [];
 $quantities = $_POST['quantity'] ?? [];
 $unitPrices = $_POST['unit_price'] ?? [];
+$warrantyMonthsInput = $_POST['warranty_months'] ?? [];
 $lineDiscounts = $_POST['line_discount'] ?? [];
 $validPaymentMethods = ['cash', 'card', 'bank', 'credit'];
 
 if (! in_array($paymentMethod, $validPaymentMethods, true)) {
-    set_flash('error', 'Choose a valid payment method.');
-    redirect('?page=sales');
+    sale_save_fail('Choose a valid payment method.');
 }
 
 if (! preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/', $saleDate)) {
-    set_flash('error', 'Sale date is not valid.');
-    redirect('?page=sales');
+    sale_save_fail('Sale date is not valid.');
 }
 
-if (! is_array($productIds) || ! is_array($quantities) || ! is_array($unitPrices) || ! is_array($lineDiscounts)) {
-    set_flash('error', 'Sale items are not valid.');
-    redirect('?page=sales');
+if (! is_array($productIds) || ! is_array($quantities) || ! is_array($unitPrices) || ! is_array($warrantyMonthsInput) || ! is_array($lineDiscounts)) {
+    sale_save_fail('Sale items are not valid.');
 }
 
 $items = [];
@@ -52,6 +49,7 @@ foreach ($productIds as $index => $rawProductId) {
     $quantity = max(0, (int) ($quantities[$index] ?? 0));
     $unitPrice = str_replace(',', '', trim((string) ($unitPrices[$index] ?? '0')));
     $unitPrice = is_numeric($unitPrice) ? max(0.0, (float) $unitPrice) : 0.0;
+    $warrantyMonths = max(0, (int) ($warrantyMonthsInput[$index] ?? 0));
     $lineDiscount = str_replace(',', '', trim((string) ($lineDiscounts[$index] ?? '0')));
     $lineDiscount = is_numeric($lineDiscount) ? max(0.0, (float) $lineDiscount) : 0.0;
 
@@ -60,28 +58,26 @@ foreach ($productIds as $index => $rawProductId) {
     }
 
     if ($productId <= 0 || $quantity <= 0 || $unitPrice <= 0) {
-        set_flash('error', 'Each sale line needs a product, quantity, and unit price.');
-        redirect('?page=sales');
+        sale_save_fail('Each sale line needs a product, quantity, and unit price.');
     }
 
     $lineSubtotal = $quantity * $unitPrice;
 
     if ($lineDiscount > $lineSubtotal) {
-        set_flash('error', 'Line discount cannot be higher than the line subtotal.');
-        redirect('?page=sales');
+        sale_save_fail('Line discount cannot be higher than the line subtotal.');
     }
 
     $items[] = [
         'product_id' => $productId,
         'quantity' => $quantity,
         'unit_price' => $unitPrice,
+        'warranty_months' => $warrantyMonths,
         'line_discount' => $lineDiscount,
     ];
 }
 
 if ($items === []) {
-    set_flash('error', 'Add at least one sale item.');
-    redirect('?page=sales');
+    sale_save_fail('Add at least one sale item.');
 }
 
 $subtotal = 0.0;
@@ -91,15 +87,13 @@ foreach ($items as $item) {
 }
 
 if ($discount > $subtotal) {
-    set_flash('error', 'Invoice discount cannot be higher than subtotal.');
-    redirect('?page=sales');
+    sale_save_fail('Invoice discount cannot be higher than subtotal.');
 }
 
 $total = $subtotal - $discount + $tax;
 
 if ($paid > $total) {
-    set_flash('error', 'Paid amount cannot be higher than invoice total.');
-    redirect('?page=sales');
+    sale_save_fail('Paid amount cannot be higher than invoice total.');
 }
 
 try {
@@ -170,9 +164,9 @@ try {
     $productStatement = $pdo->prepare('SELECT id, name, current_stock, cost_price FROM products WHERE id = :id AND status = "active" FOR UPDATE');
     $itemStatement = $pdo->prepare(
         'INSERT INTO sale_items
-            (sale_id, product_id, quantity, unit_price, unit_cost, discount, total)
+            (sale_id, product_id, quantity, unit_price, unit_cost, warranty_months, discount, total)
          VALUES
-            (:sale_id, :product_id, :quantity, :unit_price, :unit_cost, :discount, :total)'
+            (:sale_id, :product_id, :quantity, :unit_price, :unit_cost, :warranty_months, :discount, :total)'
     );
     $stockUpdate = $pdo->prepare(
         'UPDATE products
@@ -212,6 +206,7 @@ try {
             'quantity' => $quantity,
             'unit_price' => $item['unit_price'],
             'unit_cost' => $unitCost,
+            'warranty_months' => $item['warranty_months'],
             'discount' => $item['line_discount'],
             'total' => $lineTotal,
         ]);
@@ -234,6 +229,7 @@ try {
 
     $pdo->commit();
 
+    unset($_SESSION['sale_form_old']);
     app_log_activity($pdo, $currentUser, 'sale_create', 'Created invoice ' . $invoiceNo . ' for ' . format_money($total) . '.');
     set_flash('success', 'Sale saved as invoice ' . $invoiceNo . '.');
     if ($afterSave === 'print') {
@@ -246,8 +242,56 @@ try {
         $pdo->rollBack();
     }
 
-    set_flash('error', $exception instanceof RuntimeException ? $exception->getMessage() : 'Sale could not be saved.');
+    sale_save_fail($exception instanceof RuntimeException ? $exception->getMessage() : 'Sale could not be saved.');
+}
+
+function sale_save_fail(string $message): never
+{
+    $_SESSION['sale_form_old'] = sale_save_old_input();
+    set_flash('error', $message);
     redirect('?page=sales');
+}
+
+function sale_save_old_input(): array
+{
+    $scalarKeys = [
+        'customer_id',
+        'customer_name',
+        'customer_phone',
+        'sale_date',
+        'payment_method',
+        'discount',
+        'tax',
+        'paid',
+    ];
+    $arrayKeys = [
+        'product_id',
+        'product_search',
+        'quantity',
+        'unit_price',
+        'warranty_months',
+        'line_discount',
+    ];
+    $oldInput = [];
+
+    foreach ($scalarKeys as $key) {
+        $oldInput[$key] = substr(trim((string) ($_POST[$key] ?? '')), 0, 255);
+    }
+
+    foreach ($arrayKeys as $key) {
+        $values = $_POST[$key] ?? [];
+        $oldInput[$key] = [];
+
+        if (! is_array($values)) {
+            continue;
+        }
+
+        foreach (array_slice($values, 0, 50) as $value) {
+            $oldInput[$key][] = substr(trim((string) $value), 0, 255);
+        }
+    }
+
+    return $oldInput;
 }
 
 function next_sale_invoice_no(PDO $pdo): string

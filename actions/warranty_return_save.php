@@ -168,8 +168,7 @@ function wr_fetch_sale_item(PDO $pdo, int $saleItemId): ?array
                 s.discount AS sale_discount,
                 p.name AS product_name,
                 p.current_stock,
-                p.cost_price,
-                p.warranty_months
+                p.cost_price
          FROM sale_items si
          INNER JOIN sales s ON s.id = si.sale_id
          INNER JOIN products p ON p.id = si.product_id

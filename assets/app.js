@@ -727,6 +727,7 @@ if (saleForm) {
     const customerSuggestions = saleForm.querySelector('[data-sale-customer-suggestions]');
     let customerSearchTimer = null;
     let customerSearchToken = 0;
+    let salePaidManuallyEdited = saleForm.dataset.salePreservePaid === '1';
 
     const money = (value) => Number.isFinite(value) ? value.toFixed(2) : '0.00';
 
@@ -884,8 +885,13 @@ if (saleForm) {
 
         const invoiceDiscount = Math.max(0, Number.parseFloat(discountInput?.value || '0'));
         const tax = Math.max(0, Number.parseFloat(taxInput?.value || '0'));
-        const paid = Math.max(0, Number.parseFloat(paidInput?.value || '0'));
         const total = Math.max(0, subtotal - invoiceDiscount + tax);
+
+        if (paidInput && !salePaidManuallyEdited) {
+            paidInput.value = money(total);
+        }
+
+        const paid = Math.max(0, Number.parseFloat(paidInput?.value || '0'));
         const balance = Math.max(0, total - paid);
 
         if (subtotalInput) subtotalInput.value = money(subtotal);
@@ -1192,11 +1198,18 @@ if (saleForm) {
         addButton.addEventListener('click', createSaleRow);
     }
 
-    [discountInput, taxInput, paidInput].forEach((input) => {
+    [discountInput, taxInput].forEach((input) => {
         if (input) {
             input.addEventListener('input', recalculateSale);
         }
     });
+
+    if (paidInput) {
+        paidInput.addEventListener('input', () => {
+            salePaidManuallyEdited = true;
+            recalculateSale();
+        });
+    }
 
     refreshSaleRemoveButtons();
     recalculateSale();
@@ -1512,8 +1525,8 @@ if (serviceForm) {
             button.querySelector('strong').textContent = item.label || '';
             button.querySelector('span').textContent = `Available ${item.available ?? 0} / Stock ${item.stock ?? 0} / Price ${money(Number.parseFloat(item.price || '0'))}`;
             button.querySelector('small').textContent = item.warranty_until
-                ? `Supplier warranty until ${item.warranty_until}`
-                : 'Supplier warranty date not set';
+                ? `Invoice warranty until ${item.warranty_until}`
+                : 'Invoice warranty not set';
             button.addEventListener('click', () => selectItem(item, button));
             itemList.appendChild(button);
         });

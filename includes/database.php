@@ -111,6 +111,7 @@ function app_database_ready(PDO $pdo): bool
         && app_column_exists($pdo, 'login_attempts', 'was_success')
         && app_column_exists($pdo, 'products', 'item_tracking')
         && app_column_exists($pdo, 'purchase_items', 'warranty_months')
+        && app_column_exists($pdo, 'sale_items', 'warranty_months')
         && app_column_exists($pdo, 'stock_movements', 'warranty_months')
         && app_column_exists($pdo, 'warranty_claims', 'sale_item_id')
         && app_column_exists($pdo, 'warranty_claims', 'replacement_mode');
@@ -420,6 +421,7 @@ CREATE TABLE IF NOT EXISTS sale_items (
     quantity INT UNSIGNED NOT NULL,
     unit_price DECIMAL(12,2) NOT NULL DEFAULT 0.00,
     unit_cost DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+    warranty_months INT UNSIGNED NOT NULL DEFAULT 0,
     discount DECIMAL(12,2) NOT NULL DEFAULT 0.00,
     total DECIMAL(12,2) NOT NULL DEFAULT 0.00,
     CONSTRAINT fk_sale_items_sale FOREIGN KEY (sale_id) REFERENCES sales(id) ON DELETE CASCADE,
@@ -708,6 +710,7 @@ function app_add_missing_columns(PDO $pdo): void
             'quantity' => 'INT UNSIGNED NOT NULL DEFAULT 0',
             'unit_price' => 'DECIMAL(12,2) NOT NULL DEFAULT 0.00',
             'unit_cost' => 'DECIMAL(12,2) NOT NULL DEFAULT 0.00',
+            'warranty_months' => 'INT UNSIGNED NOT NULL DEFAULT 0',
             'discount' => 'DECIMAL(12,2) NOT NULL DEFAULT 0.00',
             'total' => 'DECIMAL(12,2) NOT NULL DEFAULT 0.00',
         ],

@@ -313,6 +313,11 @@ function auth_permission_definitions(): array
             'description' => 'Review audit history and user actions.',
             'pages' => ['activity-logs'],
         ],
+        'users' => [
+            'label' => 'Users & Roles',
+            'description' => 'View and manage user accounts and role permissions.',
+            'pages' => ['users'],
+        ],
         'settings' => [
             'label' => 'Shop Settings',
             'description' => 'Update business profile, invoice settings, and system defaults.',
@@ -352,7 +357,10 @@ function auth_staff_role_definitions(): array
         'full_manager' => [
             'label' => 'Full Manager',
             'description' => 'All modules including reports, backups, settings, and product cost.',
-            'permissions' => auth_permission_keys(),
+            'permissions' => array_values(array_filter(
+                auth_permission_keys(),
+                static fn (string $permission): bool => $permission !== 'users'
+            )),
         ],
     ];
 }

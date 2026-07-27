@@ -3,349 +3,174 @@
 /** @var bool $dbReady */
 /** @var ?array $currentUser */
 
-$reportSearch = trim((string) ($_GET['q'] ?? ''));
-$canViewProductCost = $dbReady && $pdo instanceof PDO && auth_can_view_product_cost($pdo, $currentUser ?? null);
-$topProductColspan = $canViewProductCost ? 7 : 5;
-$lowStockColspan = $canViewProductCost ? 5 : 4;
-$warrantyColspan = $canViewProductCost ? 7 : 6;
-$defaultStart = date('Y-m-01');
-$defaultEnd = date('Y-m-d');
-$startDate = report_valid_date((string) ($_GET['start_date'] ?? $defaultStart), $defaultStart);
-$endDate = report_valid_date((string) ($_GET['end_date'] ?? $defaultEnd), $defaultEnd);
+$reportTab = (string) ($_GET['report_tab'] ?? 'daily-sales');
+$validReportTabs = ['daily-sales', 'monthly-sales'];
 
-if ($startDate > $endDate) {
-    [$startDate, $endDate] = [$endDate, $startDate];
+if (! in_array($reportTab, $validReportTabs, true)) {
+    $reportTab = 'daily-sales';
 }
 
-$startDateTime = $startDate . ' 00:00:00';
-$endDateTime = $endDate . ' 23:59:59';
+$canViewProductCost = $dbReady && $pdo instanceof PDO && auth_can_view_product_cost($pdo, $currentUser ?? null);
+$defaultDate = date('Y-m-d');
+$defaultMonthStart = date('Y-m-01');
+$dailySalesSearch = trim((string) ($_GET['daily_q'] ?? ''));
+$dailyDate = report_valid_date((string) ($_GET['daily_date'] ?? $defaultDate), $defaultDate);
+$monthlySalesSearch = trim((string) ($_GET['monthly_q'] ?? ''));
+$monthlyStartDate = report_valid_date((string) ($_GET['monthly_start_date'] ?? $defaultMonthStart), $defaultMonthStart);
+$monthlyEndDate = report_valid_date((string) ($_GET['monthly_end_date'] ?? $defaultDate), $defaultDate);
+
+if ($monthlyStartDate > $monthlyEndDate) {
+    [$monthlyStartDate, $monthlyEndDate] = [$monthlyEndDate, $monthlyStartDate];
+}
+
+$activeSalesSearch = $reportTab === 'monthly-sales' ? $monthlySalesSearch : $dailySalesSearch;
+$activeStartDate = $reportTab === 'monthly-sales' ? $monthlyStartDate : $dailyDate;
+$activeEndDate = $reportTab === 'monthly-sales' ? $monthlyEndDate : $dailyDate;
+$activeStartDateTime = $activeStartDate . ' 00:00:00';
+$activeEndDateTime = $activeEndDate . ' 23:59:59';
 $summary = [
     'revenue' => 0.0,
     'gross_profit' => 0.0,
     'invoices' => 0,
     'units_sold' => 0,
-    'stock_value' => 0.0,
-    'receivable' => 0.0,
-    'refunds' => 0.0,
+    'expenses' => 0.0,
     'return_value' => 0.0,
     'return_cost_recovered' => 0.0,
     'supplier_refunds' => 0.0,
-    'expenses' => 0.0,
     'net_profit' => 0.0,
     'open_warranty' => 0,
 ];
-$dailySales = [];
-$topProducts = [];
-$lowStockItems = [];
-$creditCustomers = [];
-$returnRows = [];
-$warrantyRows = [];
-$expenseRows = [];
+$salesItems = [];
 
 if ($dbReady && $pdo !== null) {
-    $salesSummary = $pdo->prepare(
-        'SELECT COUNT(*) AS invoices,
-                COALESCE(SUM(total), 0) AS revenue
-         FROM sales
-         WHERE sale_date BETWEEN :start_date AND :end_date'
-    );
-    $salesSummary->execute([
-        'start_date' => $startDateTime,
-        'end_date' => $endDateTime,
-    ]);
-    $salesRow = $salesSummary->fetch() ?: [];
-
     if ($canViewProductCost) {
-        $profitSummary = $pdo->prepare(
-            'SELECT COALESCE(SUM(cost.units_sold), 0) AS units_sold,
-                    COALESCE(SUM(s.subtotal - s.discount - COALESCE(cost.total_cost, 0)), 0) AS gross_profit
-             FROM sales s
-             LEFT JOIN (
-                SELECT sale_id,
-                       COALESCE(SUM(quantity), 0) AS units_sold,
-                       COALESCE(SUM(quantity * unit_cost), 0) AS total_cost
-                FROM sale_items
-                GROUP BY sale_id
-             ) cost ON cost.sale_id = s.id
-             WHERE s.sale_date BETWEEN :start_date AND :end_date'
-        );
-        $profitSummary->execute([
-            'start_date' => $startDateTime,
-            'end_date' => $endDateTime,
-        ]);
-        $profitRow = $profitSummary->fetch() ?: [];
-    } else {
-        $unitsSummary = $pdo->prepare(
-            'SELECT COALESCE(SUM(si.quantity), 0) AS units_sold
-             FROM sale_items si
-             INNER JOIN sales s ON s.id = si.sale_id
-             WHERE s.sale_date BETWEEN :start_date AND :end_date'
-        );
-        $unitsSummary->execute([
-            'start_date' => $startDateTime,
-            'end_date' => $endDateTime,
-        ]);
-        $profitRow = $unitsSummary->fetch() ?: [];
-    }
+        if (in_array($reportTab, ['daily-sales', 'monthly-sales'], true)) {
+            $lineRevenueSql = 'GREATEST(
+                0,
+                si.total - CASE
+                    WHEN s.subtotal > 0 THEN LEAST(si.total, s.discount * (si.total / s.subtotal))
+                    ELSE 0
+                END
+            )';
+            $salesSummarySql = 'SELECT COUNT(DISTINCT s.id) AS invoices,
+                                       COALESCE(SUM(si.quantity), 0) AS units_sold,
+                                       COALESCE(SUM(' . $lineRevenueSql . '), 0) AS revenue,
+                                       COALESCE(SUM(' . $lineRevenueSql . ' - (si.quantity * si.unit_cost)), 0) AS gross_profit
+                                FROM sale_items si
+                                INNER JOIN sales s ON s.id = si.sale_id
+                                INNER JOIN products p ON p.id = si.product_id
+                WHERE s.sale_date BETWEEN :day_start AND :day_end';
+            $salesSummaryParams = [
+                'day_start' => $activeStartDateTime,
+                'day_end' => $activeEndDateTime,
+            ];
+            $salesSql = 'SELECT s.sale_date,
+                                     p.sku,
+                                     p.name AS product_name,
+                                     p.model,
+                                     si.quantity,
+                                     si.unit_price,
+                                     si.unit_cost,
+                                     si.discount,
+                                     ' . $lineRevenueSql . ' AS line_total,
+                                     (si.quantity * si.unit_cost) AS total_cost,
+                                     (' . $lineRevenueSql . ' - (si.quantity * si.unit_cost)) AS profit
+                              FROM sale_items si
+                              INNER JOIN sales s ON s.id = si.sale_id
+                              INNER JOIN products p ON p.id = si.product_id
+                              WHERE s.sale_date BETWEEN :day_start AND :day_end';
+            $salesParams = [
+                'day_start' => $activeStartDateTime,
+                'day_end' => $activeEndDateTime,
+            ];
 
-    $returnSummary = $pdo->prepare(
-        'SELECT COALESCE(SUM(refund_amount), 0)
-         FROM sales_returns
-         WHERE return_date BETWEEN :start_date AND :end_date'
-    );
-    $returnSummary->execute([
-        'start_date' => $startDateTime,
-        'end_date' => $endDateTime,
-    ]);
-    $returnValueSummary = $pdo->prepare(
-        'SELECT COALESCE(SUM(sri.total), 0)
-         FROM sales_return_items sri
-         INNER JOIN sales_returns sr ON sr.id = sri.return_id
-         WHERE sr.return_date BETWEEN :start_date AND :end_date'
-    );
-    $returnValueSummary->execute([
-        'start_date' => $startDateTime,
-        'end_date' => $endDateTime,
-    ]);
-    $expenseSummary = $pdo->prepare(
-        'SELECT COALESCE(SUM(amount), 0)
-         FROM expenses
-         WHERE status = "active"
-           AND expense_date BETWEEN :start_date AND :end_date'
-    );
-    $expenseSummary->execute([
-        'start_date' => $startDate,
-        'end_date' => $endDate,
-    ]);
+            if ($activeSalesSearch !== '') {
+                $salesSummarySql .= ' AND (
+                    s.invoice_no LIKE :search
+                    OR p.sku LIKE :search
+                    OR p.name LIKE :search
+                    OR p.model LIKE :search
+                )';
+                $salesSummaryParams['search'] = '%' . $activeSalesSearch . '%';
+                $salesSql .= ' AND (
+                    s.invoice_no LIKE :search
+                    OR p.sku LIKE :search
+                    OR p.name LIKE :search
+                    OR p.model LIKE :search
+                )';
+                $salesParams['search'] = '%' . $activeSalesSearch . '%';
+            }
 
-    if ($canViewProductCost) {
-        $returnCostSummary = $pdo->prepare(
-            'SELECT COALESCE(SUM(sri.quantity * sri.unit_cost), 0)
-             FROM sales_return_items sri
-             INNER JOIN sales_returns sr ON sr.id = sri.return_id
-             WHERE sri.restock = 1
-               AND sr.return_date BETWEEN :start_date AND :end_date'
-        );
-        $returnCostSummary->execute([
-            'start_date' => $startDateTime,
-            'end_date' => $endDateTime,
-        ]);
-        $supplierRefundSummary = $pdo->prepare(
-            'SELECT COALESCE(SUM(supplier_refund_amount), 0)
-             FROM warranty_claims
-             WHERE supplier_refund_date BETWEEN :start_date AND :end_date'
-        );
-        $supplierRefundSummary->execute([
-            'start_date' => $startDate,
-            'end_date' => $endDate,
-        ]);
-    }
+            $salesSummaryStatement = $pdo->prepare($salesSummarySql);
+            $salesSummaryStatement->execute($salesSummaryParams);
+            $salesSummaryRow = $salesSummaryStatement->fetch() ?: [];
 
-    $summary['revenue'] = (float) ($salesRow['revenue'] ?? 0);
-    $summary['gross_profit'] = $canViewProductCost ? (float) ($profitRow['gross_profit'] ?? 0) : 0.0;
-    $summary['invoices'] = (int) ($salesRow['invoices'] ?? 0);
-    $summary['units_sold'] = (int) ($profitRow['units_sold'] ?? 0);
-    $summary['stock_value'] = $canViewProductCost ? app_stock_value_total($pdo) : 0.0;
-    $summary['receivable'] = report_receivable_total($pdo);
-    $summary['refunds'] = (float) $returnSummary->fetchColumn();
-    $summary['return_value'] = (float) $returnValueSummary->fetchColumn();
-    $summary['return_cost_recovered'] = $canViewProductCost ? (float) $returnCostSummary->fetchColumn() : 0.0;
-    $summary['supplier_refunds'] = $canViewProductCost ? (float) $supplierRefundSummary->fetchColumn() : 0.0;
-    $summary['expenses'] = (float) $expenseSummary->fetchColumn();
-    $summary['net_profit'] = $canViewProductCost
-        ? $summary['gross_profit'] - $summary['expenses'] - $summary['return_value'] + $summary['return_cost_recovered'] + $summary['supplier_refunds']
-        : 0.0;
-    $summary['open_warranty'] = (int) $pdo->query('SELECT COUNT(*) FROM warranty_claims WHERE status IN ("received", "sent_to_supplier", "ready_for_pickup")')->fetchColumn();
+            $expenseSummary = $pdo->prepare(
+                'SELECT COALESCE(SUM(amount), 0)
+                 FROM expenses
+                 WHERE status = "active"
+                   AND expense_date BETWEEN :start_date AND :end_date'
+            );
+            $expenseSummary->execute([
+                'start_date' => $activeStartDate,
+                'end_date' => $activeEndDate,
+            ]);
 
-    $dailyStatement = $pdo->prepare(
-        'SELECT DATE(sale_date) AS sale_day,
-                COUNT(*) AS invoices,
-                COALESCE(SUM(total), 0) AS revenue
-         FROM sales
-         WHERE sale_date BETWEEN :start_date AND :end_date
-         GROUP BY DATE(sale_date)
-         ORDER BY sale_day ASC'
-    );
-    $dailyStatement->execute([
-        'start_date' => $startDateTime,
-        'end_date' => $endDateTime,
-    ]);
-    $dailySales = $dailyStatement->fetchAll();
+            $returnValueSummary = $pdo->prepare(
+                'SELECT COALESCE(SUM(sri.total), 0)
+                 FROM sales_return_items sri
+                 INNER JOIN sales_returns sr ON sr.id = sri.return_id
+                 WHERE sr.return_date BETWEEN :day_start AND :day_end'
+            );
+            $returnValueSummary->execute([
+                'day_start' => $activeStartDateTime,
+                'day_end' => $activeEndDateTime,
+            ]);
 
-    $costProductSelect = $canViewProductCost
-        ? ',
-                          COALESCE(SUM(si.quantity * si.unit_cost), 0) AS cost,
-                          COALESCE(SUM((si.total - CASE WHEN s.subtotal > 0 THEN s.discount * (si.total / s.subtotal) ELSE 0 END) - (si.quantity * si.unit_cost)), 0) AS gross_profit'
-        : '';
-    $productSql = 'SELECT p.sku,
-                          p.name,
-                          p.current_stock,
-                          COALESCE(SUM(si.quantity), 0) AS units_sold,
-                          COALESCE(SUM(si.total - CASE WHEN s.subtotal > 0 THEN s.discount * (si.total / s.subtotal) ELSE 0 END), 0) AS revenue' . $costProductSelect . '
-                   FROM sale_items si
-                   INNER JOIN sales s ON s.id = si.sale_id
-                   INNER JOIN products p ON p.id = si.product_id
-                   WHERE s.sale_date BETWEEN :start_date AND :end_date';
-    $productParams = [
-        'start_date' => $startDateTime,
-        'end_date' => $endDateTime,
-    ];
+            $returnCostSummary = $pdo->prepare(
+                'SELECT COALESCE(SUM(sri.quantity * sri.unit_cost), 0)
+                 FROM sales_return_items sri
+                 INNER JOIN sales_returns sr ON sr.id = sri.return_id
+                 WHERE sri.restock = 1
+                   AND sr.return_date BETWEEN :day_start AND :day_end'
+            );
+            $returnCostSummary->execute([
+                'day_start' => $activeStartDateTime,
+                'day_end' => $activeEndDateTime,
+            ]);
 
-    if ($reportSearch !== '') {
-        $productSql .= ' AND (p.sku LIKE :product_search OR p.name LIKE :product_search)';
-        $productParams['product_search'] = '%' . $reportSearch . '%';
-    }
+            $supplierRefundSummary = $pdo->prepare(
+                'SELECT COALESCE(SUM(supplier_refund_amount), 0)
+                 FROM warranty_claims
+                 WHERE supplier_refund_date BETWEEN :start_date AND :end_date'
+            );
+            $supplierRefundSummary->execute([
+                'start_date' => $activeStartDate,
+                'end_date' => $activeEndDate,
+            ]);
 
-    $productSql .= ' GROUP BY p.id ORDER BY revenue DESC, units_sold DESC LIMIT 12';
-    $productStatement = $pdo->prepare($productSql);
-    $productStatement->execute($productParams);
-    $topProducts = $productStatement->fetchAll();
+            $summary['revenue'] = (float) ($salesSummaryRow['revenue'] ?? 0);
+            $summary['invoices'] = (int) ($salesSummaryRow['invoices'] ?? 0);
+            $summary['units_sold'] = (int) ($salesSummaryRow['units_sold'] ?? 0);
+            $summary['gross_profit'] = (float) ($salesSummaryRow['gross_profit'] ?? 0);
+            $summary['expenses'] = (float) $expenseSummary->fetchColumn();
+            $summary['return_value'] = (float) $returnValueSummary->fetchColumn();
+            $summary['return_cost_recovered'] = (float) $returnCostSummary->fetchColumn();
+            $summary['supplier_refunds'] = (float) $supplierRefundSummary->fetchColumn();
+            $summary['net_profit'] = $summary['gross_profit']
+                - $summary['expenses']
+                - $summary['return_value']
+                + $summary['return_cost_recovered']
+                + $summary['supplier_refunds'];
 
-    $lowStockCostSelect = $canViewProductCost ? ', cost_price' : '';
-    $lowStockSql = 'SELECT sku,
-                           name,
-                           id,
-                           current_stock,
-                           reorder_level' . $lowStockCostSelect . '
-                    FROM products
-                    WHERE status = "active"
-                      AND reorder_level > 0
-                      AND current_stock <= reorder_level';
-    $lowStockParams = [];
-
-    if ($reportSearch !== '') {
-        $lowStockSql .= ' AND (sku LIKE :stock_search OR name LIKE :stock_search)';
-        $lowStockParams['stock_search'] = '%' . $reportSearch . '%';
-    }
-
-    $lowStockSql .= ' ORDER BY current_stock ASC, name ASC LIMIT 12';
-    $lowStockStatement = $pdo->prepare($lowStockSql);
-    $lowStockStatement->execute($lowStockParams);
-    $lowStockItems = $lowStockStatement->fetchAll();
-    $lowStockValues = (! $canViewProductCost || $lowStockItems === [])
-        ? []
-        : app_stock_values_by_product($pdo, array_map(static fn (array $item): int => (int) $item['id'], $lowStockItems));
-
-    if ($canViewProductCost) {
-        foreach ($lowStockItems as $index => $item) {
-            $productId = (int) $item['id'];
-            $lowStockItems[$index]['stock_value'] = (float) ($lowStockValues[$productId]['value'] ?? ((int) $item['current_stock'] * (float) $item['cost_price']));
+            $salesSql .= ' ORDER BY s.sale_date DESC, s.id DESC, si.id DESC';
+            $salesStatement = $pdo->prepare($salesSql);
+            $salesStatement->execute($salesParams);
+            $salesItems = $salesStatement->fetchAll();
         }
+    } else {
+        $summary['open_warranty'] = (int) $pdo->query('SELECT COUNT(*) FROM warranty_claims WHERE status IN ("received", "sent_to_supplier", "ready_for_pickup")')->fetchColumn();
     }
-
-    $creditSql = 'SELECT COALESCE(c.name, "Walk-in Customer") AS customer_name,
-                         c.phone,
-                         COUNT(s.id) AS open_invoices,
-                         COALESCE(SUM(GREATEST(s.total - s.paid - COALESCE(ret.returned_total, 0) + COALESCE(ret.refund_total, 0), 0)), 0) AS balance
-                  FROM sales s
-                  LEFT JOIN customers c ON c.id = s.customer_id
-                  LEFT JOIN (
-                    SELECT sr.sale_id,
-                           COALESCE(SUM(ri.returned_total), 0) AS returned_total,
-                           COALESCE(SUM(sr.refund_amount), 0) AS refund_total
-                    FROM sales_returns sr
-                    LEFT JOIN (
-                        SELECT return_id, COALESCE(SUM(total), 0) AS returned_total
-                        FROM sales_return_items
-                        GROUP BY return_id
-                    ) ri ON ri.return_id = sr.id
-                    GROUP BY sr.sale_id
-                  ) ret ON ret.sale_id = s.id
-                  WHERE GREATEST(s.total - s.paid - COALESCE(ret.returned_total, 0) + COALESCE(ret.refund_total, 0), 0) > 0';
-    $creditParams = [];
-
-    if ($reportSearch !== '') {
-        $creditSql .= ' AND (c.name LIKE :credit_search OR c.phone LIKE :credit_search OR s.invoice_no LIKE :credit_search)';
-        $creditParams['credit_search'] = '%' . $reportSearch . '%';
-    }
-
-    $creditSql .= ' GROUP BY s.customer_id, c.name, c.phone ORDER BY balance DESC LIMIT 12';
-    $creditStatement = $pdo->prepare($creditSql);
-    $creditStatement->execute($creditParams);
-    $creditCustomers = $creditStatement->fetchAll();
-
-    $returnsSql = 'SELECT sr.return_no,
-                          sr.return_date,
-                          sr.refund_amount,
-                          sr.status,
-                          s.invoice_no,
-                          c.name AS customer_name
-                   FROM sales_returns sr
-                   INNER JOIN sales s ON s.id = sr.sale_id
-                   LEFT JOIN customers c ON c.id = sr.customer_id
-                   WHERE sr.return_date BETWEEN :start_date AND :end_date';
-    $returnsParams = [
-        'start_date' => $startDateTime,
-        'end_date' => $endDateTime,
-    ];
-
-    if ($reportSearch !== '') {
-        $returnsSql .= ' AND (sr.return_no LIKE :return_search OR s.invoice_no LIKE :return_search OR c.name LIKE :return_search)';
-        $returnsParams['return_search'] = '%' . $reportSearch . '%';
-    }
-
-    $returnsSql .= ' ORDER BY sr.return_date DESC, sr.id DESC LIMIT 12';
-    $returnsStatement = $pdo->prepare($returnsSql);
-    $returnsStatement->execute($returnsParams);
-    $returnRows = $returnsStatement->fetchAll();
-
-    $warrantyRefundSelect = $canViewProductCost
-        ? ',
-                           wc.supplier_refund_amount,
-                           wc.supplier_refund_date'
-        : '';
-    $warrantySql = 'SELECT wc.claim_no,
-                           wc.received_date,
-                           wc.resolved_date,
-                           wc.status,
-                           p.sku,
-                           p.name AS product_name,
-                           c.name AS customer_name' . $warrantyRefundSelect . '
-                    FROM warranty_claims wc
-                    INNER JOIN products p ON p.id = wc.product_id
-                    LEFT JOIN customers c ON c.id = wc.customer_id
-                    WHERE wc.received_date BETWEEN :start_date AND :end_date';
-    $warrantyParams = [
-        'start_date' => $startDate,
-        'end_date' => $endDate,
-    ];
-
-    if ($reportSearch !== '') {
-        $warrantySql .= ' AND (wc.claim_no LIKE :warranty_search OR p.sku LIKE :warranty_search OR p.name LIKE :warranty_search OR c.name LIKE :warranty_search)';
-        $warrantyParams['warranty_search'] = '%' . $reportSearch . '%';
-    }
-
-    $warrantySql .= ' ORDER BY wc.received_date DESC, wc.id DESC LIMIT 12';
-    $warrantyStatement = $pdo->prepare($warrantySql);
-    $warrantyStatement->execute($warrantyParams);
-    $warrantyRows = $warrantyStatement->fetchAll();
-
-    $expenseSql = 'SELECT category,
-                          COUNT(*) AS expense_count,
-                          COALESCE(SUM(amount), 0) AS total_amount
-                   FROM expenses
-                   WHERE status = "active"
-                     AND expense_date BETWEEN :start_date AND :end_date';
-    $expenseParams = [
-        'start_date' => $startDate,
-        'end_date' => $endDate,
-    ];
-
-    if ($reportSearch !== '') {
-        $expenseSql .= ' AND (category LIKE :expense_search OR vendor LIKE :expense_search OR reference_no LIKE :expense_search OR notes LIKE :expense_search)';
-        $expenseParams['expense_search'] = '%' . $reportSearch . '%';
-    }
-
-    $expenseSql .= ' GROUP BY category ORDER BY total_amount DESC LIMIT 12';
-    $expenseStatement = $pdo->prepare($expenseSql);
-    $expenseStatement->execute($expenseParams);
-    $expenseRows = $expenseStatement->fetchAll();
-}
-
-$maxDailyRevenue = 0.0;
-
-foreach ($dailySales as $day) {
-    $maxDailyRevenue = max($maxDailyRevenue, (float) $day['revenue']);
 }
 ?>
 
@@ -353,390 +178,167 @@ foreach ($dailySales as $day) {
     <div>
         <h1>Reports</h1>
     </div>
-    <a class="top-action" href="<?php echo e(app_url('?page=sales')); ?>">
-        <i data-lucide="scan-barcode"></i>
-        New Invoice
+</div>
+
+<div class="report-tabs" role="tablist" aria-label="Report sections">
+    <a
+        class="<?php echo $reportTab === 'daily-sales' ? 'active' : ''; ?>"
+        href="<?php echo e(report_tab_url('daily-sales', $dailyDate, $dailySalesSearch, $monthlyStartDate, $monthlyEndDate, $monthlySalesSearch)); ?>"
+        role="tab"
+        aria-selected="<?php echo $reportTab === 'daily-sales' ? 'true' : 'false'; ?>"
+    >
+        Daily Sales
+    </a>
+    <a
+        class="<?php echo $reportTab === 'monthly-sales' ? 'active' : ''; ?>"
+        href="<?php echo e(report_tab_url('monthly-sales', $dailyDate, $dailySalesSearch, $monthlyStartDate, $monthlyEndDate, $monthlySalesSearch)); ?>"
+        role="tab"
+        aria-selected="<?php echo $reportTab === 'monthly-sales' ? 'true' : 'false'; ?>"
+    >
+        Monthly Sales
     </a>
 </div>
 
-<section class="panel" id="report-filters">
-    <form class="report-filter-form" method="get" action="<?php echo e(app_url('')); ?>">
-        <input type="hidden" name="page" value="reports">
-        <label class="field">
-            <span>Start Date</span>
-            <input type="date" name="start_date" value="<?php echo e($startDate); ?>">
-        </label>
-        <label class="field">
-            <span>End Date</span>
-            <input type="date" name="end_date" value="<?php echo e($endDate); ?>">
-        </label>
-        <label class="field">
-            <span>Search</span>
-            <input type="search" name="q" value="<?php echo e($reportSearch); ?>" placeholder="Product, invoice, customer">
-        </label>
-        <button class="top-action" type="submit">
-            <i data-lucide="filter"></i>
-            Apply
-        </button>
-    </form>
-</section>
+<?php if ($reportTab === 'daily-sales'): ?>
+    <section class="panel report-daily-filter-panel">
+        <form class="report-filter-form report-daily-filter-form" method="get" action="<?php echo e(app_url('')); ?>">
+            <input type="hidden" name="page" value="reports">
+            <input type="hidden" name="report_tab" value="daily-sales">
+            <label class="field">
+                <span>Date</span>
+                <input type="date" name="daily_date" value="<?php echo e($dailyDate); ?>">
+            </label>
+            <label class="field">
+                <span>Search</span>
+                <input type="search" name="daily_q" value="<?php echo e($dailySalesSearch); ?>" placeholder="Product, invoice">
+            </label>
+            <button class="top-action" type="submit">
+                <i data-lucide="filter"></i>
+                Apply
+            </button>
+        </form>
+    </section>
+<?php elseif ($reportTab === 'monthly-sales'): ?>
+    <section class="panel report-daily-filter-panel">
+        <form class="report-filter-form" method="get" action="<?php echo e(app_url('')); ?>">
+            <input type="hidden" name="page" value="reports">
+            <input type="hidden" name="report_tab" value="monthly-sales">
+            <label class="field">
+                <span>Start Date</span>
+                <input type="date" name="monthly_start_date" value="<?php echo e($monthlyStartDate); ?>">
+            </label>
+            <label class="field">
+                <span>End Date</span>
+                <input type="date" name="monthly_end_date" value="<?php echo e($monthlyEndDate); ?>">
+            </label>
+            <label class="field">
+                <span>Search</span>
+                <input type="search" name="monthly_q" value="<?php echo e($monthlySalesSearch); ?>" placeholder="Product, invoice">
+            </label>
+            <button class="top-action" type="submit">
+                <i data-lucide="filter"></i>
+                Apply
+            </button>
+        </form>
+    </section>
+<?php endif; ?>
 
-<section class="stats-grid compact-stats" aria-label="Report summary">
-    <article class="stat-card">
-        <div>
-            <span>Revenue</span>
-            <strong><?php echo e(format_money($summary['revenue'])); ?></strong>
-        </div>
-        <div class="stat-icon"><i data-lucide="circle-dollar-sign"></i></div>
-        <small><?php echo (int) $summary['invoices']; ?> invoice(s)</small>
-    </article>
-    <?php if ($canViewProductCost): ?>
+<?php if (in_array($reportTab, ['daily-sales', 'monthly-sales'], true)): ?>
+    <section class="stats-grid compact-stats report-tab-stats" aria-label="Sales summary">
         <article class="stat-card">
             <div>
-                <span>Gross Profit</span>
-                <strong><?php echo e(format_money($summary['gross_profit'])); ?></strong>
+                <span>Revenue</span>
+                <strong><?php echo e(format_money($summary['revenue'])); ?></strong>
             </div>
-            <div class="stat-icon"><i data-lucide="trending-up"></i></div>
-            <small><?php echo report_margin_label($summary['gross_profit'], $summary['revenue']); ?></small>
+            <div class="stat-icon"><i data-lucide="circle-dollar-sign"></i></div>
+            <small><?php echo (int) $summary['invoices']; ?> invoice(s)</small>
         </article>
-    <?php else: ?>
-        <article class="stat-card">
-            <div>
-                <span>Units Sold</span>
-                <strong><?php echo (int) $summary['units_sold']; ?></strong>
-            </div>
-            <div class="stat-icon"><i data-lucide="boxes"></i></div>
-            <small>Items sold in range</small>
-        </article>
-    <?php endif; ?>
-    <article class="stat-card">
-        <div>
-            <span>Expenses</span>
-            <strong><?php echo e(format_money($summary['expenses'])); ?></strong>
-        </div>
-        <div class="stat-icon"><i data-lucide="receipt"></i></div>
-        <small>Operating costs</small>
-    </article>
-    <?php if ($canViewProductCost): ?>
-        <article class="stat-card">
-            <div>
-                <span>Net Profit</span>
-                <strong><?php echo e(format_money($summary['net_profit'])); ?></strong>
-            </div>
-            <div class="stat-icon"><i data-lucide="chart-line"></i></div>
-            <small>After expenses, returns, supplier refunds</small>
-        </article>
-    <?php else: ?>
-        <article class="stat-card">
-            <div>
-                <span>Open Warranty</span>
-                <strong><?php echo (int) $summary['open_warranty']; ?></strong>
-            </div>
-            <div class="stat-icon"><i data-lucide="shield-check"></i></div>
-            <small>Active cases</small>
-        </article>
-    <?php endif; ?>
-</section>
 
-<section class="report-layout">
-    <article class="panel">
+        <article class="stat-card">
+            <div>
+                <span><?php echo $canViewProductCost ? 'Gross Profit' : 'Units Sold'; ?></span>
+                <strong><?php echo $canViewProductCost ? e(format_money($summary['gross_profit'])) : (int) $summary['units_sold']; ?></strong>
+            </div>
+            <div class="stat-icon"><i data-lucide="<?php echo $canViewProductCost ? 'trending-up' : 'boxes'; ?>"></i></div>
+            <small><?php echo $canViewProductCost ? e(report_margin_label($summary['gross_profit'], $summary['revenue'])) : 'Items sold in range'; ?></small>
+        </article>
+
+        <article class="stat-card">
+            <div>
+                <span>Expenses</span>
+                <strong><?php echo e(format_money($summary['expenses'])); ?></strong>
+            </div>
+            <div class="stat-icon"><i data-lucide="receipt"></i></div>
+            <small>Operating costs</small>
+        </article>
+
+        <article class="stat-card">
+            <div>
+                <span><?php echo $canViewProductCost ? 'Net Profit' : 'Open Warranty'; ?></span>
+                <strong><?php echo $canViewProductCost ? e(format_money($summary['net_profit'])) : (int) $summary['open_warranty']; ?></strong>
+            </div>
+            <div class="stat-icon"><i data-lucide="<?php echo $canViewProductCost ? 'chart-line' : 'shield-check'; ?>"></i></div>
+            <small><?php echo $canViewProductCost ? 'After expenses, returns, supplier refunds' : 'Active cases'; ?></small>
+        </article>
+    </section>
+
+    <section class="panel table-panel report-tab-panel">
         <div class="panel-header">
             <div>
-                <p class="panel-label">Sales Trend</p>
-                <h2>Daily revenue</h2>
+                <h2><?php echo $reportTab === 'monthly-sales' ? 'Selling items for selected date range' : 'Selling items for selected date'; ?></h2>
             </div>
         </div>
 
-        <div class="report-bars" aria-label="Daily revenue report">
-            <?php if ($dailySales === []): ?>
-                <p class="empty-state">No sales found for this date range.</p>
-            <?php endif; ?>
-
-            <?php foreach ($dailySales as $day): ?>
-                <?php $width = $maxDailyRevenue > 0 ? ((float) $day['revenue'] / $maxDailyRevenue) * 100 : 0; ?>
-                <div class="report-bar-row">
-                    <span><?php echo e(date('M d', strtotime((string) $day['sale_day']))); ?></span>
-                    <div class="report-bar"><i style="width: <?php echo e(number_format($width, 2, '.', '')); ?>%"></i></div>
-                    <strong><?php echo e(format_money($day['revenue'])); ?></strong>
-                    <small><?php echo (int) $day['invoices']; ?> inv.</small>
-                </div>
-            <?php endforeach; ?>
-        </div>
-    </article>
-
-    <article class="panel table-panel">
-        <div class="panel-header">
-            <div>
-                <p class="panel-label"><?php echo $canViewProductCost ? 'Product Profit' : 'Product Sales'; ?></p>
-                <h2>Top selling items</h2>
-            </div>
-        </div>
-
-        <div class="table-wrap">
-            <table>
-                <thead>
-                    <tr>
-                        <th>SKU</th>
-                        <th>Product</th>
-                        <th>Units</th>
-                        <th>Revenue</th>
-                        <?php if ($canViewProductCost): ?>
-                            <th>Cost</th>
-                            <th>Profit</th>
-                        <?php endif; ?>
-                        <th>Stock</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php if ($topProducts === []): ?>
-                        <tr>
-                            <td colspan="<?php echo $topProductColspan; ?>">No product sales found.</td>
-                        </tr>
-                    <?php endif; ?>
-
-                    <?php foreach ($topProducts as $product): ?>
-                        <tr>
-                            <td><?php echo e($product['sku']); ?></td>
-                            <td><?php echo e($product['name']); ?></td>
-                            <td><?php echo (int) $product['units_sold']; ?></td>
-                            <td><?php echo e(format_money($product['revenue'])); ?></td>
-                            <?php if ($canViewProductCost): ?>
-                                <td><?php echo e(format_money($product['cost'])); ?></td>
-                                <td class="<?php echo (float) $product['gross_profit'] >= 0 ? 'text-good' : 'text-danger'; ?>"><?php echo e(format_money($product['gross_profit'])); ?></td>
-                            <?php endif; ?>
-                            <td><?php echo (int) $product['current_stock']; ?></td>
-                        </tr>
-                    <?php endforeach; ?>
-                </tbody>
-            </table>
-        </div>
-    </article>
-
-    <div class="report-grid-two">
-        <article class="panel table-panel">
-            <div class="panel-header">
-                <div>
-                    <p class="panel-label">Expenses</p>
-                    <h2>Category totals</h2>
-                </div>
-                <a class="muted-link" href="<?php echo e(app_url('?page=expenses')); ?>">Expenses</a>
-            </div>
-
-            <div class="table-wrap">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Category</th>
-                            <th>Entries</th>
-                            <th>Total</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php if ($expenseRows === []): ?>
-                            <tr>
-                                <td colspan="3">No expenses found.</td>
-                            </tr>
-                        <?php endif; ?>
-
-                        <?php foreach ($expenseRows as $expense): ?>
-                            <tr>
-                                <td><?php echo e($expense['category']); ?></td>
-                                <td><?php echo (int) $expense['expense_count']; ?></td>
-                                <td class="text-danger"><?php echo e(format_money($expense['total_amount'])); ?></td>
-                            </tr>
-                        <?php endforeach; ?>
-                    </tbody>
-                </table>
-            </div>
-        </article>
-
-        <article class="panel table-panel">
-            <div class="panel-header">
-                <div>
-                    <p class="panel-label">Inventory Risk</p>
-                    <h2>Low stock</h2>
-                </div>
-                <a class="muted-link" href="<?php echo e(app_url('?page=products')); ?>">Products</a>
-            </div>
-
-            <div class="table-wrap">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>SKU</th>
-                            <th>Product</th>
-                            <th>Stock</th>
-                            <th>Reorder</th>
-                            <?php if ($canViewProductCost): ?>
-                                <th>Value</th>
-                            <?php endif; ?>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php if ($lowStockItems === []): ?>
-                            <tr>
-                                <td colspan="<?php echo $lowStockColspan; ?>">No low-stock items found.</td>
-                            </tr>
-                        <?php endif; ?>
-
-                        <?php foreach ($lowStockItems as $item): ?>
-                            <tr>
-                                <td><?php echo e($item['sku']); ?></td>
-                                <td><?php echo e($item['name']); ?></td>
-                                <td class="text-danger"><?php echo (int) $item['current_stock']; ?></td>
-                                <td><?php echo (int) $item['reorder_level']; ?></td>
-                                <?php if ($canViewProductCost): ?>
-                                    <td><?php echo e(format_money($item['stock_value'])); ?></td>
-                                <?php endif; ?>
-                            </tr>
-                        <?php endforeach; ?>
-                    </tbody>
-                </table>
-            </div>
-        </article>
-
-        <article class="panel table-panel">
-            <div class="panel-header">
-                <div>
-                    <p class="panel-label">Receivables</p>
-                    <h2>Customer balances</h2>
-                </div>
-                <a class="muted-link" href="<?php echo e(app_url('?page=credit-sales')); ?>">Credit sales</a>
-            </div>
-
-            <div class="table-wrap">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Customer</th>
-                            <th>Phone</th>
-                            <th>Invoices</th>
-                            <th>Balance</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php if ($creditCustomers === []): ?>
-                            <tr>
-                                <td colspan="4">No outstanding balances found.</td>
-                            </tr>
-                        <?php endif; ?>
-
-                        <?php foreach ($creditCustomers as $customer): ?>
-                            <tr>
-                                <td><?php echo e($customer['customer_name']); ?></td>
-                                <td><?php echo e($customer['phone'] ?? ''); ?></td>
-                                <td><?php echo (int) $customer['open_invoices']; ?></td>
-                                <td class="text-danger"><?php echo e(format_money($customer['balance'])); ?></td>
-                            </tr>
-                        <?php endforeach; ?>
-                    </tbody>
-                </table>
-            </div>
-        </article>
-    </div>
-
-    <div class="report-grid-two">
-        <article class="panel table-panel">
-            <div class="panel-header">
-                <div>
-                    <p class="panel-label">Returns</p>
-                    <h2>Refund activity</h2>
-                </div>
-                <a class="muted-link" href="<?php echo e(app_url('?page=warranty-returns')); ?>">Warranty / Returns</a>
-            </div>
-
+        <?php if (! $dbReady): ?>
+            <p class="empty-state">Import <code>database/schema.sql</code> before viewing sales reports.</p>
+        <?php elseif (! $canViewProductCost): ?>
+            <p class="empty-state">Product Cost permission is required to view item cost and profit.</p>
+        <?php else: ?>
             <div class="table-wrap">
                 <table>
                     <thead>
                         <tr>
                             <th>Date</th>
-                            <th>Return</th>
-                            <th>Invoice</th>
-                            <th>Customer</th>
-                            <th>Refund</th>
-                            <th>Status</th>
+                            <th>Item</th>
+                            <th>Qty</th>
+                            <th>Sell Price</th>
+                            <th>Item Cost</th>
+                            <th>Line Total</th>
+                            <th>Total Cost</th>
+                            <th>Profit</th>
                         </tr>
                     </thead>
                     <tbody>
-                        <?php if ($returnRows === []): ?>
+                        <?php if ($salesItems === []): ?>
                             <tr>
-                                <td colspan="6">No returns found.</td>
+                                <td colspan="8">No selling items found for the selected date<?php echo $reportTab === 'monthly-sales' ? ' range' : ''; ?>.</td>
                             </tr>
                         <?php endif; ?>
 
-                        <?php foreach ($returnRows as $return): ?>
+                        <?php foreach ($salesItems as $item): ?>
+                            <?php $profit = (float) $item['profit']; ?>
                             <tr>
-                                <td><?php echo e(date('Y-m-d', strtotime((string) $return['return_date']))); ?></td>
-                                <td><?php echo e($return['return_no']); ?></td>
-                                <td><?php echo e($return['invoice_no']); ?></td>
-                                <td><?php echo e($return['customer_name'] ?: 'Walk-in Customer'); ?></td>
-                                <td><?php echo e(format_money($return['refund_amount'])); ?></td>
-                                <td><span class="status status-active"><?php echo e(ucfirst((string) $return['status'])); ?></span></td>
-                            </tr>
-                        <?php endforeach; ?>
-                    </tbody>
-                </table>
-            </div>
-        </article>
-
-        <article class="panel table-panel">
-            <div class="panel-header">
-                <div>
-                    <p class="panel-label">Warranty</p>
-                    <h2>RMA activity</h2>
-                </div>
-                <a class="muted-link" href="<?php echo e(app_url('?page=warranty-returns')); ?>">Warranty / Returns</a>
-            </div>
-
-            <div class="table-wrap">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Received</th>
-                            <th>Claim</th>
-                            <th>Product</th>
-                            <th>Customer</th>
-                            <th>Status</th>
-                            <?php if ($canViewProductCost): ?>
-                                <th>Supplier Refund</th>
-                            <?php endif; ?>
-                            <th>Resolved</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php if ($warrantyRows === []): ?>
-                            <tr>
-                                <td colspan="<?php echo $warrantyColspan; ?>">No warranty claims found.</td>
-                            </tr>
-                        <?php endif; ?>
-
-                        <?php foreach ($warrantyRows as $claim): ?>
-                            <tr>
-                                <td><?php echo e($claim['received_date']); ?></td>
-                                <td><?php echo e($claim['claim_no']); ?></td>
+                                <td><?php echo e(date('Y-m-d H:i', strtotime((string) $item['sale_date']))); ?></td>
                                 <td>
-                                    <strong class="table-title"><?php echo e($claim['sku']); ?></strong>
-                                    <span class="table-subtitle"><?php echo e($claim['product_name']); ?></span>
+                                    <strong class="table-title"><?php echo e($item['sku'] . ' - ' . $item['product_name']); ?></strong>
+                                    <?php if (! empty($item['model'])): ?>
+                                        <span class="table-subtitle"><?php echo e($item['model']); ?></span>
+                                    <?php endif; ?>
                                 </td>
-                                <td><?php echo e($claim['customer_name'] ?: 'Walk-in Customer'); ?></td>
-                                <td><span class="status <?php echo e(report_warranty_status_class((string) $claim['status'])); ?>"><?php echo e(report_warranty_status_label((string) $claim['status'])); ?></span></td>
-                                <?php if ($canViewProductCost): ?>
-                                    <td>
-                                        <?php echo e(format_money($claim['supplier_refund_amount'] ?? 0)); ?>
-                                        <?php if (! empty($claim['supplier_refund_date'])): ?>
-                                            <span class="table-subtitle"><?php echo e($claim['supplier_refund_date']); ?></span>
-                                        <?php endif; ?>
-                                    </td>
-                                <?php endif; ?>
-                                <td><?php echo e($claim['resolved_date'] ?? ''); ?></td>
+                                <td><?php echo (int) $item['quantity']; ?></td>
+                                <td><?php echo e(format_money($item['unit_price'])); ?></td>
+                                <td><?php echo e(format_money($item['unit_cost'])); ?></td>
+                                <td><?php echo e(format_money($item['line_total'])); ?></td>
+                                <td><?php echo e(format_money($item['total_cost'])); ?></td>
+                                <td class="<?php echo $profit >= 0 ? 'text-good' : 'text-danger'; ?>"><?php echo e(format_money($profit)); ?></td>
                             </tr>
                         <?php endforeach; ?>
                     </tbody>
                 </table>
             </div>
-        </article>
-    </div>
-</section>
+        <?php endif; ?>
+    </section>
+<?php endif; ?>
 
 <?php
 function report_valid_date(string $value, string $fallback): string
@@ -753,48 +355,29 @@ function report_margin_label(float $profit, float $revenue): string
     return number_format(($profit / $revenue) * 100, 2) . '% margin';
 }
 
-function report_receivable_total(PDO $pdo): float
+function report_tab_url(string $tab, string $dailyDate, string $dailySearch, string $monthlyStartDate, string $monthlyEndDate, string $monthlySearch): string
 {
-    return (float) $pdo->query(
-        'SELECT COALESCE(SUM(balance), 0)
-         FROM (
-            SELECT GREATEST(s.total - s.paid - COALESCE(ret.returned_total, 0) + COALESCE(ret.refund_total, 0), 0) AS balance
-            FROM sales s
-            LEFT JOIN (
-                SELECT sr.sale_id,
-                       COALESCE(SUM(ri.returned_total), 0) AS returned_total,
-                       COALESCE(SUM(sr.refund_amount), 0) AS refund_total
-                FROM sales_returns sr
-                LEFT JOIN (
-                    SELECT return_id, COALESCE(SUM(total), 0) AS returned_total
-                    FROM sales_return_items
-                    GROUP BY return_id
-                ) ri ON ri.return_id = sr.id
-                GROUP BY sr.sale_id
-            ) ret ON ret.sale_id = s.id
-         ) receivables
-         WHERE balance > 0'
-    )->fetchColumn();
-}
+    $query = [
+        'page' => 'reports',
+        'report_tab' => $tab,
+    ];
 
-function report_warranty_status_label(string $status): string
-{
-    return match ($status) {
-        'sent_to_supplier' => 'Supplier',
-        'ready_for_pickup' => 'Ready',
-        'resolved' => 'Resolved',
-        'rejected' => 'Rejected',
-        default => 'Received',
-    };
-}
+    if ($tab === 'daily-sales') {
+        $query['daily_date'] = $dailyDate;
 
-function report_warranty_status_class(string $status): string
-{
-    return match ($status) {
-        'resolved' => 'status-active',
-        'sent_to_supplier' => 'status-warranty',
-        'ready_for_pickup' => 'status-ready',
-        'rejected' => 'status-pending',
-        default => 'status-inactive',
-    };
+        if ($dailySearch !== '') {
+            $query['daily_q'] = $dailySearch;
+        }
+    }
+
+    if ($tab === 'monthly-sales') {
+        $query['monthly_start_date'] = $monthlyStartDate;
+        $query['monthly_end_date'] = $monthlyEndDate;
+
+        if ($monthlySearch !== '') {
+            $query['monthly_q'] = $monthlySearch;
+        }
+    }
+
+    return app_url('?' . http_build_query($query));
 }

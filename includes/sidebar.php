@@ -70,7 +70,7 @@ $shopInitial = strtoupper(substr($shopName !== '' ? $shopName : 'S', 0, 1));
                         ?>
                         <?php if (($item['key'] ?? '') === 'products' && ! $isDisabled): ?>
                             <div class="nav-split-row">
-                                <a class="nav-link <?php echo $isActive && ! $isProductForm ? 'active' : ''; ?>" href="<?php echo e($href); ?>">
+                                <a class="nav-link <?php echo $isActive ? 'active' : ''; ?>" href="<?php echo e($href); ?>">
                                     <i data-lucide="<?php echo e($item['icon']); ?>"></i>
                                     <span><?php echo e($item['label']); ?></span>
                                 </a>
@@ -80,7 +80,7 @@ $shopInitial = strtoupper(substr($shopName !== '' ? $shopName : 'S', 0, 1));
                             </div>
                         <?php elseif (($item['key'] ?? '') === 'purchases' && ! $isDisabled): ?>
                             <div class="nav-split-row">
-                                <a class="nav-link <?php echo $isActive ? 'active' : ''; ?>" href="<?php echo e($href); ?>">
+                                <a class="nav-link <?php echo ($isActive || $currentPage === 'purchase-history') ? 'active' : ''; ?>" href="<?php echo e($href); ?>">
                                     <i data-lucide="<?php echo e($item['icon']); ?>"></i>
                                     <span><?php echo e($item['label']); ?></span>
                                 </a>

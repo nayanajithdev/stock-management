@@ -6,9 +6,13 @@
 /** @var bool $dbReady */
 /** @var ?string $dbError */
 /** @var string $currentPage */
+/** @var ?array $currentUser */
 $isAuthPage = in_array($currentPage, ['login', 'setup-owner'], true);
 $faviconPath = trim((string) ($config['shop_logo'] ?? ''));
 $faviconUrl = $faviconPath !== '' ? app_url($faviconPath) : '';
+$themeMode = isset($currentUser) && is_array($currentUser) && (string) ($currentUser['theme_mode'] ?? '') === 'light'
+    ? 'light'
+    : 'dark';
 ?>
 <!doctype html>
 <html lang="en">
@@ -24,7 +28,7 @@ $faviconUrl = $faviconPath !== '' ? app_url($faviconPath) : '';
     <link rel="preconnect" href="https://unpkg.com">
     <link rel="stylesheet" href="<?php echo e(app_url('assets/app.css')); ?>">
 </head>
-<body>
+<body class="theme-<?php echo e($themeMode); ?>" data-theme="<?php echo e($themeMode); ?>">
     <?php if ($isAuthPage): ?>
     <main class="auth-shell">
         <section class="auth-card">

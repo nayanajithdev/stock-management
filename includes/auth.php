@@ -47,7 +47,7 @@ function auth_current_user(PDO $pdo): ?array
     }
 
     $statement = $pdo->prepare(
-        'SELECT id, full_name, email, username, role, status
+        'SELECT id, full_name, email, username, role, status, theme_mode
          FROM users
          WHERE id = :id
          LIMIT 1'

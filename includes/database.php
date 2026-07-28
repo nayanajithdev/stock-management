@@ -182,6 +182,7 @@ CREATE TABLE IF NOT EXISTS users (
     password_hash VARCHAR(255) NOT NULL,
     role VARCHAR(40) NOT NULL DEFAULT 'owner',
     status VARCHAR(20) NOT NULL DEFAULT 'active',
+    theme_mode VARCHAR(20) NOT NULL DEFAULT 'dark',
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
@@ -550,6 +551,7 @@ function app_add_missing_columns(PDO $pdo): void
             'password_hash' => 'VARCHAR(255) NOT NULL DEFAULT \'\'',
             'role' => 'VARCHAR(40) NOT NULL DEFAULT \'owner\'',
             'status' => 'VARCHAR(20) NOT NULL DEFAULT \'active\'',
+            'theme_mode' => 'VARCHAR(20) NOT NULL DEFAULT \'dark\'',
             'created_at' => 'TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP',
             'updated_at' => 'TIMESTAMP NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP',
         ],

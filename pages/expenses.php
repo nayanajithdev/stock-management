@@ -226,6 +226,9 @@ if ($dbReady && $pdo !== null) {
             <form class="expense-filter-form" method="get" action="<?php echo e(app_url('')); ?>">
                 <input type="hidden" name="page" value="expenses">
                 <input type="search" name="q" value="<?php echo e($expenseSearch); ?>" placeholder="Category, vendor, reference">
+                <button class="icon-button" type="submit" aria-label="Apply filters">
+                    <i data-lucide="search"></i>
+                </button>
                 <select name="category">
                     <option value="">All categories</option>
                     <?php foreach ($categories as $category): ?>
@@ -239,9 +242,6 @@ if ($dbReady && $pdo !== null) {
                 </select>
                 <input type="date" name="start_date" value="<?php echo e($startDate); ?>">
                 <input type="date" name="end_date" value="<?php echo e($endDate); ?>">
-                <button class="icon-button" type="submit" aria-label="Apply filters">
-                    <i data-lucide="search"></i>
-                </button>
             </form>
         </div>
 

@@ -28,8 +28,17 @@ $activeStartDate = $reportTab === 'monthly-sales' ? $monthlyStartDate : $dailyDa
 $activeEndDate = $reportTab === 'monthly-sales' ? $monthlyEndDate : $dailyDate;
 $activeStartDateTime = $activeStartDate . ' 00:00:00';
 $activeEndDateTime = $activeEndDate . ' 23:59:59';
+$validSalesSorts = ['qty', 'sell_price', 'profit'];
+$salesSort = (string) ($_GET['report_sort'] ?? '');
+
+if (! in_array($salesSort, $validSalesSorts, true)) {
+    $salesSort = '';
+}
+
+$salesSortDir = (string) ($_GET['report_dir'] ?? 'desc') === 'asc' ? 'asc' : 'desc';
 $summary = [
     'revenue' => 0.0,
+    'sold_cost' => 0.0,
     'gross_profit' => 0.0,
     'invoices' => 0,
     'units_sold' => 0,
@@ -55,6 +64,7 @@ if ($dbReady && $pdo !== null) {
             $salesSummarySql = 'SELECT COUNT(DISTINCT s.id) AS invoices,
                                        COALESCE(SUM(si.quantity), 0) AS units_sold,
                                        COALESCE(SUM(' . $lineRevenueSql . '), 0) AS revenue,
+                                       COALESCE(SUM(si.quantity * si.unit_cost), 0) AS sold_cost,
                                        COALESCE(SUM(' . $lineRevenueSql . ' - (si.quantity * si.unit_cost)), 0) AS gross_profit
                                 FROM sale_items si
                                 INNER JOIN sales s ON s.id = si.sale_id
@@ -100,6 +110,12 @@ if ($dbReady && $pdo !== null) {
                 )';
                 $salesParams['search'] = '%' . $activeSalesSearch . '%';
             }
+
+            $salesSortSql = [
+                'qty' => 'si.quantity',
+                'sell_price' => 'si.unit_price',
+                'profit' => '(' . $lineRevenueSql . ' - (si.quantity * si.unit_cost))',
+            ];
 
             $salesSummaryStatement = $pdo->prepare($salesSummarySql);
             $salesSummaryStatement->execute($salesSummaryParams);
@@ -150,6 +166,7 @@ if ($dbReady && $pdo !== null) {
             ]);
 
             $summary['revenue'] = (float) ($salesSummaryRow['revenue'] ?? 0);
+            $summary['sold_cost'] = (float) ($salesSummaryRow['sold_cost'] ?? 0);
             $summary['invoices'] = (int) ($salesSummaryRow['invoices'] ?? 0);
             $summary['units_sold'] = (int) ($salesSummaryRow['units_sold'] ?? 0);
             $summary['gross_profit'] = (float) ($salesSummaryRow['gross_profit'] ?? 0);
@@ -163,7 +180,12 @@ if ($dbReady && $pdo !== null) {
                 + $summary['return_cost_recovered']
                 + $summary['supplier_refunds'];
 
-            $salesSql .= ' ORDER BY s.sale_date DESC, s.id DESC, si.id DESC';
+            if ($salesSort !== '') {
+                $salesSql .= ' ORDER BY ' . $salesSortSql[$salesSort] . ' ' . strtoupper($salesSortDir) . ', s.sale_date DESC, s.id DESC, si.id DESC';
+            } else {
+                $salesSql .= ' ORDER BY s.sale_date DESC, s.id DESC, si.id DESC';
+            }
+
             $salesStatement = $pdo->prepare($salesSql);
             $salesStatement->execute($salesParams);
             $salesItems = $salesStatement->fetchAll();
@@ -265,6 +287,15 @@ if ($dbReady && $pdo !== null) {
 
         <article class="stat-card">
             <div>
+                <span><?php echo $reportTab === 'daily-sales' ? 'Today Sold Cost' : 'Sold Cost'; ?></span>
+                <strong><?php echo e(format_money($summary['sold_cost'])); ?></strong>
+            </div>
+            <div class="stat-icon"><i data-lucide="package-check"></i></div>
+            <small>Item cost from selected sales</small>
+        </article>
+
+        <article class="stat-card">
+            <div>
                 <span>Expenses</span>
                 <strong><?php echo e(format_money($summary['expenses'])); ?></strong>
             </div>
@@ -300,12 +331,12 @@ if ($dbReady && $pdo !== null) {
                         <tr>
                             <th>Date</th>
                             <th>Item</th>
-                            <th>Qty</th>
-                            <th>Sell Price</th>
+                            <th><?php echo report_sort_header('Qty', 'qty', $salesSort, $salesSortDir); ?></th>
+                            <th><?php echo report_sort_header('Sell Price', 'sell_price', $salesSort, $salesSortDir); ?></th>
                             <th>Item Cost</th>
                             <th>Line Total</th>
                             <th>Total Cost</th>
-                            <th>Profit</th>
+                            <th><?php echo report_sort_header('Profit', 'profit', $salesSort, $salesSortDir); ?></th>
                         </tr>
                     </thead>
                     <tbody>
@@ -353,6 +384,23 @@ function report_margin_label(float $profit, float $revenue): string
     }
 
     return number_format(($profit / $revenue) * 100, 2) . '% margin';
+}
+
+function report_sort_header(string $label, string $column, string $currentSort, string $currentDir): string
+{
+    $isActive = $currentSort === $column;
+    $nextDir = $isActive && $currentDir === 'desc' ? 'asc' : 'desc';
+    $icon = $isActive && $currentDir === 'asc' ? 'chevron-up' : 'chevron-down';
+    $classes = 'report-sort-link' . ($isActive ? ' active' : '');
+    $query = $_GET;
+    $query['page'] = 'reports';
+    $query['report_sort'] = $column;
+    $query['report_dir'] = $nextDir;
+
+    return '<a class="' . e($classes) . '" href="' . e(app_url('?' . http_build_query($query))) . '">' .
+        e($label) .
+        '<i data-lucide="' . e($icon) . '"></i>' .
+        '</a>';
 }
 
 function report_tab_url(string $tab, string $dailyDate, string $dailySearch, string $monthlyStartDate, string $monthlyEndDate, string $monthlySearch): string

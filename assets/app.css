@@ -107,7 +107,7 @@ input[type="number"]::-webkit-inner-spin-button {
 
 .app-shell {
     display: grid;
-    grid-template-columns: 286px minmax(0, 1fr);
+    grid-template-columns: 268px minmax(0, 1fr);
     min-height: 100vh;
 }
 
@@ -121,19 +121,23 @@ input[type="number"]::-webkit-inner-spin-button {
     scrollbar-width: none;
     border-right: 1px solid var(--line);
     background: rgba(16, 22, 28, .96);
-    padding: 18px 14px;
+    padding: 20px 12px;
 }
 
 .sidebar::-webkit-scrollbar {
     display: none;
 }
 
+.sidebar-backdrop {
+    display: none;
+}
+
 .brand-card {
     display: grid;
-    grid-template-columns: 48px minmax(0, 1fr);
+    grid-template-columns: 46px minmax(0, 1fr);
     align-items: center;
     gap: 12px;
-    min-height: 56px;
+    min-height: 50px;
     border: 0;
     border-radius: 0;
     background: transparent;
@@ -144,8 +148,8 @@ input[type="number"]::-webkit-inner-spin-button {
 .brand-mark {
     display: grid;
     place-items: center;
-    width: 48px;
-    height: 48px;
+    width: 46px;
+    height: 46px;
     border-radius: 8px;
     background: var(--text);
     color: #181817;
@@ -183,14 +187,19 @@ input[type="number"]::-webkit-inner-spin-button {
 
 .side-nav {
     display: grid;
-    gap: 22px;
-    padding-top: 26px;
+    align-content: start;
+    gap: 14px;
+    padding-top: 24px;
+}
+
+.sidebar-account {
+    display: none;
 }
 
 .nav-section {
     display: grid;
-    gap: 7px;
-    padding-bottom: 22px;
+    gap: 14px;
+    padding-bottom: 14px;
     border-bottom: 1px solid rgba(255, 255, 255, .07);
 }
 
@@ -209,7 +218,7 @@ input[type="number"]::-webkit-inner-spin-button {
 
 .nav-dropdown + .nav-dropdown {
     border-bottom: 0;
-    margin-top: -18px;
+    margin-top: -8px;
 }
 
 .nav-dropdown-toggle {
@@ -217,7 +226,7 @@ input[type="number"]::-webkit-inner-spin-button {
     align-items: center;
     justify-content: space-between;
     width: 100%;
-    min-height: 40px;
+    min-height: 38px;
     border: 0;
     border-radius: 8px;
     background: transparent;
@@ -247,8 +256,8 @@ input[type="number"]::-webkit-inner-spin-button {
 
 .nav-dropdown-items {
     display: none;
-    gap: 7px;
-    padding-top: 8px;
+    gap: 5px;
+    padding-top: 6px;
 }
 
 .nav-dropdown.open .nav-dropdown-items {
@@ -259,7 +268,7 @@ input[type="number"]::-webkit-inner-spin-button {
     display: flex;
     align-items: center;
     gap: 12px;
-    min-height: 40px;
+    min-height: 38px;
     padding: 0 12px;
     border-radius: 8px;
     color: var(--muted);
@@ -280,8 +289,8 @@ input[type="number"]::-webkit-inner-spin-button {
 
 .nav-split-row {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 40px;
-    gap: 8px;
+    grid-template-columns: minmax(0, 1fr) 38px;
+    gap: 6px;
 }
 
 .nav-split-row .nav-link {
@@ -291,9 +300,9 @@ input[type="number"]::-webkit-inner-spin-button {
 .nav-side-action {
     display: grid;
     place-items: center;
-    width: 40px;
-    min-width: 40px;
-    height: 40px;
+    width: 38px;
+    min-width: 38px;
+    height: 38px;
     border-radius: 8px;
     color: var(--muted);
     text-decoration: none;
@@ -689,6 +698,40 @@ body.theme-light .theme-toggle-moon {
 .auth-form {
     display: grid;
     gap: 14px;
+}
+
+.auth-options {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+}
+
+.auth-options a {
+    color: var(--text);
+    font-size: 14px;
+    text-decoration: none;
+    white-space: nowrap;
+}
+
+.auth-options a:hover {
+    color: var(--accent-2);
+}
+
+.checkbox-line {
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+    min-width: 0;
+    color: var(--text);
+    font-size: 14px;
+}
+
+.checkbox-line input {
+    width: 16px;
+    height: 16px;
+    margin: 0;
+    accent-color: var(--accent);
 }
 
 .auth-form .top-action {
@@ -3667,31 +3710,188 @@ body.theme-light .modal-backdrop {
 
     .sidebar {
         position: fixed;
+        top: 0;
+        bottom: 0;
         z-index: 20;
+        display: flex;
+        flex-direction: column;
+        gap: 18px;
+        height: 100vh;
+        height: 100dvh;
+        max-height: 100dvh;
         transform: translateX(-100%);
         transition: transform .2s ease;
         width: 286px;
+        overflow: hidden;
+        overscroll-behavior: contain;
+        background: rgba(13, 21, 28, .82);
+        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(16px);
+        padding: 20px 14px max(14px, env(safe-area-inset-bottom));
     }
 
     .sidebar.open {
         transform: translateX(0);
     }
 
+    body.sidebar-open {
+        overflow: hidden;
+    }
+
+    body.theme-light .sidebar {
+        background: rgba(255, 255, 255, .82);
+        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(16px);
+    }
+
+    .sidebar-backdrop {
+        position: fixed;
+        inset: 0;
+        z-index: 15;
+        display: block;
+        border: 0;
+        background: rgba(0, 0, 0, .34);
+        backdrop-filter: blur(6px);
+        -webkit-backdrop-filter: blur(6px);
+        cursor: default;
+    }
+
+    .sidebar-backdrop[hidden] {
+        display: none;
+    }
+
     .topbar {
-        flex-wrap: wrap;
-        height: auto;
-        min-height: 74px;
-        padding: 14px 18px;
+        flex-wrap: nowrap;
+        gap: 10px;
+        height: 86px;
+        min-height: 86px;
+        padding: 0 18px;
     }
 
     .topbar-account {
-        justify-content: space-between;
-        margin-left: 0;
+        order: 2;
+        flex: 1 1 auto;
+        justify-content: flex-end;
+        margin-left: auto;
+        width: auto;
+    }
+
+    .topbar-account .online-pill,
+    .date-pill,
+    .topbar-account .user-menu {
+        display: none;
+    }
+
+    .topbar-sales-link {
+        order: 1;
+        flex: 0 0 auto;
+        min-width: 100px;
+        justify-content: center;
+    }
+
+    .topbar-account .theme-toggle-form {
+        display: block;
+        margin: 0;
+    }
+
+    .theme-toggle {
+        width: 44px;
+        height: 44px;
+    }
+
+    .menu-toggle {
+        order: 3;
+        display: inline-grid;
+        width: 44px;
+        height: 44px;
+        flex: 0 0 44px;
+    }
+
+    .side-nav {
+        display: flex;
+        flex-direction: column;
+        flex: 1 1 auto;
+        gap: 10px;
+        min-height: 0;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        -webkit-overflow-scrolling: touch;
+        padding: 4px 0 10px;
+        scrollbar-width: none;
+        touch-action: pan-y;
+    }
+
+    .side-nav::-webkit-scrollbar {
+        display: none;
+    }
+
+    .side-nav .nav-section {
+        gap: 8px;
+        padding-bottom: 10px;
+    }
+
+    .side-nav .nav-section:last-child {
+        border-bottom: 0;
+        padding-bottom: 0;
+    }
+
+    .side-nav .nav-dropdown + .nav-dropdown {
+        margin-top: -5px;
+    }
+
+    .side-nav .nav-link,
+    .side-nav .nav-dropdown-toggle,
+    .side-nav .nav-side-action {
+        min-height: 38px;
+    }
+
+    .side-nav .nav-split-row {
+        grid-template-columns: minmax(0, 1fr) 38px;
+        gap: 6px;
+    }
+
+    .side-nav .nav-side-action {
+        width: 38px;
+        min-width: 38px;
+        height: 38px;
+    }
+
+    .sidebar-account {
+        position: relative;
+        flex: 0 0 auto;
+        z-index: 2;
+        display: grid;
+        margin: 0 -14px calc(-1 * max(14px, env(safe-area-inset-bottom)));
+        border-top: 1px solid rgba(255, 255, 255, .08);
+        padding: 10px 0px max(10px, env(safe-area-inset-bottom));
+    }
+
+    body.theme-light .sidebar-account {
+        border-top-color: rgba(15, 23, 42, .1);
+        background: transparent;
+    }
+
+    .sidebar-account .user-menu {
         width: 100%;
     }
 
-    .date-pill {
-        display: none;
+    .sidebar-account .user-menu-toggle {
+        width: 100%;
+        min-width: 0;
+        min-height: 50px;
+        border: 0;
+        border-radius: 0;
+        background: transparent;
+        box-shadow: none;
+        padding: 6px 10px;
+    }
+
+    .sidebar-account .user-menu-dropdown {
+        top: auto;
+        right: 10px;
+        left: 10px;
+        bottom: calc(100% + 10px);
+        width: auto;
     }
 
     .user-menu {
@@ -3701,10 +3901,6 @@ body.theme-light .modal-backdrop {
     .user-menu-toggle {
         width: 100%;
         min-width: 0;
-    }
-
-    .menu-toggle {
-        display: inline-grid;
     }
 
     .heading-actions {

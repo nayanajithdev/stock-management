@@ -1,13 +1,60 @@
 const sidebar = document.querySelector('#sidebar');
 const toggle = document.querySelector('[data-sidebar-toggle]');
+const sidebarBackdrop = document.querySelector('[data-sidebar-backdrop]');
 
 if (window.lucide) {
     window.lucide.createIcons();
 }
 
 if (toggle && sidebar) {
+    const closeSidebar = () => {
+        sidebar.classList.remove('open');
+        document.body.classList.remove('sidebar-open');
+
+        if (sidebarBackdrop) {
+            sidebarBackdrop.hidden = true;
+        }
+
+        toggle.setAttribute('aria-expanded', 'false');
+    };
+
+    const openSidebar = () => {
+        sidebar.classList.add('open');
+        document.body.classList.add('sidebar-open');
+
+        if (sidebarBackdrop) {
+            sidebarBackdrop.hidden = false;
+        }
+
+        toggle.setAttribute('aria-expanded', 'true');
+    };
+
     toggle.addEventListener('click', () => {
-        sidebar.classList.toggle('open');
+        if (sidebar.classList.contains('open')) {
+            closeSidebar();
+        } else {
+            openSidebar();
+        }
+    });
+
+    sidebarBackdrop?.addEventListener('click', closeSidebar);
+
+    document.addEventListener('click', (event) => {
+        if (!sidebar.classList.contains('open')) {
+            return;
+        }
+
+        if (sidebar.contains(event.target) || toggle.contains(event.target)) {
+            return;
+        }
+
+        closeSidebar();
+    });
+
+    document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape') {
+            closeSidebar();
+        }
     });
 }
 
@@ -178,6 +225,116 @@ document.querySelectorAll('[data-permission-panel]').forEach((panel) => {
     syncPermissionState();
 });
 
+const suggestionItems = (suggestions) => suggestions && !suggestions.hidden
+    ? Array.from(suggestions.querySelectorAll('button:not([disabled])'))
+    : [];
+
+const focusSuggestionItem = (suggestions, index) => {
+    const items = suggestionItems(suggestions);
+
+    if (!items.length) {
+        return false;
+    }
+
+    const safeIndex = Math.max(0, Math.min(index, items.length - 1));
+    items[safeIndex].focus();
+    return true;
+};
+
+const handleSuggestionInputKeydown = (event, suggestions, closeSuggestions) => {
+    const items = suggestionItems(suggestions);
+
+    if (!items.length) {
+        if (event.key === 'Escape') {
+            closeSuggestions();
+            return true;
+        }
+
+        return false;
+    }
+
+    if (event.key === 'Tab' && !event.shiftKey) {
+        event.preventDefault();
+        items[0].click();
+        return true;
+    }
+
+    if (event.key === 'ArrowDown') {
+        event.preventDefault();
+        return focusSuggestionItem(suggestions, 0);
+    }
+
+    if (event.key === 'ArrowUp') {
+        event.preventDefault();
+        return focusSuggestionItem(suggestions, items.length - 1);
+    }
+
+    if (event.key === 'Escape') {
+        closeSuggestions();
+        return true;
+    }
+
+    return false;
+};
+
+const handleSuggestionListKeydown = (event, input, suggestions, closeSuggestions) => {
+    const items = suggestionItems(suggestions);
+    const index = items.indexOf(document.activeElement);
+
+    if (!items.length || index < 0) {
+        return false;
+    }
+
+    if (event.key === 'ArrowDown') {
+        event.preventDefault();
+        items[(index + 1) % items.length].focus();
+        return true;
+    }
+
+    if (event.key === 'ArrowUp') {
+        event.preventDefault();
+        items[(index - 1 + items.length) % items.length].focus();
+        return true;
+    }
+
+    if (event.key === 'Home') {
+        event.preventDefault();
+        items[0].focus();
+        return true;
+    }
+
+    if (event.key === 'End') {
+        event.preventDefault();
+        items[items.length - 1].focus();
+        return true;
+    }
+
+    if (event.key === 'Tab' && !event.shiftKey) {
+        event.preventDefault();
+        items[index].click();
+        return true;
+    }
+
+    if (event.key === 'Escape') {
+        event.preventDefault();
+        closeSuggestions();
+        input?.focus();
+        return true;
+    }
+
+    return false;
+};
+
+const closeSuggestionListAfterFocusLeave = (input, suggestions, closeSuggestions) => {
+    window.setTimeout(() => {
+        const active = document.activeElement;
+
+        if (active !== input && !suggestions?.contains(active)) {
+            closeSuggestions();
+        }
+    }, 120);
+};
+
 const purchaseForm = document.querySelector('[data-purchase-form]');
 
 if (purchaseForm) {
@@ -198,6 +355,8 @@ if (purchaseForm) {
     let supplierSearchToken = 0;
 
     const money = (value) => Number.isFinite(value) ? value.toFixed(2) : '0.00';
+
+    let createPurchaseRow = () => null;
 
     const recalculate = () => {
         let subtotal = 0;
@@ -350,15 +509,21 @@ if (purchaseForm) {
         });
 
         supplierInput.addEventListener('keydown', (event) => {
-            if (event.key === 'Escape') {
-                closeSupplierSuggestions();
-            }
+            handleSuggestionInputKeydown(event, supplierSuggestions, closeSupplierSuggestions);
         });
 
         supplierInput.addEventListener('blur', () => {
-            window.setTimeout(closeSupplierSuggestions, 120);
+            closeSuggestionListAfterFocusLeave(supplierInput, supplierSuggestions, closeSupplierSuggestions);
         });
     }
+
+    supplierSuggestions?.addEventListener('keydown', (event) => {
+        handleSuggestionListKeydown(event, supplierInput, supplierSuggestions, closeSupplierSuggestions);
+    });
+
+    supplierSuggestions?.addEventListener('focusout', () => {
+        closeSuggestionListAfterFocusLeave(supplierInput, supplierSuggestions, closeSupplierSuggestions);
+    });
 
     const hydrateRow = (row) => {
         const productInput = row.querySelector('[data-product-search]');
@@ -393,6 +558,7 @@ if (purchaseForm) {
         };
 
         const selectProduct = (product) => {
+            const isLastRow = row === rowsContainer.querySelector('[data-purchase-row]:last-child');
             selectedCategory = null;
 
             if (productHidden) {
@@ -413,6 +579,11 @@ if (purchaseForm) {
 
             closeSuggestions();
             recalculate();
+
+            if (isLastRow) {
+                const nextRow = createPurchaseRow();
+                nextRow?.querySelector('[data-product-search]')?.focus();
+            }
         };
 
         const renderCategorySuggestions = (categories) => {
@@ -583,15 +754,21 @@ if (purchaseForm) {
             });
 
             productInput.addEventListener('keydown', (event) => {
-                if (event.key === 'Escape') {
-                    closeSuggestions();
-                }
+                handleSuggestionInputKeydown(event, suggestions, closeSuggestions);
             });
 
             productInput.addEventListener('blur', () => {
-                window.setTimeout(closeSuggestions, 120);
+                closeSuggestionListAfterFocusLeave(productInput, suggestions, closeSuggestions);
             });
         }
+
+        suggestions?.addEventListener('keydown', (event) => {
+            handleSuggestionListKeydown(event, productInput, suggestions, closeSuggestions);
+        });
+
+        suggestions?.addEventListener('focusout', () => {
+            closeSuggestionListAfterFocusLeave(productInput, suggestions, closeSuggestions);
+        });
 
         const removeButton = row.querySelector('[data-remove-purchase-row]');
         if (removeButton) {
@@ -609,24 +786,31 @@ if (purchaseForm) {
 
     rowsContainer.querySelectorAll('[data-purchase-row]').forEach(hydrateRow);
 
-    if (addButton && template) {
-        addButton.addEventListener('click', () => {
-            const fragment = template.content.cloneNode(true);
-            const row = fragment.querySelector('[data-purchase-row]');
+    createPurchaseRow = () => {
+        if (!template) {
+            return null;
+        }
 
-            rowsContainer.appendChild(fragment);
+        const fragment = template.content.cloneNode(true);
+        const row = fragment.querySelector('[data-purchase-row]');
+        rowsContainer.appendChild(fragment);
 
-            if (row) {
-                hydrateRow(row);
-            }
+        if (row) {
+            hydrateRow(row);
+        }
 
-            if (window.lucide) {
-                window.lucide.createIcons();
-            }
+        if (window.lucide) {
+            window.lucide.createIcons();
+        }
 
-            refreshRemoveButtons();
-            recalculate();
-        });
+        refreshRemoveButtons();
+        recalculate();
+
+        return row;
+    };
+
+    if (addButton) {
+        addButton.addEventListener('click', createPurchaseRow);
     }
 
     [discountInput, paidInput].forEach((input) => {
@@ -849,15 +1033,21 @@ if (saleForm) {
         });
 
         customerInput.addEventListener('keydown', (event) => {
-            if (event.key === 'Escape') {
-                closeCustomerSuggestions();
-            }
+            handleSuggestionInputKeydown(event, customerSuggestions, closeCustomerSuggestions);
         });
 
         customerInput.addEventListener('blur', () => {
-            window.setTimeout(closeCustomerSuggestions, 120);
+            closeSuggestionListAfterFocusLeave(customerInput, customerSuggestions, closeCustomerSuggestions);
         });
     }
+
+    customerSuggestions?.addEventListener('keydown', (event) => {
+        handleSuggestionListKeydown(event, customerInput, customerSuggestions, closeCustomerSuggestions);
+    });
+
+    customerSuggestions?.addEventListener('focusout', () => {
+        closeSuggestionListAfterFocusLeave(customerInput, customerSuggestions, closeCustomerSuggestions);
+    });
 
     const recalculateSale = () => {
         let subtotal = 0;
@@ -961,6 +1151,7 @@ if (saleForm) {
         };
 
         const selectProduct = (product) => {
+            const isLastRow = row === rowsContainer.querySelector('[data-sale-row]:last-child');
             const stock = Math.max(0, Number.parseInt(product.stock || '0', 10) || 0);
             const price = Math.max(0, Number.parseFloat(product.price || '0') || 0);
             selectedCategory = null;
@@ -991,6 +1182,11 @@ if (saleForm) {
 
             closeSuggestions();
             recalculateSale();
+
+            if (isLastRow) {
+                const nextRow = createSaleRow();
+                nextRow?.querySelector('[data-sale-product-search]')?.focus();
+            }
         };
 
         const renderCategorySuggestions = (categories) => {
@@ -1145,15 +1341,21 @@ if (saleForm) {
             });
 
             productInput.addEventListener('keydown', (event) => {
-                if (event.key === 'Escape') {
-                    closeSuggestions();
-                }
+                handleSuggestionInputKeydown(event, suggestions, closeSuggestions);
             });
 
             productInput.addEventListener('blur', () => {
-                window.setTimeout(closeSuggestions, 120);
+                closeSuggestionListAfterFocusLeave(productInput, suggestions, closeSuggestions);
             });
         }
+
+        suggestions?.addEventListener('keydown', (event) => {
+            handleSuggestionListKeydown(event, productInput, suggestions, closeSuggestions);
+        });
+
+        suggestions?.addEventListener('focusout', () => {
+            closeSuggestionListAfterFocusLeave(productInput, suggestions, closeSuggestions);
+        });
 
         const removeButton = row.querySelector('[data-remove-sale-row]');
         if (removeButton) {
@@ -1742,13 +1944,19 @@ if (serviceForm) {
     });
 
     searchInput?.addEventListener('keydown', (event) => {
-        if (event.key === 'Escape') {
-            closeSuggestions();
-        }
+        handleSuggestionInputKeydown(event, suggestions, closeSuggestions);
     });
 
     searchInput?.addEventListener('blur', () => {
-        window.setTimeout(closeSuggestions, 120);
+        closeSuggestionListAfterFocusLeave(searchInput, suggestions, closeSuggestions);
+    });
+
+    suggestions?.addEventListener('keydown', (event) => {
+        handleSuggestionListKeydown(event, searchInput, suggestions, closeSuggestions);
+    });
+
+    suggestions?.addEventListener('focusout', () => {
+        closeSuggestionListAfterFocusLeave(searchInput, suggestions, closeSuggestions);
     });
 
     serviceForm.addEventListener('submit', (event) => {

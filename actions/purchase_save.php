@@ -11,13 +11,11 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 verify_csrf();
 
 if (! $dbReady || $pdo === null) {
-    set_flash('error', 'Import database/schema.sql before saving purchases.');
-    redirect('?page=purchases');
+    purchase_save_fail('Import database/schema.sql before saving purchases.');
 }
 
 if (! auth_can_view_product_cost($pdo, $currentUser ?? null)) {
-    set_flash('error', 'Product Cost permission is required to receive supplier stock.');
-    redirect('?page=purchases');
+    purchase_save_fail('Product Cost permission is required to receive supplier stock.');
 }
 
 $supplierId = ($_POST['supplier_id'] ?? '') !== '' ? (int) $_POST['supplier_id'] : null;
@@ -31,13 +29,11 @@ $quantities = $_POST['quantity'] ?? [];
 $unitCosts = $_POST['unit_cost'] ?? [];
 
 if (! preg_match('/^\d{4}-\d{2}-\d{2}$/', $purchaseDate)) {
-    set_flash('error', 'Purchase date is not valid.');
-    redirect('?page=purchases');
+    purchase_save_fail('Purchase date is not valid.');
 }
 
 if (! is_array($productIds) || ! is_array($warrantyMonthsInput) || ! is_array($quantities) || ! is_array($unitCosts)) {
-    set_flash('error', 'Purchase items are not valid.');
-    redirect('?page=purchases');
+    purchase_save_fail('Purchase items are not valid.');
 }
 
 $items = [];
@@ -54,8 +50,7 @@ foreach ($productIds as $index => $rawProductId) {
     }
 
     if ($productId <= 0 || $quantity <= 0 || $unitCost <= 0) {
-        set_flash('error', 'Each purchase line needs a product, quantity, and unit cost.');
-        redirect('?page=purchases');
+        purchase_save_fail('Each purchase line needs a product, quantity, and unit cost.');
     }
 
     $items[] = [
@@ -67,8 +62,7 @@ foreach ($productIds as $index => $rawProductId) {
 }
 
 if ($items === []) {
-    set_flash('error', 'Add at least one purchase item.');
-    redirect('?page=purchases');
+    purchase_save_fail('Add at least one purchase item.');
 }
 
 $subtotal = 0.0;
@@ -78,16 +72,14 @@ foreach ($items as $item) {
 }
 
 if ($discount > $subtotal) {
-    set_flash('error', 'Discount cannot be higher than subtotal.');
-    redirect('?page=purchases');
+    purchase_save_fail('Discount cannot be higher than subtotal.');
 }
 
 $total = $subtotal - $discount;
 $items = purchase_apply_discount_to_items($items, $subtotal, $discount, $total);
 
 if ($paid > $total) {
-    set_flash('error', 'Paid amount cannot be higher than purchase total.');
-    redirect('?page=purchases');
+    purchase_save_fail('Paid amount cannot be higher than purchase total.');
 }
 
 $status = 'paid';
@@ -177,6 +169,7 @@ try {
 
     $pdo->commit();
 
+    unset($_SESSION['purchase_form_old']);
     app_log_activity($pdo, $currentUser, 'purchase_create', 'Saved purchase ' . ($invoiceNo ?? '#' . $purchaseId) . ' for ' . format_money($total) . '.');
     set_flash('success', 'Purchase saved and stock updated.');
     redirect('?page=purchases');
@@ -185,8 +178,53 @@ try {
         $pdo->rollBack();
     }
 
-    set_flash('error', $exception instanceof RuntimeException ? $exception->getMessage() : 'Purchase could not be saved.');
+    purchase_save_fail($exception instanceof RuntimeException ? $exception->getMessage() : 'Purchase could not be saved.');
+}
+
+function purchase_save_fail(string $message): never
+{
+    $_SESSION['purchase_form_old'] = purchase_save_old_input();
+    set_flash('error', $message);
     redirect('?page=purchases');
+}
+
+function purchase_save_old_input(): array
+{
+    $scalarKeys = [
+        'supplier_id',
+        'supplier_search',
+        'invoice_no',
+        'purchase_date',
+        'discount',
+        'paid',
+    ];
+    $arrayKeys = [
+        'product_id',
+        'product_search',
+        'warranty_months',
+        'quantity',
+        'unit_cost',
+    ];
+    $oldInput = [];
+
+    foreach ($scalarKeys as $key) {
+        $oldInput[$key] = substr(trim((string) ($_POST[$key] ?? '')), 0, 255);
+    }
+
+    foreach ($arrayKeys as $key) {
+        $values = $_POST[$key] ?? [];
+        $oldInput[$key] = [];
+
+        if (! is_array($values)) {
+            continue;
+        }
+
+        foreach (array_slice($values, 0, 50) as $value) {
+            $oldInput[$key][] = substr(trim((string) $value), 0, 255);
+        }
+    }
+
+    return $oldInput;
 }
 
 function purchase_apply_discount_to_items(array $items, float $subtotal, float $discount, float $total): array

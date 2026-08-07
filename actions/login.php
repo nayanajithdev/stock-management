@@ -17,6 +17,7 @@ if (! $dbReady || $pdo === null) {
 
 $login = trim((string) ($_POST['login'] ?? ''));
 $password = (string) ($_POST['password'] ?? '');
+$stayLoggedIn = (string) ($_POST['stay_logged_in'] ?? '') === '1';
 $loginIdentifier = auth_login_identifier($login);
 $ipAddress = auth_client_ip();
 
@@ -70,7 +71,13 @@ if ((string) $user['status'] !== 'active') {
 
 auth_clear_login_failures($pdo, $loginIdentifier, $ipAddress);
 auth_record_login_attempt($pdo, $loginIdentifier, $ipAddress, (int) $user['id'], true);
+auth_forget_remember_token($pdo);
 auth_login_user($user);
+
+if ($stayLoggedIn) {
+    auth_issue_remember_token($pdo, $user);
+}
+
 app_log_activity($pdo, $user, 'login', 'Logged in successfully.');
 set_flash('success', 'Logged in successfully.');
 redirect('?page=dashboard');

@@ -12,6 +12,7 @@ function backup_known_tables(): array
         'users',
         'user_permissions',
         'login_attempts',
+        'remember_tokens',
         'categories',
         'brands',
         'suppliers',
@@ -444,7 +445,7 @@ function backup_verify_sql(string $sql): void
         throw new RuntimeException('SQL backup version is not supported.');
     }
 
-    $requiredTables = array_values(array_diff(backup_known_tables(), ['login_attempts']));
+    $requiredTables = array_values(array_diff(backup_known_tables(), ['login_attempts', 'remember_tokens']));
     $createdTables = [];
 
     foreach (backup_split_sql_statements($sql) as $statement) {

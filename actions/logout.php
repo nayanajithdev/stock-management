@@ -8,6 +8,7 @@ if ($pdo !== null && is_array($currentUser)) {
     app_log_activity($pdo, $currentUser, 'logout', 'Logged out successfully.');
 }
 
+auth_forget_remember_token($pdo);
 auth_logout_session();
 set_flash('success', 'Logged out successfully.');
 redirect('?page=login');

@@ -79,10 +79,6 @@ if ($dbReady && $pdo !== null) {
                         <?php endforeach; ?>
                     </div>
 
-                    <button class="ghost-button" type="button" data-add-sale-row>
-                        <i data-lucide="plus"></i>
-                        Add Item
-                    </button>
                 </div>
 
                 <div class="sale-footer">

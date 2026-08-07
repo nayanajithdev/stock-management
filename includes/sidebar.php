@@ -99,4 +99,33 @@ $shopInitial = strtoupper(substr($shopName !== '' ? $shopName : 'S', 0, 1));
             <?php endif; ?>
         <?php endforeach; ?>
     </nav>
+
+    <?php if (isset($currentUser) && is_array($currentUser)): ?>
+        <?php
+        $sidebarProfileName = trim((string) ($currentUser['full_name'] ?? 'User'));
+        $sidebarProfileRole = (string) ($currentUser['role_label'] ?? auth_role_label((string) ($currentUser['role'] ?? 'cashier')));
+        ?>
+        <div class="sidebar-account">
+            <div class="user-menu" data-user-menu>
+                <button class="user-menu-toggle" type="button" aria-haspopup="true" aria-expanded="false" data-user-menu-toggle>
+                    <span class="user-avatar user-avatar-icon" aria-hidden="true">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/>
+                            <circle cx="12" cy="7" r="4"/>
+                        </svg>
+                    </span>
+                    <span class="user-menu-text">
+                        <strong><?php echo e($sidebarProfileName); ?></strong>
+                        <small><?php echo e($sidebarProfileRole); ?></small>
+                    </span>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-down-icon lucide-chevron-down" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+                </button>
+
+                <div class="user-menu-dropdown" role="menu">
+                    <a href="<?php echo e(app_url('?page=profile')); ?>" role="menuitem">Account</a>
+                    <a class="user-menu-logout" href="<?php echo e(app_url('actions/logout.php')); ?>" role="menuitem">Logout</a>
+                </div>
+            </div>
+        </div>
+    <?php endif; ?>
 </aside>

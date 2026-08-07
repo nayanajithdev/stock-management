@@ -6,6 +6,8 @@ const AUTH_LOGIN_WINDOW_MINUTES = 15;
 const AUTH_LOGIN_IDENTIFIER_LIMIT = 5;
 const AUTH_LOGIN_IP_LIMIT = 25;
 const AUTH_LOGIN_ATTEMPT_RETENTION_DAYS = 7;
+const AUTH_REMEMBER_COOKIE = 'stock_management_remember';
+const AUTH_REMEMBER_LIFETIME_SECONDS = 2_592_000;
 
 function auth_users_have_email_column(PDO $pdo): bool
 {
@@ -42,8 +44,12 @@ function auth_current_user(PDO $pdo): ?array
 {
     $userId = (int) ($_SESSION['user_id'] ?? 0);
 
-    if ($userId <= 0 || ! auth_users_have_email_column($pdo)) {
+    if (! auth_users_have_email_column($pdo)) {
         return null;
+    }
+
+    if ($userId <= 0) {
+        return auth_remember_login($pdo);
     }
 
     $statement = $pdo->prepare(
@@ -56,6 +62,7 @@ function auth_current_user(PDO $pdo): ?array
     $user = $statement->fetch();
 
     if (! is_array($user)) {
+        auth_forget_remember_token($pdo);
         auth_logout_session();
 
         return null;
@@ -63,6 +70,7 @@ function auth_current_user(PDO $pdo): ?array
 
     if ((string) $user['status'] !== 'active') {
         app_log_security_event('inactive_user_logout', 'Inactive account session blocked for user #' . (int) $user['id'] . '.', $user);
+        auth_forget_remember_token($pdo);
         auth_logout_session();
         set_flash('error', 'Your account is inactive. Contact the owner.');
 
@@ -77,12 +85,240 @@ function auth_login_user(array $user): void
     session_regenerate_id(true);
     $_SESSION['user_id'] = (int) $user['id'];
     $_SESSION['user_role'] = (string) $user['role'];
+    auth_refresh_session_cookie(0);
 }
 
 function auth_logout_session(): void
 {
     unset($_SESSION['user_id'], $_SESSION['user_role']);
+    auth_clear_remember_cookie();
     session_regenerate_id(true);
+}
+
+function auth_issue_remember_token(PDO $pdo, array $user): void
+{
+    if (! app_tables_exist($pdo, ['remember_tokens'])) {
+        return;
+    }
+
+    try {
+        auth_prune_remember_tokens($pdo);
+
+        $selector = bin2hex(random_bytes(16));
+        $validator = bin2hex(random_bytes(32));
+        $expiresAt = (new DateTimeImmutable('now'))->modify('+' . AUTH_REMEMBER_LIFETIME_SECONDS . ' seconds');
+
+        $statement = $pdo->prepare(
+            'INSERT INTO remember_tokens (user_id, selector, token_hash, user_agent, ip_address, expires_at)
+             VALUES (:user_id, :selector, :token_hash, :user_agent, :ip_address, :expires_at)'
+        );
+        $statement->execute([
+            'user_id' => (int) $user['id'],
+            'selector' => $selector,
+            'token_hash' => hash('sha256', $validator),
+            'user_agent' => substr((string) ($_SERVER['HTTP_USER_AGENT'] ?? ''), 0, 255),
+            'ip_address' => auth_client_ip(),
+            'expires_at' => $expiresAt->format('Y-m-d H:i:s'),
+        ]);
+
+        auth_set_remember_cookie($selector, $validator, $expiresAt->getTimestamp());
+    } catch (Throwable) {
+        auth_clear_remember_cookie();
+    }
+}
+
+function auth_remember_login(PDO $pdo): ?array
+{
+    if (! app_tables_exist($pdo, ['remember_tokens'])) {
+        return null;
+    }
+
+    $parts = auth_remember_cookie_parts();
+
+    if ($parts === null) {
+        return null;
+    }
+
+    [$selector, $validator] = $parts;
+
+    try {
+        auth_prune_remember_tokens($pdo);
+
+        $statement = $pdo->prepare(
+            'SELECT rt.id AS token_id,
+                    rt.token_hash,
+                    u.id,
+                    u.full_name,
+                    u.email,
+                    u.username,
+                    u.role,
+                    u.status,
+                    u.theme_mode
+             FROM remember_tokens rt
+             INNER JOIN users u ON u.id = rt.user_id
+             WHERE rt.selector = :selector
+               AND rt.expires_at > NOW()
+             LIMIT 1'
+        );
+        $statement->execute(['selector' => $selector]);
+        $user = $statement->fetch();
+
+        if (! is_array($user)) {
+            auth_clear_remember_cookie();
+            return null;
+        }
+
+        $incomingHash = hash('sha256', $validator);
+
+        if (! hash_equals((string) $user['token_hash'], $incomingHash)) {
+            auth_delete_remember_selector($pdo, $selector);
+            auth_clear_remember_cookie();
+            app_log_security_event('remember_token_rejected', 'Rejected invalid stay logged in token for selector ' . substr($selector, 0, 8) . '.');
+
+            return null;
+        }
+
+        if ((string) $user['status'] !== 'active') {
+            auth_delete_user_remember_tokens($pdo, (int) $user['id']);
+            auth_clear_remember_cookie();
+
+            return null;
+        }
+
+        $newValidator = bin2hex(random_bytes(32));
+        $expiresAt = (new DateTimeImmutable('now'))->modify('+' . AUTH_REMEMBER_LIFETIME_SECONDS . ' seconds');
+        $update = $pdo->prepare(
+            'UPDATE remember_tokens
+             SET token_hash = :token_hash,
+                 expires_at = :expires_at,
+                 last_used_at = NOW()
+             WHERE id = :id'
+        );
+        $update->execute([
+            'token_hash' => hash('sha256', $newValidator),
+            'expires_at' => $expiresAt->format('Y-m-d H:i:s'),
+            'id' => (int) $user['token_id'],
+        ]);
+
+        auth_set_remember_cookie($selector, $newValidator, $expiresAt->getTimestamp());
+        auth_login_user($user);
+
+        unset($user['token_id'], $user['token_hash']);
+
+        return $user;
+    } catch (Throwable) {
+        auth_clear_remember_cookie();
+        return null;
+    }
+}
+
+function auth_forget_remember_token(?PDO $pdo = null): void
+{
+    $parts = auth_remember_cookie_parts();
+
+    if ($pdo instanceof PDO && $parts !== null && app_tables_exist($pdo, ['remember_tokens'])) {
+        auth_delete_remember_selector($pdo, $parts[0]);
+    }
+
+    auth_clear_remember_cookie();
+}
+
+function auth_remember_cookie_parts(): ?array
+{
+    $cookie = (string) ($_COOKIE[AUTH_REMEMBER_COOKIE] ?? '');
+
+    if ($cookie === '' || ! str_contains($cookie, ':')) {
+        return null;
+    }
+
+    [$selector, $validator] = explode(':', $cookie, 2);
+
+    if (strlen($selector) !== 32 || strlen($validator) !== 64 || ! ctype_xdigit($selector) || ! ctype_xdigit($validator)) {
+        return null;
+    }
+
+    return [$selector, $validator];
+}
+
+function auth_set_remember_cookie(string $selector, string $validator, int $expires): void
+{
+    if (headers_sent()) {
+        return;
+    }
+
+    setcookie(AUTH_REMEMBER_COOKIE, $selector . ':' . $validator, auth_remember_cookie_options($expires));
+    $_COOKIE[AUTH_REMEMBER_COOKIE] = $selector . ':' . $validator;
+}
+
+function auth_clear_remember_cookie(): void
+{
+    if (! headers_sent()) {
+        setcookie(AUTH_REMEMBER_COOKIE, '', auth_remember_cookie_options(time() - 3600));
+    }
+
+    unset($_COOKIE[AUTH_REMEMBER_COOKIE]);
+}
+
+function auth_remember_cookie_options(int $expires): array
+{
+    $params = session_get_cookie_params();
+
+    return [
+        'expires' => $expires,
+        'path' => $params['path'] ?? '/',
+        'domain' => $params['domain'] ?? '',
+        'secure' => ! empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off',
+        'httponly' => true,
+        'samesite' => 'Lax',
+    ];
+}
+
+function auth_prune_remember_tokens(PDO $pdo): void
+{
+    try {
+        $pdo->exec('DELETE FROM remember_tokens WHERE expires_at <= NOW()');
+    } catch (Throwable) {
+        return;
+    }
+}
+
+function auth_delete_remember_selector(PDO $pdo, string $selector): void
+{
+    try {
+        $statement = $pdo->prepare('DELETE FROM remember_tokens WHERE selector = :selector');
+        $statement->execute(['selector' => $selector]);
+    } catch (Throwable) {
+        return;
+    }
+}
+
+function auth_delete_user_remember_tokens(PDO $pdo, int $userId): void
+{
+    try {
+        $statement = $pdo->prepare('DELETE FROM remember_tokens WHERE user_id = :user_id');
+        $statement->execute(['user_id' => $userId]);
+    } catch (Throwable) {
+        return;
+    }
+}
+
+function auth_refresh_session_cookie(int $lifetime): void
+{
+    if (headers_sent() || session_status() !== PHP_SESSION_ACTIVE) {
+        return;
+    }
+
+    $params = session_get_cookie_params();
+    $expires = $lifetime > 0 ? time() + $lifetime : ($lifetime < 0 ? time() - 3600 : 0);
+
+    setcookie(session_name(), session_id(), [
+        'expires' => $expires,
+        'path' => $params['path'] ?? '/',
+        'domain' => $params['domain'] ?? '',
+        'secure' => ! empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off',
+        'httponly' => true,
+        'samesite' => 'Lax',
+    ]);
 }
 
 function auth_login_identifier(string $login): string

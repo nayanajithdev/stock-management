@@ -58,6 +58,7 @@ $themeMode = isset($currentUser) && is_array($currentUser) && (string) ($current
     <?php else: ?>
     <div class="app-shell">
         <?php include __DIR__ . '/sidebar.php'; ?>
+        <button class="sidebar-backdrop" type="button" aria-label="Close menu" data-sidebar-backdrop hidden></button>
 
         <div class="workspace">
             <?php include __DIR__ . '/topbar.php'; ?>

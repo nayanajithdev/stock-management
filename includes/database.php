@@ -82,6 +82,7 @@ function app_database_ready(PDO $pdo): bool
         'users',
         'user_permissions',
         'login_attempts',
+        'remember_tokens',
         'settings',
         'categories',
         'brands',
@@ -210,6 +211,23 @@ CREATE TABLE IF NOT EXISTS login_attempts (
     INDEX idx_login_attempts_identifier_ip (login_identifier, ip_address, attempted_at),
     INDEX idx_login_attempts_ip (ip_address, attempted_at),
     INDEX idx_login_attempts_attempted_at (attempted_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+SQL,
+        'remember_tokens' => <<<'SQL'
+CREATE TABLE IF NOT EXISTS remember_tokens (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    user_id INT UNSIGNED NOT NULL,
+    selector CHAR(32) NOT NULL,
+    token_hash CHAR(64) NOT NULL,
+    user_agent VARCHAR(255) NULL,
+    ip_address VARCHAR(45) NULL,
+    expires_at DATETIME NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    last_used_at DATETIME NULL,
+    CONSTRAINT fk_remember_tokens_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    UNIQUE KEY idx_remember_tokens_selector (selector),
+    INDEX idx_remember_tokens_user (user_id),
+    INDEX idx_remember_tokens_expires (expires_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
 SQL,
         'categories' => <<<'SQL'
@@ -569,6 +587,16 @@ function app_add_missing_columns(PDO $pdo): void
             'failure_reason' => 'VARCHAR(80) NULL',
             'attempted_at' => 'TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP',
         ],
+        'remember_tokens' => [
+            'user_id' => 'INT UNSIGNED NOT NULL DEFAULT 0',
+            'selector' => 'CHAR(32) NOT NULL DEFAULT \'\'',
+            'token_hash' => 'CHAR(64) NOT NULL DEFAULT \'\'',
+            'user_agent' => 'VARCHAR(255) NULL',
+            'ip_address' => 'VARCHAR(45) NULL',
+            'expires_at' => 'DATETIME NULL',
+            'created_at' => 'TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP',
+            'last_used_at' => 'DATETIME NULL',
+        ],
         'categories' => [
             'name' => 'VARCHAR(120) NOT NULL DEFAULT \'\'',
             'description' => 'VARCHAR(255) NULL',
@@ -797,6 +825,9 @@ function app_add_missing_indexes(PDO $pdo): void
         ['login_attempts', 'idx_login_attempts_identifier_ip', 'ALTER TABLE login_attempts ADD INDEX idx_login_attempts_identifier_ip (login_identifier, ip_address, attempted_at)'],
         ['login_attempts', 'idx_login_attempts_ip', 'ALTER TABLE login_attempts ADD INDEX idx_login_attempts_ip (ip_address, attempted_at)'],
         ['login_attempts', 'idx_login_attempts_attempted_at', 'ALTER TABLE login_attempts ADD INDEX idx_login_attempts_attempted_at (attempted_at)'],
+        ['remember_tokens', 'idx_remember_tokens_selector', 'ALTER TABLE remember_tokens ADD UNIQUE INDEX idx_remember_tokens_selector (selector)'],
+        ['remember_tokens', 'idx_remember_tokens_user', 'ALTER TABLE remember_tokens ADD INDEX idx_remember_tokens_user (user_id)'],
+        ['remember_tokens', 'idx_remember_tokens_expires', 'ALTER TABLE remember_tokens ADD INDEX idx_remember_tokens_expires (expires_at)'],
         ['products', 'idx_products_name', 'ALTER TABLE products ADD INDEX idx_products_name (name)'],
         ['products', 'idx_products_status', 'ALTER TABLE products ADD INDEX idx_products_status (status)'],
         ['product_serials', 'idx_product_serials_status', 'ALTER TABLE product_serials ADD INDEX idx_product_serials_status (status)'],

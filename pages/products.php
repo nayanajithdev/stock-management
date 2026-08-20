@@ -9,6 +9,9 @@ $statusFilter = (string) ($_GET['product_status'] ?? 'active');
 $brandFilterId = max(0, (int) ($_GET['brand_id'] ?? 0));
 $categoryFilterId = max(0, (int) ($_GET['category_id'] ?? 0));
 $stockFilter = (string) ($_GET['stock_filter'] ?? '');
+$pageNumber = max(1, (int) ($_GET['p'] ?? 1));
+$perPage = 50;
+$offset = ($pageNumber - 1) * $perPage;
 $allowedStatuses = ['active', 'inactive', 'all'];
 $allowedStockFilters = ['max_units', 'min_units', 'needs_reorder'];
 
@@ -21,6 +24,10 @@ if (! in_array($stockFilter, $allowedStockFilters, true)) {
 }
 
 $products = [];
+$totalProducts = 0;
+$totalPages = 1;
+$productRangeStart = 0;
+$productRangeEnd = 0;
 $categories = [];
 $brands = [];
 $suppliers = [];
@@ -73,6 +80,18 @@ if ($dbReady && $pdo !== null) {
         $where[] = 'p.reorder_level IS NOT NULL AND p.current_stock <= p.reorder_level';
     }
 
+    $whereSql = $where === [] ? '' : ' WHERE ' . implode(' AND ', $where);
+
+    $countStatement = $pdo->prepare('SELECT COUNT(*) FROM products p' . $whereSql);
+    $countStatement->execute($params);
+    $totalProducts = (int) $countStatement->fetchColumn();
+    $totalPages = max(1, (int) ceil($totalProducts / $perPage));
+
+    if ($pageNumber > $totalPages) {
+        $pageNumber = $totalPages;
+        $offset = ($pageNumber - 1) * $perPage;
+    }
+
     $latestCostSelect = $canViewProductCost
         ? ',
                    COALESCE((
@@ -97,9 +116,7 @@ if ($dbReady && $pdo !== null) {
             LEFT JOIN brands b ON b.id = p.brand_id
             LEFT JOIN suppliers s ON s.id = p.supplier_id';
 
-    if ($where !== []) {
-        $sql .= ' WHERE ' . implode(' AND ', $where);
-    }
+    $sql .= $whereSql;
 
     $orderSql = match ($stockFilter) {
         'max_units' => 'p.current_stock DESC, p.name ASC',
@@ -107,11 +124,18 @@ if ($dbReady && $pdo !== null) {
         default => 'p.created_at DESC, p.id DESC',
     };
 
-    $sql .= ' ORDER BY ' . $orderSql;
+    $sql .= ' ORDER BY ' . $orderSql . ' LIMIT :limit OFFSET :offset';
 
     $statement = $pdo->prepare($sql);
-    $statement->execute($params);
+    foreach ($params as $key => $value) {
+        $statement->bindValue(':' . $key, $value, is_int($value) ? PDO::PARAM_INT : PDO::PARAM_STR);
+    }
+    $statement->bindValue(':limit', $perPage, PDO::PARAM_INT);
+    $statement->bindValue(':offset', $offset, PDO::PARAM_INT);
+    $statement->execute();
     $products = $statement->fetchAll();
+    $productRangeStart = $totalProducts > 0 ? $offset + 1 : 0;
+    $productRangeEnd = $offset + count($products);
 
     if (isset($_GET['edit'])) {
         $editStatement = $pdo->prepare('SELECT * FROM products WHERE id = :id LIMIT 1');
@@ -405,7 +429,13 @@ if ($stockFilter !== '') {
                         <?php endforeach; ?>
                     </div>
                 <?php endif; ?>
-                <span class="dashboard-pill"><?php echo count($products); ?> <?php echo count($products) === 1 ? 'product' : 'products'; ?></span>
+                <span class="dashboard-pill">
+                    <?php if ($totalProducts > 0): ?>
+                        <?php echo (int) $productRangeStart; ?>-<?php echo (int) $productRangeEnd; ?> of <?php echo (int) $totalProducts; ?> products
+                    <?php else: ?>
+                        0 products
+                    <?php endif; ?>
+                </span>
             </div>
         </div>
 
@@ -530,6 +560,34 @@ if ($stockFilter !== '') {
                 </tbody>
             </table>
         </div>
+
+        <?php if ($totalPages > 1): ?>
+            <div class="pagination-row product-pagination" aria-label="Product pages">
+                <?php $previousQuery = product_page_query($pageNumber - 1); ?>
+                <?php $nextQuery = product_page_query($pageNumber + 1); ?>
+                <?php if ($pageNumber <= 1): ?>
+                    <span class="product-page-button disabled">Previous</span>
+                <?php else: ?>
+                    <a class="product-page-button" href="<?php echo e(app_url('?' . $previousQuery)); ?>">Previous</a>
+                <?php endif; ?>
+
+                <?php foreach (product_pagination_pages($pageNumber, $totalPages) as $paginationPage): ?>
+                    <?php if ($paginationPage === 'ellipsis'): ?>
+                        <span class="product-page-ellipsis">...</span>
+                    <?php elseif ((int) $paginationPage === $pageNumber): ?>
+                        <span class="product-page-button active" aria-current="page"><?php echo (int) $paginationPage; ?></span>
+                    <?php else: ?>
+                        <a class="product-page-button" href="<?php echo e(app_url('?' . product_page_query((int) $paginationPage))); ?>"><?php echo (int) $paginationPage; ?></a>
+                    <?php endif; ?>
+                <?php endforeach; ?>
+
+                <?php if ($pageNumber >= $totalPages): ?>
+                    <span class="product-page-button disabled">Next</span>
+                <?php else: ?>
+                    <a class="product-page-button" href="<?php echo e(app_url('?' . $nextQuery)); ?>">Next</a>
+                <?php endif; ?>
+            </div>
+        <?php endif; ?>
     </article>
 </section>
 <?php endif; ?>
@@ -574,6 +632,51 @@ function product_filter_url(string $statusFilter, string $search, int $brandId, 
     }
 
     return app_url('?' . http_build_query($params));
+}
+
+function product_page_query(int $pageNumber): string
+{
+    $query = $_GET;
+    $query['page'] = 'products';
+    $query['p'] = max(1, $pageNumber);
+    unset($query['form'], $query['edit']);
+
+    return http_build_query($query);
+}
+
+function product_pagination_pages(int $pageNumber, int $totalPages): array
+{
+    if ($totalPages <= 7) {
+        return range(1, $totalPages);
+    }
+
+    $pages = [1];
+    $start = max(2, $pageNumber - 1);
+    $end = min($totalPages - 1, $pageNumber + 1);
+
+    if ($pageNumber <= 3) {
+        $start = 2;
+        $end = 4;
+    } elseif ($pageNumber >= $totalPages - 2) {
+        $start = $totalPages - 3;
+        $end = $totalPages - 1;
+    }
+
+    if ($start > 2) {
+        $pages[] = 'ellipsis';
+    }
+
+    for ($page = $start; $page <= $end; $page++) {
+        $pages[] = $page;
+    }
+
+    if ($end < $totalPages - 1) {
+        $pages[] = 'ellipsis';
+    }
+
+    $pages[] = $totalPages;
+
+    return $pages;
 }
 
 function product_highlight(mixed $value, string $search): string

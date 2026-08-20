@@ -246,7 +246,7 @@ $trendAverage = count($trendData) > 0 ? $trendTotal / count($trendData) : 0.0;
 $trendAveragePosition = $maxRevenue > 0 ? min(100.0, max(0.0, ($trendAverage / $maxRevenue) * 100)) : 0.0;
 $trendTitle = match ($trendMode) {
     'weekly' => 'Weekly revenue',
-    '30days' => '30 days revenue',
+    '30days' => 'Last 30 days revenue',
     default => $currentYear . ' revenue',
 };
 $trendBadge = match ($trendMode) {
@@ -256,6 +256,7 @@ $trendBadge = match ($trendMode) {
         ? format_money($metrics['month_net_profit']) . ' est. net this month'
         : format_money($metrics['month_revenue']) . ' revenue this month'),
 };
+$chartAxisStep = $trendMode === '30days' ? 4 : 1;
 $cashOutToday = $metrics['today_expenses'] + $metrics['today_customer_refunds'] + ($canViewProductCost ? $metrics['today_supplier_paid'] : 0.0);
 ?>
 
@@ -282,12 +283,8 @@ $cashOutToday = $metrics['today_expenses'] + $metrics['today_customer_refunds'] 
         <div class="panel-header">
             <div>
                 <h2><?php echo e($trendTitle); ?></h2>
-                <?php if (in_array($trendMode, ['30days', 'weekly'], true)): ?>
-                    <p class="trend-range"><?php echo e($trendMode === 'weekly' ? $selectedWeekRange : $thirtyDayRange); ?></p>
-                <?php endif; ?>
             </div>
             <div class="trend-toolbar">
-                <span class="dashboard-pill"><?php echo e($trendBadge); ?></span>
                 <nav class="segmented trend-segmented" aria-label="Revenue view">
                     <a class="<?php echo $trendMode === 'monthly' ? 'active' : ''; ?>" href="<?php echo e(app_url('?page=dashboard&trend=monthly')); ?>">Monthly</a>
                     <a class="<?php echo $trendMode === '30days' ? 'active' : ''; ?>" href="<?php echo e(app_url('?page=dashboard&trend=30days')); ?>">30 Days</a>
@@ -303,11 +300,11 @@ $cashOutToday = $metrics['today_expenses'] + $metrics['today_customer_refunds'] 
             </div>
         </div>
 
-        <div class="dashboard-bars <?php echo $trendMode === 'weekly' ? 'weekly-bars' : ($trendMode === '30days' ? 'thirty-day-bars' : ''); ?>" aria-label="<?php echo match ($trendMode) { 'weekly' => 'Weekly sales chart', '30days' => '30 days sales chart', default => 'Monthly sales chart' }; ?>">
-            <div class="dashboard-bar-plot">
+        <div class="dashboard-chart" aria-label="<?php echo match ($trendMode) { 'weekly' => 'Weekly sales chart', '30days' => '30 days sales chart', default => 'Monthly sales chart' }; ?>">
+            <div class="dashboard-chart-plot" style="--chart-count: <?php echo count($trendData); ?>;">
                 <?php if ($maxRevenue > 0): ?>
                     <div
-                        class="dashboard-average-line"
+                        class="dashboard-chart-average-line"
                         style="bottom: <?php echo e(number_format($trendAveragePosition, 2, '.', '')); ?>%"
                         data-chart-label="Average"
                         data-chart-value="<?php echo e(format_money($trendAverage)); ?>"
@@ -318,45 +315,37 @@ $cashOutToday = $metrics['today_expenses'] + $metrics['today_customer_refunds'] 
 
                 <?php foreach ($trendData as $point): ?>
                     <?php
-                    $height = $maxRevenue > 0 ? max(8, ((float) $point['revenue'] / $maxRevenue) * 100) : 0;
-                    $isCurrentPoint = in_array($trendMode, ['30days', 'weekly'], true)
-                        ? (string) ($point['date'] ?? '') === date('Y-m-d')
-                        : (int) date('n') === (int) ($point['month'] ?? 0);
+                    $height = $maxRevenue > 0 ? max(4, ((float) $point['revenue'] / $maxRevenue) * 100) : 0;
                     $tooltipLabel = (string) $point['label'];
                     $tooltipValue = format_money((float) $point['revenue']);
                     ?>
-                    <div class="dashboard-bar-item <?php echo $isCurrentPoint ? 'active' : ''; ?>">
-                        <div class="dashboard-bar-track">
-                            <span
-                                tabindex="0"
-                                style="height: <?php echo e(number_format($height, 2, '.', '')); ?>%"
-                                data-chart-label="<?php echo e($tooltipLabel); ?>"
-                                data-chart-value="<?php echo e($tooltipValue); ?>"
-                                aria-label="<?php echo e($tooltipLabel . ': ' . $tooltipValue); ?>"
-                            ></span>
-                        </div>
+                    <div
+                        class="dashboard-chart-bar"
+                        tabindex="0"
+                        data-chart-label="<?php echo e($tooltipLabel); ?>"
+                        data-chart-value="<?php echo e($tooltipValue); ?>"
+                        aria-label="<?php echo e($tooltipLabel . ': ' . $tooltipValue); ?>"
+                    >
+                        <span
+                            style="height: <?php echo e(number_format($height, 2, '.', '')); ?>%"
+                            data-chart-label="<?php echo e($tooltipLabel); ?>"
+                            data-chart-value="<?php echo e($tooltipValue); ?>"
+                        ></span>
                     </div>
                 <?php endforeach; ?>
             </div>
 
-            <div class="dashboard-bar-labels">
-                <?php foreach ($trendData as $point): ?>
-                    <?php
-                    $isCurrentPoint = in_array($trendMode, ['30days', 'weekly'], true)
-                        ? (string) ($point['date'] ?? '') === date('Y-m-d')
-                        : (int) date('n') === (int) ($point['month'] ?? 0);
-                    ?>
-                    <div class="dashboard-bar-label <?php echo $isCurrentPoint ? 'active' : ''; ?>">
-                        <strong><?php echo e($point['label']); ?></strong>
-                        <?php if ($trendMode !== '30days'): ?>
-                            <small><?php echo e(format_money((float) $point['revenue'])); ?></small>
-                        <?php endif; ?>
-                    </div>
+            <div class="dashboard-chart-axis" style="--chart-count: <?php echo count($trendData); ?>;">
+                <?php foreach ($trendData as $index => $point): ?>
+                    <span><?php echo $index % $chartAxisStep === 0 || $index === count($trendData) - 1 ? e($point['label']) : ''; ?></span>
                 <?php endforeach; ?>
             </div>
 
-            <div class="dashboard-average-value">
-                Avg <?php echo e(format_money($trendAverage)); ?>
+            <div class="dashboard-chart-footer">
+                <span class="dashboard-pill dashboard-chart-total"><?php echo e($trendBadge); ?></span>
+                <span class="dashboard-pill dashboard-average-value">
+                    Avg <?php echo e(format_money($trendAverage)); ?>
+                </span>
             </div>
         </div>
     </article>

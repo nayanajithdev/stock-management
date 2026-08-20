@@ -123,6 +123,7 @@ $statement = $pdo->prepare(
             p.model,
             p.current_stock,
             p.cost_price,
+            p.selling_price,
             p.warranty_months,
             c.name AS category_name
      FROM products p
@@ -153,6 +154,7 @@ foreach ($statement->fetchAll() as $product) {
         'stock' => (int) $product['current_stock'],
         'cost' => $canViewProductCost ? (float) $product['cost_price'] : null,
         'cost_hidden' => ! $canViewProductCost,
+        'price' => (float) $product['selling_price'],
         'warranty' => (int) $product['warranty_months'],
     ];
 }

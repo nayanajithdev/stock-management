@@ -134,6 +134,7 @@ if ($dbReady && $pdo !== null) {
                         <span>Qty</span>
                         <span>Unit Cost</span>
                         <span>Line Total</span>
+                        <span>Sell Price</span>
                         <span></span>
                     </div>
 
@@ -239,8 +240,9 @@ function purchases_form_normalize_old_rows(array $oldInput, ?PDO $pdo): array
     $warrantyMonths = is_array($oldInput['warranty_months'] ?? null) ? $oldInput['warranty_months'] : [];
     $quantities = is_array($oldInput['quantity'] ?? null) ? $oldInput['quantity'] : [];
     $unitCosts = is_array($oldInput['unit_cost'] ?? null) ? $oldInput['unit_cost'] : [];
+    $sellingPrices = is_array($oldInput['selling_price'] ?? null) ? $oldInput['selling_price'] : [];
     $productDetails = purchases_form_product_details($productIds, $pdo);
-    $rowCount = max(count($productIds), count($productSearches), count($warrantyMonths), count($quantities), count($unitCosts), 1);
+    $rowCount = max(count($productIds), count($productSearches), count($warrantyMonths), count($quantities), count($unitCosts), count($sellingPrices), 1);
     $rows = [];
 
     for ($index = 0; $index < $rowCount; $index++) {
@@ -258,9 +260,10 @@ function purchases_form_normalize_old_rows(array $oldInput, ?PDO $pdo): array
             'warranty_months' => max(0, (int) ($warrantyMonths[$index] ?? (is_array($product) ? $product['warranty_months'] : 0))),
             'quantity' => max(1, (int) ($quantities[$index] ?? 1)),
             'unit_cost' => purchases_form_money_value($unitCosts[$index] ?? (is_array($product) ? $product['cost'] : '0.00')),
+            'selling_price' => purchases_form_money_value($sellingPrices[$index] ?? (is_array($product) ? $product['price'] : '0.00')),
         ];
 
-        if ($row['product_id'] === '' && $row['product_search'] === '' && $row['unit_cost'] === '0.00') {
+        if ($row['product_id'] === '' && $row['product_search'] === '' && $row['unit_cost'] === '0.00' && $row['selling_price'] === '0.00') {
             if ($index > 0) {
                 continue;
             }
@@ -286,7 +289,7 @@ function purchases_form_product_details(array $productIds, ?PDO $pdo): array
 
     $placeholders = implode(', ', array_fill(0, count($ids), '?'));
     $statement = $pdo->prepare(
-        'SELECT id, sku, name, model, cost_price, warranty_months
+        'SELECT id, sku, name, model, cost_price, selling_price, warranty_months
          FROM products
          WHERE id IN (' . $placeholders . ')'
     );
@@ -304,6 +307,7 @@ function purchases_form_product_details(array $productIds, ?PDO $pdo): array
         $products[(int) $product['id']] = [
             'label' => $label,
             'cost' => (float) $product['cost_price'],
+            'price' => (float) $product['selling_price'],
             'warranty_months' => (int) $product['warranty_months'],
         ];
     }
@@ -331,6 +335,7 @@ function render_purchase_row(array $row = []): void
     $warrantyMonths = max(0, (int) ($row['warranty_months'] ?? 0));
     $quantity = max(1, (int) ($row['quantity'] ?? 1));
     $unitCost = purchases_form_money_value($row['unit_cost'] ?? '0.00');
+    $sellingPrice = purchases_form_money_value($row['selling_price'] ?? '0.00');
     ?>
     <div class="purchase-row" data-purchase-row>
         <div class="field compact-field product-picker" data-product-picker>
@@ -354,6 +359,10 @@ function render_purchase_row(array $row = []): void
         <label class="field compact-field">
             <span>Line Total</span>
             <input type="text" value="0.00" data-purchase-line-total readonly>
+        </label>
+        <label class="field compact-field">
+            <span>Sell Price</span>
+            <input type="number" name="selling_price[]" value="<?php echo e($sellingPrice); ?>" min="0" step="0.01" data-purchase-selling-price required>
         </label>
         <button class="icon-button danger-button" type="button" data-remove-purchase-row aria-label="Remove item">
             <i data-lucide="trash-2"></i>

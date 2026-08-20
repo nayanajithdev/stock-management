@@ -1186,9 +1186,7 @@ h2 {
     padding: 18px;
     border: 1px solid rgba(255, 255, 255, .06);
     border-radius: 8px;
-    background-image:
-        linear-gradient(rgba(255, 255, 255, .05) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(255, 255, 255, .05) 1px, transparent 1px);
+    background-image: linear-gradient(rgba(255, 255, 255, .05) 1px, transparent 1px);
     background-size: 34px 34px;
 }
 
@@ -1203,40 +1201,117 @@ h2 {
 
 .dashboard-bars {
     display: grid;
-    grid-template-columns: repeat(12, minmax(0, 1fr));
-    align-items: end;
-    gap: 12px;
-    min-height: 340px;
+    gap: 10px;
     margin-top: 28px;
+}
+
+.alert-panel {
+    grid-column: 2;
+    grid-row: 1;
+}
+
+.dashboard-bar-plot,
+.dashboard-bar-labels {
+    display: grid;
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.dashboard-bar-plot {
+    position: relative;
+    align-items: end;
+    min-height: 276px;
     padding: 18px;
+    padding-bottom: 0;
     border: 1px solid rgba(255, 255, 255, .06);
     border-radius: 8px;
-    background-image:
-        linear-gradient(rgba(255, 255, 255, .05) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(255, 255, 255, .05) 1px, transparent 1px);
+    background-image: linear-gradient(rgba(255, 255, 255, .05) 1px, transparent 1px);
     background-size: 34px 34px;
 }
 
-.dashboard-bars.weekly-bars {
+.dashboard-average-line {
+    position: absolute;
+    right: 12px;
+    left: 12px;
+    z-index: 2;
+    height: 2px;
+    border-radius: 999px;
+    background: repeating-linear-gradient(
+        90deg,
+        rgba(125, 211, 160, .72) 0,
+        rgba(125, 211, 160, .72) 12px,
+        transparent 12px,
+        transparent 20px
+    );
+    box-shadow: 0 0 10px rgba(125, 211, 160, .12);
+    cursor: help;
+    outline: none;
+    transform: translateY(50%);
+}
+
+.dashboard-average-line::after {
+    content: attr(data-chart-label) "\A" attr(data-chart-value);
+    position: absolute;
+    right: 10px;
+    bottom: calc(100% + 8px);
+    min-width: 92px;
+    border: 1px solid rgba(134, 239, 172, .32);
+    border-radius: 6px;
+    background: rgba(15, 23, 42, .94);
+    box-shadow: 0 12px 28px rgba(0, 0, 0, .28);
+    color: var(--text);
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1.35;
+    opacity: 0;
+    padding: 7px 9px;
+    pointer-events: none;
+    text-align: center;
+    transform: translateY(2px);
+    transition: opacity .16s ease, transform .16s ease;
+    white-space: pre;
+}
+
+.dashboard-average-line:hover::after,
+.dashboard-average-line:focus-visible::after {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.dashboard-bars.weekly-bars .dashboard-bar-plot,
+.dashboard-bars.weekly-bars .dashboard-bar-labels {
     grid-template-columns: repeat(7, minmax(0, 1fr));
 }
 
-.dashboard-bar-item {
-    display: grid;
-    grid-template-rows: 1fr auto auto;
-    gap: 8px;
-    height: 304px;
+.dashboard-bars.thirty-day-bars {
+    overflow-x: visible;
+    padding-bottom: 0;
+}
+
+.dashboard-bars.thirty-day-bars .dashboard-bar-plot,
+.dashboard-bars.thirty-day-bars .dashboard-bar-labels {
+    grid-template-columns: repeat(30, 20px);
+    gap: 0;
+    justify-content: space-between;
     min-width: 0;
-    text-align: center;
+}
+
+.dashboard-bar-item {
+    display: flex;
+    align-items: end;
+    height: 238px;
+    min-width: 0;
 }
 
 .dashboard-bar-track {
     display: flex;
     align-items: end;
-    min-height: 210px;
+    width: 100%;
+    height: 238px;
 }
 
 .dashboard-bar-track span {
+    position: relative;
     display: block;
     width: 100%;
     min-height: 4px;
@@ -1244,6 +1319,52 @@ h2 {
     background: linear-gradient(180deg, var(--accent-2), var(--accent));
     opacity: .68;
     box-shadow: 0 0 16px rgba(14, 165, 233, .18);
+    cursor: help;
+    outline: none;
+}
+
+.dashboard-bar-track span::before,
+.dashboard-bar-track span::after {
+    position: absolute;
+    left: 50%;
+    z-index: 5;
+    opacity: 0;
+    pointer-events: none;
+    transform: translateX(-50%);
+    transition: opacity .16s ease, transform .16s ease;
+}
+
+.dashboard-bar-track span::before {
+    content: '';
+    bottom: calc(100% + 6px);
+    width: 1px;
+    height: 24px;
+    background: rgba(203, 213, 225, .42);
+}
+
+.dashboard-bar-track span::after {
+    content: attr(data-chart-label) "\A" attr(data-chart-value);
+    bottom: calc(100% + 28px);
+    min-width: 92px;
+    border: 1px solid rgba(14, 165, 233, .28);
+    border-radius: 6px;
+    background: rgba(15, 23, 42, .94);
+    box-shadow: 0 12px 28px rgba(0, 0, 0, .28);
+    color: var(--text);
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1.35;
+    padding: 7px 9px;
+    text-align: center;
+    white-space: pre;
+}
+
+.dashboard-bar-track span:hover::before,
+.dashboard-bar-track span:hover::after,
+.dashboard-bar-track span:focus-visible::before,
+.dashboard-bar-track span:focus-visible::after {
+    opacity: 1;
+    transform: translateX(-50%) translateY(-2px);
 }
 
 .dashboard-bar-item.active .dashboard-bar-track span {
@@ -1251,17 +1372,37 @@ h2 {
     box-shadow: 0 0 22px rgba(14, 165, 233, .32);
 }
 
-.dashboard-bar-item strong {
+.dashboard-bar-labels {
+    padding: 0 18px;
+}
+
+.dashboard-bar-label {
+    display: grid;
+    gap: 8px;
+    min-width: 0;
+    text-align: center;
+}
+
+.dashboard-bar-label strong {
     color: var(--text);
     font-size: 13px;
 }
 
-.dashboard-bar-item small {
+.dashboard-bar-label small {
     overflow: hidden;
     color: var(--muted);
     font-size: 11px;
     text-overflow: ellipsis;
     white-space: nowrap;
+}
+
+.dashboard-average-value {
+    justify-self: end;
+    color: rgba(186, 230, 253, .88);
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1;
+    padding: 4px 0 0;
 }
 
 .dashboard-alerts {
@@ -1451,7 +1592,7 @@ meter {
 
 .purchase-row {
     display: grid;
-    grid-template-columns: minmax(260px, 1fr) 120px 90px 130px 130px 40px;
+    grid-template-columns: minmax(260px, 1fr) 110px 80px 120px 120px 120px 40px;
     align-items: end;
     gap: 10px;
 }
@@ -3515,11 +3656,24 @@ body.theme-light .tab-row {
 }
 
 body.theme-light .chart,
-body.theme-light .dashboard-bars {
+body.theme-light .dashboard-bar-plot {
     border-color: rgba(15, 23, 42, .08);
-    background-image:
-        linear-gradient(rgba(15, 23, 42, .07) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(15, 23, 42, .07) 1px, transparent 1px);
+    background-image: linear-gradient(rgba(15, 23, 42, .07) 1px, transparent 1px);
+}
+
+body.theme-light .dashboard-average-line {
+    background: repeating-linear-gradient(
+        90deg,
+        rgba(22, 163, 74, .68) 0,
+        rgba(22, 163, 74, .68) 12px,
+        transparent 12px,
+        transparent 20px
+    );
+    box-shadow: none;
+}
+
+body.theme-light .dashboard-average-value {
+    color: #047857;
 }
 
 body.theme-light .dashboard-alerts a,
@@ -3613,6 +3767,11 @@ body.theme-light .modal-backdrop {
 
     .dashboard-grid {
         grid-template-columns: 1fr;
+    }
+
+    .alert-panel {
+        grid-column: auto;
+        grid-row: auto;
     }
 
     .dashboard-two-grid,
@@ -4112,12 +4271,20 @@ body.theme-light .modal-backdrop {
         font-size: 11px;
     }
 
-    .dashboard-bars {
+    .dashboard-bar-plot,
+    .dashboard-bar-labels {
         grid-template-columns: repeat(6, minmax(0, 1fr));
     }
 
-    .dashboard-bars.weekly-bars {
+    .dashboard-bars.weekly-bars .dashboard-bar-plot,
+    .dashboard-bars.weekly-bars .dashboard-bar-labels {
         grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .dashboard-bars.thirty-day-bars .dashboard-bar-plot,
+    .dashboard-bars.thirty-day-bars .dashboard-bar-labels {
+        grid-template-columns: repeat(30, 20px);
+        min-width: 0;
     }
 
     .permission-grid {
@@ -4125,12 +4292,13 @@ body.theme-light .modal-backdrop {
     }
 
     .dashboard-bar-item {
-        height: 220px;
+        height: 138px;
     }
 
     .dashboard-bar-track {
-        min-height: 138px;
+        height: 138px;
     }
+
 }
 
 @media print {

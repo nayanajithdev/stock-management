@@ -17,7 +17,10 @@ if (! $dbReady || $pdo === null) {
 $customerId = ($_POST['customer_id'] ?? '') !== '' ? (int) $_POST['customer_id'] : null;
 $customerName = trim((string) ($_POST['customer_name'] ?? ''));
 $customerPhone = nullable_string((string) ($_POST['customer_phone'] ?? ''));
-$saleDate = trim((string) ($_POST['sale_date'] ?? date('Y-m-d\TH:i')));
+$canChangeSaleDate = auth_user_has_permission($pdo, $currentUser, 'sale_date_change');
+$saleDate = $canChangeSaleDate
+    ? trim((string) ($_POST['sale_date'] ?? date('Y-m-d\TH:i')))
+    : date('Y-m-d\TH:i');
 $paymentMethod = (string) ($_POST['payment_method'] ?? 'cash');
 $afterSave = (string) ($_POST['after_save'] ?? 'stay');
 $discount = max(0.0, input_decimal('discount'));
@@ -34,7 +37,7 @@ if (! in_array($paymentMethod, $validPaymentMethods, true)) {
     sale_save_fail('Choose a valid payment method.');
 }
 
-if (! preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/', $saleDate)) {
+if ($canChangeSaleDate && ! preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/', $saleDate)) {
     sale_save_fail('Sale date is not valid.');
 }
 

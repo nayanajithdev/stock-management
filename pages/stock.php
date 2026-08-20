@@ -33,7 +33,7 @@ if ($dbReady && $pdo !== null) {
     if ($canViewProductCost) {
         $summary['stock_value'] = app_stock_value_total($pdo);
     }
-    $summary['low_stock'] = (int) $pdo->query('SELECT COUNT(*) FROM products WHERE status = "active" AND reorder_level > 0 AND current_stock <= reorder_level')->fetchColumn();
+    $summary['low_stock'] = (int) $pdo->query('SELECT COUNT(*) FROM products WHERE status = "active" AND reorder_level IS NOT NULL AND current_stock <= reorder_level')->fetchColumn();
     $costSelect = $canViewProductCost
         ? ', ' . app_lot_unit_cost_sql('sm', 'pc', 'lco') . ' AS display_unit_cost'
         : '';
@@ -43,15 +43,21 @@ if ($dbReady && $pdo !== null) {
     $movementSql = 'SELECT sm.*,
                            p.sku,
                            p.name AS product_name,
-                           p.model' . $costSelect . '
+                           p.model,
+                           sale_ref.invoice_no AS sale_invoice_no,
+                           purchase_ref.invoice_no AS purchase_invoice_no,
+                           u.full_name AS created_by_name' . $costSelect . '
                     FROM stock_movements sm
                     INNER JOIN products p ON p.id = sm.product_id
+                    LEFT JOIN sales sale_ref ON sm.reference_type = "sale" AND sale_ref.id = sm.reference_id
+                    LEFT JOIN purchases purchase_ref ON sm.reference_type = "purchase" AND purchase_ref.id = sm.reference_id
+                    LEFT JOIN users u ON u.id = sm.created_by
                     ' . $costJoins;
     $where = [];
     $params = [];
 
     if ($stockSearch !== '') {
-        $where[] = '(p.name LIKE :search OR p.sku LIKE :search OR p.model LIKE :search OR sm.notes LIKE :search)';
+        $where[] = '(p.name LIKE :search OR p.sku LIKE :search OR p.model LIKE :search OR sm.notes LIKE :search OR sale_ref.invoice_no LIKE :search OR purchase_ref.invoice_no LIKE :search OR u.full_name LIKE :search)';
         $params['search'] = '%' . $stockSearch . '%';
     }
 
@@ -119,7 +125,7 @@ if ($dbReady && $pdo !== null) {
 
             <form class="filter-row movement-filter" method="get" action="<?php echo e(app_url('')); ?>">
                 <input type="hidden" name="page" value="stock">
-                <input type="search" name="q" value="<?php echo e($stockSearch); ?>" placeholder="Search product, SKU, notes">
+                <input type="search" name="q" value="<?php echo e($stockSearch); ?>" placeholder="Search product, SKU, invoice, user">
                 <select name="movement_type">
                     <option value="">All Types</option>
                     <?php foreach ($filterMovementLabels as $type => $label): ?>
@@ -144,8 +150,8 @@ if ($dbReady && $pdo !== null) {
                         <?php if ($canViewProductCost): ?>
                             <th>Unit Cost</th>
                         <?php endif; ?>
-                        <th>Reference</th>
-                        <th>Notes</th>
+                        <th>User</th>
+                        <th>Invoice</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -158,10 +164,6 @@ if ($dbReady && $pdo !== null) {
                     <?php foreach ($movements as $movement): ?>
                         <?php
                         $quantityChange = (int) $movement['quantity_change'];
-                        $reference = trim((string) ($movement['reference_type'] ?? ''));
-                        if ($reference !== '' && $movement['reference_id'] !== null) {
-                            $reference .= ' #' . (int) $movement['reference_id'];
-                        }
                         ?>
                         <tr>
                             <td><?php echo e(date('Y-m-d H:i', strtotime((string) $movement['created_at']))); ?></td>
@@ -175,8 +177,8 @@ if ($dbReady && $pdo !== null) {
                             <?php if ($canViewProductCost): ?>
                                 <td><?php echo e(format_money($movement['display_unit_cost'])); ?></td>
                             <?php endif; ?>
-                            <td><?php echo e($reference !== '' ? $reference : 'Manual'); ?></td>
-                            <td><?php echo e($movement['notes'] ?? ''); ?></td>
+                            <td><?php echo e($movement['created_by_name'] ?: '-'); ?></td>
+                            <td><?php echo stock_movement_invoice_html($movement); ?></td>
                         </tr>
                     <?php endforeach; ?>
                 </tbody>
@@ -226,4 +228,30 @@ function stock_movement_status_class(string $type): string
         'stock_count' => 'status-warranty',
         default => 'status-inactive',
     };
+}
+
+function stock_movement_invoice_html(array $movement): string
+{
+    $referenceType = (string) ($movement['reference_type'] ?? '');
+    $referenceId = (int) ($movement['reference_id'] ?? 0);
+
+    if ($referenceType === 'sale' && $referenceId > 0) {
+        $invoiceNo = trim((string) ($movement['sale_invoice_no'] ?? ''));
+
+        if ($invoiceNo !== '') {
+            return '<a class="table-title" href="' . e(app_url('?page=sale-view&id=' . $referenceId)) . '">' . e($invoiceNo) . '</a>';
+        }
+    }
+
+    if ($referenceType === 'purchase' && $referenceId > 0) {
+        $invoiceNo = trim((string) ($movement['purchase_invoice_no'] ?? ''));
+
+        if ($invoiceNo !== '') {
+            return '<a class="table-title" href="' . e(app_url('?page=purchase-history&q=' . rawurlencode($invoiceNo))) . '">' . e($invoiceNo) . '</a>';
+        }
+
+        return '<a class="table-title" href="' . e(app_url('?page=purchase-history')) . '">Purchase #' . $referenceId . '</a>';
+    }
+
+    return '<span class="table-subtitle">-</span>';
 }

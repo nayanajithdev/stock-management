@@ -106,7 +106,7 @@ if ($dbReady && $pdo !== null) {
                 <section class="service-step is-active">
                     <div class="service-step-title">
                         <span>1</span>
-                        <strong>Select item</strong>
+                        <strong>Select item(s)</strong>
                     </div>
 
                     <div class="field product-picker">
@@ -129,7 +129,7 @@ if ($dbReady && $pdo !== null) {
                         <section class="return-picker-panel">
                             <div class="return-picker-heading">
                                 <strong>Items</strong>
-                                <span data-service-invoice-label>Select an invoice to view items.</span>
+                                <span data-service-invoice-label>Select an invoice to view items. Choose one or more.</span>
                             </div>
                             <div class="return-choice-list" data-service-items>
                                 <p class="return-choice-empty">No invoice selected.</p>
@@ -138,7 +138,7 @@ if ($dbReady && $pdo !== null) {
                     </div>
                 </section>
 
-                <input type="hidden" name="sale_item_id" data-service-item>
+                <div data-service-selected-items></div>
                 <input type="hidden" name="outcome" data-service-outcome>
 
                 <section class="service-step" data-service-path-step hidden>

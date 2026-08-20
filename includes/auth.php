@@ -524,6 +524,11 @@ function auth_permission_definitions(): array
             'description' => 'Create sales, view invoices, and print bills.',
             'pages' => ['sales', 'sales-history', 'sale-view'],
         ],
+        'sale_date_change' => [
+            'label' => 'Change Sale Date',
+            'description' => 'Edit invoice date and time while creating a sale.',
+            'pages' => [],
+        ],
         'customers' => [
             'label' => 'Customers',
             'description' => 'Manage customer accounts and balances.',

@@ -40,7 +40,7 @@ if ($dbReady && $pdo !== null) {
     $suppliers = app_fetch_options($pdo, 'suppliers');
 
     $summary['products'] = (int) $pdo->query('SELECT COUNT(*) FROM products WHERE status = "active"')->fetchColumn();
-    $summary['low_stock'] = (int) $pdo->query('SELECT COUNT(*) FROM products WHERE status = "active" AND reorder_level > 0 AND current_stock <= reorder_level')->fetchColumn();
+    $summary['low_stock'] = (int) $pdo->query('SELECT COUNT(*) FROM products WHERE status = "active" AND reorder_level IS NOT NULL AND current_stock <= reorder_level')->fetchColumn();
     $summary['stock_units'] = (int) $pdo->query('SELECT COALESCE(SUM(current_stock), 0) FROM products WHERE status = "active"')->fetchColumn();
     if ($canViewProductCost) {
         $summary['stock_value'] = app_stock_value_total($pdo);
@@ -70,7 +70,7 @@ if ($dbReady && $pdo !== null) {
     }
 
     if ($stockFilter === 'needs_reorder') {
-        $where[] = 'p.reorder_level > 0 AND p.current_stock <= p.reorder_level';
+        $where[] = 'p.reorder_level IS NOT NULL AND p.current_stock <= p.reorder_level';
     }
 
     $latestCostSelect = $canViewProductCost
@@ -284,9 +284,17 @@ if ($stockFilter !== '') {
                     <input type="number" name="warranty_months" value="<?php echo e($editingProduct['warranty_months'] ?? '0'); ?>" min="0" step="1">
                 </label>
 
+                <?php
+                $reorderLevelValue = '';
+                if ($editingProduct !== null) {
+                    $reorderLevelValue = $editingProduct['reorder_level'] === null ? '' : (string) $editingProduct['reorder_level'];
+                } else {
+                    $reorderLevelValue = (string) ($config['default_reorder_level'] ?? '0');
+                }
+                ?>
                 <label class="field">
                     <span>Reorder Level</span>
-                    <input type="number" name="reorder_level" value="<?php echo e($editingProduct['reorder_level'] ?? ($config['default_reorder_level'] ?? '0')); ?>" min="0" step="1">
+                    <input type="number" name="reorder_level" value="<?php echo e($reorderLevelValue); ?>" min="0" step="1">
                 </label>
 
                 <?php if ($editingProduct === null && $canViewProductCost): ?>
@@ -480,7 +488,10 @@ if ($stockFilter !== '') {
                     <?php endif; ?>
 
                     <?php foreach ($products as $product): ?>
-                        <?php $isLow = (int) $product['reorder_level'] > 0 && (int) $product['current_stock'] <= (int) $product['reorder_level']; ?>
+                        <?php
+                        $hasReorderLevel = $product['reorder_level'] !== null;
+                        $isLow = $hasReorderLevel && (int) $product['current_stock'] <= (int) $product['reorder_level'];
+                        ?>
                         <tr>
                             <td><?php echo e($product['sku']); ?></td>
                             <td>
@@ -490,7 +501,7 @@ if ($stockFilter !== '') {
                             <td><?php echo e($product['brand_name'] ?? ''); ?></td>
                             <td><?php echo e($product['category_name'] ?? ''); ?></td>
                             <td class="<?php echo $isLow ? 'text-danger' : ''; ?>"><?php echo (int) $product['current_stock']; ?></td>
-                            <td><?php echo (int) $product['reorder_level']; ?></td>
+                            <td><?php echo $hasReorderLevel ? (int) $product['reorder_level'] : '-'; ?></td>
                             <?php if ($canViewProductCost): ?>
                                 <td><?php echo e(format_money($product['latest_cost_price'] ?? $product['cost_price'])); ?></td>
                             <?php endif; ?>

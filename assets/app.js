@@ -531,6 +531,7 @@ if (purchaseForm) {
         const suggestions = row.querySelector('[data-product-suggestions]');
         const warrantyInput = row.querySelector('[data-purchase-warranty]');
         const costInput = row.querySelector('[data-purchase-cost]');
+        const sellingPriceInput = row.querySelector('[data-purchase-selling-price]');
         let searchTimer = null;
         let searchToken = 0;
         let selectedCategory = null;
@@ -571,6 +572,10 @@ if (purchaseForm) {
 
             if (costInput && !product.cost_hidden) {
                 costInput.value = money(Number.parseFloat(product.cost || '0'));
+            }
+
+            if (sellingPriceInput) {
+                sellingPriceInput.value = money(Number.parseFloat(product.price || '0'));
             }
 
             if (warrantyInput) {
@@ -661,6 +666,7 @@ if (purchaseForm) {
                     metaParts.push(`Cost ${money(Number.parseFloat(product.cost || '0'))}`);
                 }
 
+                metaParts.push(`Sell ${money(Number.parseFloat(product.price || '0'))}`);
                 metaParts.push(`Warranty ${product.warranty ?? 0} mo`);
                 button.querySelector('span').textContent = metaParts.join(' / ');
                 button.addEventListener('mousedown', (event) => event.preventDefault());
@@ -1483,7 +1489,7 @@ if (serviceForm) {
     const itemList = serviceForm.querySelector('[data-service-items]');
     const customerLabel = serviceForm.querySelector('[data-service-customer-label]');
     const invoiceLabel = serviceForm.querySelector('[data-service-invoice-label]');
-    const itemHidden = serviceForm.querySelector('[data-service-item]');
+    const selectedItemsContainer = serviceForm.querySelector('[data-service-selected-items]');
     const outcomeHidden = serviceForm.querySelector('[data-service-outcome]');
     const pathStep = serviceForm.querySelector('[data-service-path-step]');
     const outcomeStep = serviceForm.querySelector('[data-service-outcome-step]');
@@ -1494,7 +1500,7 @@ if (serviceForm) {
     const refundInput = serviceForm.querySelector('[data-service-refund]');
     const refundFields = serviceForm.querySelectorAll('[data-service-refund-fields]');
     const preview = serviceForm.querySelector('[data-service-preview]');
-    let selectedItem = null;
+    const selectedItems = new Map();
     let searchTimer = null;
     let searchToken = 0;
     let invoiceToken = 0;
@@ -1542,7 +1548,7 @@ if (serviceForm) {
         }
 
         if (pathStep) {
-            pathStep.hidden = !selectedItem;
+            pathStep.hidden = selectedItems.size === 0;
         }
 
         if (outcomeStep) {
@@ -1563,7 +1569,8 @@ if (serviceForm) {
     };
 
     const updateOutcomeAvailability = () => {
-        const hasStock = Number.parseInt(selectedItem?.stock ?? '0', 10) > 0;
+        const selected = Array.from(selectedItems.values());
+        const hasStock = selected.length > 0 && selected.every((item) => Number.parseInt(item.stock ?? '0', 10) > 0);
 
         serviceForm.querySelectorAll('[data-service-needs-warranty]').forEach((card) => {
             const input = card.querySelector('input');
@@ -1617,16 +1624,17 @@ if (serviceForm) {
 
         const outcome = outcomeHidden?.value || '';
 
-        if (!selectedItem || !outcome) {
-            preview.textContent = 'Select an item and action.';
+        if (selectedItems.size === 0 || !outcome) {
+            preview.textContent = 'Select item(s) and action.';
             return;
         }
 
         const quantity = Number.parseInt(quantityInput?.value || '1', 10) || 1;
         const refund = Number.parseFloat(refundInput?.value || '0') || 0;
+        const unitText = selectedItems.size > 1 ? `${selectedItems.size} selected item(s)` : `${quantity} unit(s)`;
 
         const text = {
-            normal_restock: `Refund ${money(refund)} and return ${quantity} unit(s) to sellable stock.`,
+            normal_restock: `Refund ${money(refund)} and return ${unitText} to sellable stock.`,
             warranty_wait_supplier: 'Create a warranty case and mark it sent to supplier. Customer waits for the result.',
             warranty_refund_now: `Refund ${money(refund)} now and keep the case open for supplier decision.`,
             warranty_replace_now: 'Give one replacement from stock now. Supplier decision can be recorded later.',
@@ -1636,16 +1644,18 @@ if (serviceForm) {
     };
 
     const showDetailsStep = (outcome) => {
-        if (!selectedItem || !detailsStep || !outcomeHidden) {
+        if (selectedItems.size === 0 || !detailsStep || !outcomeHidden) {
             return;
         }
 
         outcomeHidden.value = outcome;
         detailsStep.hidden = false;
 
+        const selected = Array.from(selectedItems.values());
         const isRefund = refundOutcomes.includes(outcome);
         const isWarranty = warrantyOutcomes.includes(outcome);
-        const fixedOne = isWarranty;
+        const fixedOne = isWarranty || selected.length > 1;
+        const maxQuantity = selected.length === 1 ? (selected[0].available || 1) : 1;
 
         refundFields.forEach((field) => {
             field.hidden = !isRefund;
@@ -1653,49 +1663,74 @@ if (serviceForm) {
         });
 
         if (quantityInput) {
-            quantityInput.max = String(selectedItem.available || 1);
+            quantityInput.max = String(maxQuantity);
             quantityInput.readOnly = fixedOne;
-            quantityInput.value = fixedOne ? '1' : Math.min(Number.parseInt(quantityInput.value || '1', 10) || 1, selectedItem.available || 1);
+            quantityInput.value = fixedOne ? '1' : Math.min(Number.parseInt(quantityInput.value || '1', 10) || 1, maxQuantity);
         }
 
         if (refundInput && isRefund && Number.parseFloat(refundInput.value || '0') <= 0) {
-            refundInput.value = money(Number.parseFloat(selectedItem.price || '0'));
+            refundInput.value = money(selected.reduce((total, item) => total + Number.parseFloat(item.price || '0'), 0));
         }
 
         renderServicePreview();
     };
 
-    const clearSelectedItem = () => {
-        selectedItem = null;
-
-        if (itemHidden) {
-            itemHidden.value = '';
+    const syncSelectedItemInputs = () => {
+        if (!selectedItemsContainer) {
+            return;
         }
+
+        selectedItemsContainer.innerHTML = '';
+
+        selectedItems.forEach((item) => {
+            const input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = 'sale_item_ids[]';
+            input.value = String(item.sale_item_id || '');
+            selectedItemsContainer.appendChild(input);
+        });
+    };
+
+    const selectedRefundTotal = () => Array.from(selectedItems.values())
+        .reduce((total, item) => total + Number.parseFloat(item.price || '0'), 0);
+
+    const clearSelectedItems = () => {
+        selectedItems.clear();
+        syncSelectedItemInputs();
 
         resetAfterItem();
 
         if (preview) {
-            preview.textContent = 'Select an item and action.';
+            preview.textContent = 'Select item(s) and action.';
         }
     };
 
-    const selectItem = (item, button) => {
-        selectedItem = item;
+    const toggleItem = (item, button) => {
+        const itemId = String(item.sale_item_id || '');
 
-        if (itemHidden) {
-            itemHidden.value = String(item.sale_item_id || '');
+        if (!itemId) {
+            return;
         }
 
-        itemList?.querySelectorAll('.return-choice-card').forEach((card) => card.classList.remove('active'));
-        button?.classList.add('active');
+        if (selectedItems.has(itemId)) {
+            selectedItems.delete(itemId);
+            button?.classList.remove('active');
+            button?.setAttribute('aria-pressed', 'false');
+        } else {
+            selectedItems.set(itemId, item);
+            button?.classList.add('active');
+            button?.setAttribute('aria-pressed', 'true');
+        }
+
+        syncSelectedItemInputs();
 
         if (quantityInput) {
             quantityInput.value = '1';
-            quantityInput.max = String(item.available || 1);
+            quantityInput.max = String(selectedItems.size === 1 ? Array.from(selectedItems.values())[0].available || 1 : 1);
         }
 
         if (refundInput) {
-            refundInput.value = money(Number.parseFloat(item.price || '0'));
+            refundInput.value = money(selectedRefundTotal());
         }
 
         resetAfterItem();
@@ -1706,7 +1741,7 @@ if (serviceForm) {
             return;
         }
 
-        clearSelectedItem();
+        clearSelectedItems();
 
         if (!items.length) {
             setListMessage(itemList, 'No available items found for this invoice.');
@@ -1719,6 +1754,7 @@ if (serviceForm) {
             const button = document.createElement('button');
             button.type = 'button';
             button.className = 'return-choice-card';
+            button.setAttribute('aria-pressed', 'false');
             button.innerHTML = `
                 <strong></strong>
                 <span></span>
@@ -1729,7 +1765,7 @@ if (serviceForm) {
             button.querySelector('small').textContent = item.warranty_until
                 ? `Invoice warranty until ${item.warranty_until}`
                 : 'Invoice warranty not set';
-            button.addEventListener('click', () => selectItem(item, button));
+            button.addEventListener('click', () => toggleItem(item, button));
             itemList.appendChild(button);
         });
     };
@@ -1740,7 +1776,7 @@ if (serviceForm) {
         }
 
         const token = ++itemToken;
-        clearSelectedItem();
+        clearSelectedItems();
         setListMessage(itemList, 'Loading items...');
 
         if (invoiceLabel) {
@@ -1770,7 +1806,7 @@ if (serviceForm) {
             return;
         }
 
-        clearSelectedItem();
+        clearSelectedItems();
         setListMessage(itemList, 'Select an invoice to view items.');
 
         if (!invoices.length) {
@@ -1807,7 +1843,7 @@ if (serviceForm) {
         }
 
         const token = ++invoiceToken;
-        clearSelectedItem();
+        clearSelectedItems();
         setListMessage(invoiceList, 'Loading invoices...');
         setListMessage(itemList, 'Select an invoice to view items.');
 
@@ -1960,11 +1996,11 @@ if (serviceForm) {
     });
 
     serviceForm.addEventListener('submit', (event) => {
-        if (!itemHidden?.value || !outcomeHidden?.value) {
+        if (selectedItems.size === 0 || !outcomeHidden?.value) {
             event.preventDefault();
 
             if (preview) {
-                preview.textContent = 'Choose the invoice item and handling action before saving.';
+                preview.textContent = 'Choose invoice item(s) and handling action before saving.';
             }
         }
     });

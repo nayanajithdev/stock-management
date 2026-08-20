@@ -1,10 +1,15 @@
 <?php
 /** @var ?PDO $pdo */
 /** @var bool $dbReady */
+/** @var ?array $currentUser */
 
 $hasSaleProducts = false;
 $saleOldInput = sales_form_pull_old_input($dbReady && $pdo instanceof PDO ? $pdo : null);
 $saleRows = $saleOldInput['rows'] ?? [[]];
+$canChangeSaleDate = $dbReady && $pdo instanceof PDO && auth_user_has_permission($pdo, $currentUser ?? null, 'sale_date_change');
+$saleDateValue = $canChangeSaleDate
+    ? (string) ($saleOldInput['sale_date'] ?? date('Y-m-d\TH:i'))
+    : date('Y-m-d\TH:i');
 
 if ($dbReady && $pdo !== null) {
     $hasSaleProducts = (int) $pdo->query(
@@ -57,7 +62,7 @@ if ($dbReady && $pdo !== null) {
                     </label>
                     <label class="field">
                         <span>Sale Date</span>
-                        <input type="datetime-local" name="sale_date" value="<?php echo e($saleOldInput['sale_date'] ?? date('Y-m-d\TH:i')); ?>" required>
+                        <input type="datetime-local" name="sale_date" value="<?php echo e($saleDateValue); ?>" <?php echo $canChangeSaleDate ? '' : 'readonly'; ?> required>
                     </label>
                 </div>
 

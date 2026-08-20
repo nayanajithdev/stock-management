@@ -14,12 +14,21 @@ if ($canViewProductCost) {
     $primaryStats[] = ['label' => 'Supplier Due', 'value' => format_money(0), 'meta' => 'Open payables', 'icon' => 'hand-coins'];
 }
 $currentYear = (int) date('Y');
-$trendMode = (string) ($_GET['trend'] ?? '') === 'weekly' ? 'weekly' : 'monthly';
+$trendMode = (string) ($_GET['trend'] ?? 'monthly');
+
+if (! in_array($trendMode, ['monthly', '30days', 'weekly'], true)) {
+    $trendMode = 'monthly';
+}
+
 $selectedWeekStart = dashboard_week_start((string) ($_GET['week'] ?? ''));
 $selectedWeekEnd = $selectedWeekStart->modify('+7 days');
 $selectedWeekInput = $selectedWeekStart->format('o-\WW');
 $selectedWeekRange = dashboard_week_range_label($selectedWeekStart, $selectedWeekEnd->modify('-1 day'));
+$thirtyDayStart = (new DateTimeImmutable('today'))->modify('-29 days');
+$thirtyDayEnd = (new DateTimeImmutable('tomorrow'))->setTime(0, 0);
+$thirtyDayRange = dashboard_week_range_label($thirtyDayStart, $thirtyDayEnd->modify('-1 day'));
 $monthlyTrend = dashboard_empty_month_trend();
+$thirtyDayTrend = dashboard_empty_thirty_day_trend($thirtyDayStart);
 $weeklyTrend = dashboard_empty_week_trend($selectedWeekStart);
 $metrics = [
     'today_sales' => 0.0,
@@ -89,7 +98,7 @@ if ($dbReady && $pdo !== null) {
          WHERE sr.return_date >= DATE_FORMAT(CURRENT_DATE, "%Y-%m-01")'
     )->fetchColumn();
     $metrics['receivable'] = dashboard_receivable_total($pdo);
-    $metrics['low_stock'] = (int) $pdo->query('SELECT COUNT(*) FROM products WHERE status = "active" AND reorder_level > 0 AND current_stock <= reorder_level')->fetchColumn();
+    $metrics['low_stock'] = (int) $pdo->query('SELECT COUNT(*) FROM products WHERE status = "active" AND reorder_level IS NOT NULL AND current_stock <= reorder_level')->fetchColumn();
     $metrics['open_warranty'] = (int) $pdo->query('SELECT COUNT(*) FROM warranty_claims WHERE status IN ("received", "sent_to_supplier", "ready_for_pickup")')->fetchColumn();
     $metrics['warranty_expiring'] = dashboard_warranty_expiring_lots($pdo);
 
@@ -196,10 +205,36 @@ if ($dbReady && $pdo !== null) {
         $weeklyTrend[$index]['revenue'] = $weeklyRows[$day['date']] ?? 0.0;
     }
 
+    $thirtyDayRows = [];
+    $thirtyDayStatement = $pdo->prepare(
+        'SELECT DATE(sale_date) AS sale_day,
+                COALESCE(SUM(total), 0) AS revenue
+         FROM sales
+         WHERE sale_date >= :range_start
+           AND sale_date < :range_end
+         GROUP BY DATE(sale_date)'
+    );
+    $thirtyDayStatement->execute([
+        ':range_start' => $thirtyDayStart->format('Y-m-d 00:00:00'),
+        ':range_end' => $thirtyDayEnd->format('Y-m-d 00:00:00'),
+    ]);
+
+    foreach ($thirtyDayStatement->fetchAll() as $row) {
+        $thirtyDayRows[(string) $row['sale_day']] = (float) $row['revenue'];
+    }
+
+    foreach ($thirtyDayTrend as $index => $day) {
+        $thirtyDayTrend[$index]['revenue'] = $thirtyDayRows[$day['date']] ?? 0.0;
+    }
+
 }
 
 $maxRevenue = 0.0;
-$trendData = $trendMode === 'weekly' ? $weeklyTrend : $monthlyTrend;
+$trendData = match ($trendMode) {
+    'weekly' => $weeklyTrend,
+    '30days' => $thirtyDayTrend,
+    default => $monthlyTrend,
+};
 $trendTotal = 0.0;
 
 foreach ($trendData as $point) {
@@ -207,12 +242,20 @@ foreach ($trendData as $point) {
     $trendTotal += (float) $point['revenue'];
 }
 
-$trendTitle = $trendMode === 'weekly' ? 'Weekly revenue' : $currentYear . ' revenue';
-$trendBadge = $trendMode === 'weekly'
-    ? format_money($trendTotal) . ' selected week'
-    : ($canViewProductCost
+$trendAverage = count($trendData) > 0 ? $trendTotal / count($trendData) : 0.0;
+$trendAveragePosition = $maxRevenue > 0 ? min(100.0, max(0.0, ($trendAverage / $maxRevenue) * 100)) : 0.0;
+$trendTitle = match ($trendMode) {
+    'weekly' => 'Weekly revenue',
+    '30days' => '30 days revenue',
+    default => $currentYear . ' revenue',
+};
+$trendBadge = match ($trendMode) {
+    'weekly' => format_money($trendTotal) . ' selected week',
+    '30days' => format_money($trendTotal) . ' last 30 days',
+    default => ($canViewProductCost
         ? format_money($metrics['month_net_profit']) . ' est. net this month'
-        : format_money($metrics['month_revenue']) . ' revenue this month');
+        : format_money($metrics['month_revenue']) . ' revenue this month'),
+};
 $cashOutToday = $metrics['today_expenses'] + $metrics['today_customer_refunds'] + ($canViewProductCost ? $metrics['today_supplier_paid'] : 0.0);
 ?>
 
@@ -238,16 +281,16 @@ $cashOutToday = $metrics['today_expenses'] + $metrics['today_customer_refunds'] 
     <article class="panel sales-panel">
         <div class="panel-header">
             <div>
-                <p class="panel-label">Sales Trend</p>
                 <h2><?php echo e($trendTitle); ?></h2>
-                <?php if ($trendMode === 'weekly'): ?>
-                    <p class="trend-range"><?php echo e($selectedWeekRange); ?></p>
+                <?php if (in_array($trendMode, ['30days', 'weekly'], true)): ?>
+                    <p class="trend-range"><?php echo e($trendMode === 'weekly' ? $selectedWeekRange : $thirtyDayRange); ?></p>
                 <?php endif; ?>
             </div>
             <div class="trend-toolbar">
                 <span class="dashboard-pill"><?php echo e($trendBadge); ?></span>
                 <nav class="segmented trend-segmented" aria-label="Revenue view">
                     <a class="<?php echo $trendMode === 'monthly' ? 'active' : ''; ?>" href="<?php echo e(app_url('?page=dashboard&trend=monthly')); ?>">Monthly</a>
+                    <a class="<?php echo $trendMode === '30days' ? 'active' : ''; ?>" href="<?php echo e(app_url('?page=dashboard&trend=30days')); ?>">30 Days</a>
                     <a class="<?php echo $trendMode === 'weekly' ? 'active' : ''; ?>" href="<?php echo e(app_url('?page=dashboard&trend=weekly&week=' . rawurlencode($selectedWeekInput))); ?>">Weekly</a>
                 </nav>
                 <?php if ($trendMode === 'weekly'): ?>
@@ -260,22 +303,61 @@ $cashOutToday = $metrics['today_expenses'] + $metrics['today_customer_refunds'] 
             </div>
         </div>
 
-        <div class="dashboard-bars <?php echo $trendMode === 'weekly' ? 'weekly-bars' : ''; ?>" aria-label="<?php echo $trendMode === 'weekly' ? 'Weekly sales chart' : 'Monthly sales chart'; ?>">
-            <?php foreach ($trendData as $point): ?>
-                <?php
-                $height = $maxRevenue > 0 ? max(8, ((float) $point['revenue'] / $maxRevenue) * 100) : 0;
-                $isCurrentPoint = $trendMode === 'weekly'
-                    ? (string) ($point['date'] ?? '') === date('Y-m-d')
-                    : (int) date('n') === (int) ($point['month'] ?? 0);
-                ?>
-                <div class="dashboard-bar-item <?php echo $isCurrentPoint ? 'active' : ''; ?>">
-                    <div class="dashboard-bar-track">
-                        <span style="height: <?php echo e(number_format($height, 2, '.', '')); ?>%"></span>
+        <div class="dashboard-bars <?php echo $trendMode === 'weekly' ? 'weekly-bars' : ($trendMode === '30days' ? 'thirty-day-bars' : ''); ?>" aria-label="<?php echo match ($trendMode) { 'weekly' => 'Weekly sales chart', '30days' => '30 days sales chart', default => 'Monthly sales chart' }; ?>">
+            <div class="dashboard-bar-plot">
+                <?php if ($maxRevenue > 0): ?>
+                    <div
+                        class="dashboard-average-line"
+                        style="bottom: <?php echo e(number_format($trendAveragePosition, 2, '.', '')); ?>%"
+                        data-chart-label="Average"
+                        data-chart-value="<?php echo e(format_money($trendAverage)); ?>"
+                        tabindex="0"
+                        aria-label="<?php echo e('Average: ' . format_money($trendAverage)); ?>"
+                    ></div>
+                <?php endif; ?>
+
+                <?php foreach ($trendData as $point): ?>
+                    <?php
+                    $height = $maxRevenue > 0 ? max(8, ((float) $point['revenue'] / $maxRevenue) * 100) : 0;
+                    $isCurrentPoint = in_array($trendMode, ['30days', 'weekly'], true)
+                        ? (string) ($point['date'] ?? '') === date('Y-m-d')
+                        : (int) date('n') === (int) ($point['month'] ?? 0);
+                    $tooltipLabel = (string) $point['label'];
+                    $tooltipValue = format_money((float) $point['revenue']);
+                    ?>
+                    <div class="dashboard-bar-item <?php echo $isCurrentPoint ? 'active' : ''; ?>">
+                        <div class="dashboard-bar-track">
+                            <span
+                                tabindex="0"
+                                style="height: <?php echo e(number_format($height, 2, '.', '')); ?>%"
+                                data-chart-label="<?php echo e($tooltipLabel); ?>"
+                                data-chart-value="<?php echo e($tooltipValue); ?>"
+                                aria-label="<?php echo e($tooltipLabel . ': ' . $tooltipValue); ?>"
+                            ></span>
+                        </div>
                     </div>
-                    <strong><?php echo e($point['label']); ?></strong>
-                    <small><?php echo e(format_money((float) $point['revenue'])); ?></small>
-                </div>
-            <?php endforeach; ?>
+                <?php endforeach; ?>
+            </div>
+
+            <div class="dashboard-bar-labels">
+                <?php foreach ($trendData as $point): ?>
+                    <?php
+                    $isCurrentPoint = in_array($trendMode, ['30days', 'weekly'], true)
+                        ? (string) ($point['date'] ?? '') === date('Y-m-d')
+                        : (int) date('n') === (int) ($point['month'] ?? 0);
+                    ?>
+                    <div class="dashboard-bar-label <?php echo $isCurrentPoint ? 'active' : ''; ?>">
+                        <strong><?php echo e($point['label']); ?></strong>
+                        <?php if ($trendMode !== '30days'): ?>
+                            <small><?php echo e(format_money((float) $point['revenue'])); ?></small>
+                        <?php endif; ?>
+                    </div>
+                <?php endforeach; ?>
+            </div>
+
+            <div class="dashboard-average-value">
+                Avg <?php echo e(format_money($trendAverage)); ?>
+            </div>
         </div>
     </article>
 
@@ -369,6 +451,22 @@ function dashboard_empty_week_trend(DateTimeImmutable $weekStart): array
         $trend[] = [
             'date' => $day->format('Y-m-d'),
             'label' => $day->format('D'),
+            'revenue' => 0.0,
+        ];
+    }
+
+    return $trend;
+}
+
+function dashboard_empty_thirty_day_trend(DateTimeImmutable $startDate): array
+{
+    $trend = [];
+
+    for ($dayIndex = 0; $dayIndex < 30; $dayIndex++) {
+        $day = $startDate->modify('+' . $dayIndex . ' days');
+        $trend[] = [
+            'date' => $day->format('Y-m-d'),
+            'label' => $day->format('M j'),
             'revenue' => 0.0,
         ];
     }

@@ -33,7 +33,8 @@ $sellingPrice = input_decimal('selling_price');
 $wholesalePrice = input_decimal('wholesale_price');
 $warrantyMonths = input_int('warranty_months');
 $itemTracking = isset($_POST['item_tracking']) ? 1 : 0;
-$reorderLevel = input_int('reorder_level');
+$rawReorderLevel = trim((string) ($_POST['reorder_level'] ?? ''));
+$reorderLevel = $rawReorderLevel === '' ? null : max(0, (int) $rawReorderLevel);
 $openingStock = input_int('opening_stock');
 $purchaseDate = trim((string) ($_POST['purchase_date'] ?? date('Y-m-d')));
 $formRedirect = '?page=products' . ($productId !== null ? '&edit=' . $productId : '&form=product');
@@ -45,6 +46,11 @@ if ($name === '' || $sku === '') {
 
 if ($postedCostPrice < 0 || $sellingPrice < 0 || $wholesalePrice < 0) {
     set_flash('error', 'Product prices cannot be negative.');
+    redirect($formRedirect);
+}
+
+if ($rawReorderLevel !== '' && ! ctype_digit($rawReorderLevel)) {
+    set_flash('error', 'Reorder level must be empty or a whole number.');
     redirect($formRedirect);
 }
 

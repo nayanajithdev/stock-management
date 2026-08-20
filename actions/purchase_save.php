@@ -24,15 +24,17 @@ $purchaseDate = trim((string) ($_POST['purchase_date'] ?? date('Y-m-d')));
 $discount = max(0.0, input_decimal('discount'));
 $paid = max(0.0, input_decimal('paid'));
 $productIds = $_POST['product_id'] ?? [];
+$productSearches = $_POST['product_search'] ?? [];
 $warrantyMonthsInput = $_POST['warranty_months'] ?? [];
 $quantities = $_POST['quantity'] ?? [];
 $unitCosts = $_POST['unit_cost'] ?? [];
+$sellingPrices = $_POST['selling_price'] ?? [];
 
 if (! preg_match('/^\d{4}-\d{2}-\d{2}$/', $purchaseDate)) {
     purchase_save_fail('Purchase date is not valid.');
 }
 
-if (! is_array($productIds) || ! is_array($warrantyMonthsInput) || ! is_array($quantities) || ! is_array($unitCosts)) {
+if (! is_array($productIds) || ! is_array($productSearches) || ! is_array($warrantyMonthsInput) || ! is_array($quantities) || ! is_array($unitCosts) || ! is_array($sellingPrices)) {
     purchase_save_fail('Purchase items are not valid.');
 }
 
@@ -40,12 +42,15 @@ $items = [];
 
 foreach ($productIds as $index => $rawProductId) {
     $productId = (int) $rawProductId;
+    $productSearch = trim((string) ($productSearches[$index] ?? ''));
     $warrantyMonths = max(0, (int) ($warrantyMonthsInput[$index] ?? 0));
     $quantity = max(0, (int) ($quantities[$index] ?? 0));
     $unitCost = str_replace(',', '', trim((string) ($unitCosts[$index] ?? '0')));
     $unitCost = is_numeric($unitCost) ? max(0.0, (float) $unitCost) : 0.0;
+    $sellingPrice = str_replace(',', '', trim((string) ($sellingPrices[$index] ?? '0')));
+    $sellingPrice = is_numeric($sellingPrice) ? max(0.0, (float) $sellingPrice) : 0.0;
 
-    if ($productId <= 0 && $quantity === 0 && $unitCost <= 0) {
+    if ($productId <= 0 && $productSearch === '' && $unitCost <= 0 && $sellingPrice <= 0) {
         continue;
     }
 
@@ -58,6 +63,7 @@ foreach ($productIds as $index => $rawProductId) {
         'warranty_months' => $warrantyMonths,
         'quantity' => $quantity,
         'unit_cost' => $unitCost,
+        'selling_price' => $sellingPrice,
     ];
 }
 
@@ -119,6 +125,7 @@ try {
         'UPDATE products
          SET current_stock = :current_stock,
              cost_price = :unit_cost,
+             selling_price = :selling_price,
              updated_at = CURRENT_TIMESTAMP
          WHERE id = :id'
     );
@@ -152,6 +159,7 @@ try {
         $stockUpdate->execute([
             'current_stock' => $newStock,
             'unit_cost' => $item['net_unit_cost'],
+            'selling_price' => $item['selling_price'],
             'id' => $item['product_id'],
         ]);
 
@@ -204,6 +212,7 @@ function purchase_save_old_input(): array
         'warranty_months',
         'quantity',
         'unit_cost',
+        'selling_price',
     ];
     $oldInput = [];
 

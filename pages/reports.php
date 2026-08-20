@@ -287,6 +287,15 @@ if ($dbReady && $pdo !== null) {
 
         <article class="stat-card">
             <div>
+                <span><?php echo $canViewProductCost ? 'Net Profit' : 'Open Warranty'; ?></span>
+                <strong><?php echo $canViewProductCost ? e(format_money($summary['net_profit'])) : (int) $summary['open_warranty']; ?></strong>
+            </div>
+            <div class="stat-icon"><i data-lucide="<?php echo $canViewProductCost ? 'chart-line' : 'shield-check'; ?>"></i></div>
+            <small><?php echo $canViewProductCost ? 'After expenses, returns, supplier refunds' : 'Active cases'; ?></small>
+        </article>
+
+        <article class="stat-card">
+            <div>
                 <span><?php echo $reportTab === 'daily-sales' ? 'Today Sold Cost' : 'Sold Cost'; ?></span>
                 <strong><?php echo e(format_money($summary['sold_cost'])); ?></strong>
             </div>
@@ -301,15 +310,6 @@ if ($dbReady && $pdo !== null) {
             </div>
             <div class="stat-icon"><i data-lucide="receipt"></i></div>
             <small>Operating costs</small>
-        </article>
-
-        <article class="stat-card">
-            <div>
-                <span><?php echo $canViewProductCost ? 'Net Profit' : 'Open Warranty'; ?></span>
-                <strong><?php echo $canViewProductCost ? e(format_money($summary['net_profit'])) : (int) $summary['open_warranty']; ?></strong>
-            </div>
-            <div class="stat-icon"><i data-lucide="<?php echo $canViewProductCost ? 'chart-line' : 'shield-check'; ?>"></i></div>
-            <small><?php echo $canViewProductCost ? 'After expenses, returns, supplier refunds' : 'Active cases'; ?></small>
         </article>
     </section>
 

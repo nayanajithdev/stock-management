@@ -122,6 +122,7 @@ function app_apply_schema_upgrades(PDO $pdo): void
 {
     app_create_missing_tables($pdo);
     app_add_missing_columns($pdo);
+    app_relax_nullable_columns($pdo);
     app_add_missing_indexes($pdo);
     app_seed_default_settings($pdo);
     app_migrate_legacy_permissions($pdo);
@@ -169,6 +170,33 @@ function app_add_index_if_missing(PDO $pdo, string $table, string $index, string
     }
 
     app_schema_exec($pdo, $sql);
+}
+
+function app_column_is_nullable(PDO $pdo, string $table, string $column): bool
+{
+    $statement = $pdo->prepare(
+        'SELECT is_nullable
+         FROM information_schema.columns
+         WHERE table_schema = DATABASE()
+           AND table_name = :table_name
+           AND column_name = :column_name
+         LIMIT 1'
+    );
+    $statement->execute([
+        'table_name' => $table,
+        'column_name' => $column,
+    ]);
+
+    return strtoupper((string) $statement->fetchColumn()) === 'YES';
+}
+
+function app_relax_nullable_columns(PDO $pdo): void
+{
+    if (app_tables_exist($pdo, ['products'])
+        && app_column_exists($pdo, 'products', 'reorder_level')
+        && ! app_column_is_nullable($pdo, 'products', 'reorder_level')) {
+        app_schema_exec($pdo, 'ALTER TABLE products MODIFY reorder_level INT UNSIGNED NULL DEFAULT NULL');
+    }
 }
 
 function app_create_missing_tables(PDO $pdo): void
@@ -292,7 +320,7 @@ CREATE TABLE IF NOT EXISTS products (
     wholesale_price DECIMAL(12,2) NOT NULL DEFAULT 0.00,
     warranty_months INT UNSIGNED NOT NULL DEFAULT 0,
     item_tracking TINYINT(1) NOT NULL DEFAULT 0,
-    reorder_level INT UNSIGNED NOT NULL DEFAULT 0,
+    reorder_level INT UNSIGNED NULL DEFAULT NULL,
     current_stock INT NOT NULL DEFAULT 0,
     status VARCHAR(20) NOT NULL DEFAULT 'active',
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -644,7 +672,7 @@ function app_add_missing_columns(PDO $pdo): void
             'wholesale_price' => 'DECIMAL(12,2) NOT NULL DEFAULT 0.00',
             'warranty_months' => 'INT UNSIGNED NOT NULL DEFAULT 0',
             'item_tracking' => 'TINYINT(1) NOT NULL DEFAULT 0',
-            'reorder_level' => 'INT UNSIGNED NOT NULL DEFAULT 0',
+            'reorder_level' => 'INT UNSIGNED NULL DEFAULT NULL',
             'current_stock' => 'INT NOT NULL DEFAULT 0',
             'status' => 'VARCHAR(20) NOT NULL DEFAULT \'active\'',
             'created_at' => 'TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP',

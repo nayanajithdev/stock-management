@@ -14,7 +14,7 @@ if ($canViewProductCost) {
     $primaryStats[] = ['label' => 'Supplier Due', 'value' => format_money(0), 'meta' => 'Open payables', 'icon' => 'hand-coins'];
 }
 $currentYear = (int) date('Y');
-$trendMode = (string) ($_GET['trend'] ?? 'monthly');
+$trendMode = (string) ($_GET['trend'] ?? '30days');
 
 if (! in_array($trendMode, ['monthly', '30days', 'weekly'], true)) {
     $trendMode = 'monthly';

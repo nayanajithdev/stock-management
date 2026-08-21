@@ -120,7 +120,7 @@ input[type="number"]::-webkit-inner-spin-button {
     scrollbar-width: none;
     border-right: 1px solid var(--line);
     background: rgba(34, 38, 43, .96);
-    padding: 20px 12px;
+    padding: 22px 14px;
 }
 
 .sidebar::-webkit-scrollbar {
@@ -136,11 +136,11 @@ input[type="number"]::-webkit-inner-spin-button {
     grid-template-columns: 46px minmax(0, 1fr);
     align-items: center;
     gap: 12px;
-    min-height: 50px;
+    min-height: 54px;
     border: 0;
     border-radius: 0;
     background: transparent;
-    padding: 0;
+    padding: 0 6px;
     box-shadow: none;
 }
 
@@ -187,8 +187,8 @@ input[type="number"]::-webkit-inner-spin-button {
 .side-nav {
     display: grid;
     align-content: start;
-    gap: 14px;
-    padding-top: 24px;
+    gap: 18px;
+    padding-top: 30px;
 }
 
 .sidebar-account {
@@ -197,27 +197,35 @@ input[type="number"]::-webkit-inner-spin-button {
 
 .nav-section {
     display: grid;
-    gap: 14px;
-    padding-bottom: 14px;
+    gap: 6px;
+    padding-bottom: 18px;
     border-bottom: 1px solid rgba(255, 255, 255, .07);
 }
 
 .nav-section h2 {
     margin: 0 0 8px;
-    color: var(--text);
-    font-size: 14px;
+    padding: 0 12px;
+    color: var(--muted);
+    font-size: 12px;
     font-weight: 600;
+    letter-spacing: .08em;
+    line-height: 1;
+    text-transform: uppercase;
 }
 
 .nav-dropdown {
-    gap: 0;
-    border-bottom: 0;
-    padding-bottom: 0;
+    gap: 6px;
+    padding-bottom: 18px;
 }
 
 .nav-dropdown + .nav-dropdown {
     border-bottom: 0;
-    margin-top: -8px;
+    margin-top: -12px;
+}
+
+.nav-dropdown:has(+ .nav-dropdown) {
+    border-bottom: 0;
+    padding-bottom: 0;
 }
 
 .nav-dropdown-toggle {
@@ -225,7 +233,7 @@ input[type="number"]::-webkit-inner-spin-button {
     align-items: center;
     justify-content: space-between;
     width: 100%;
-    min-height: 38px;
+    min-height: 42px;
     border: 0;
     border-radius: 8px;
     background: transparent;
@@ -256,7 +264,7 @@ input[type="number"]::-webkit-inner-spin-button {
 .nav-dropdown-items {
     display: none;
     gap: 5px;
-    padding-top: 6px;
+    padding: 2px 0 0;
 }
 
 .nav-dropdown.open .nav-dropdown-items {
@@ -267,7 +275,7 @@ input[type="number"]::-webkit-inner-spin-button {
     display: flex;
     align-items: center;
     gap: 12px;
-    min-height: 38px;
+    min-height: 42px;
     padding: 0 12px;
     border-radius: 8px;
     color: var(--muted);
@@ -288,8 +296,8 @@ input[type="number"]::-webkit-inner-spin-button {
 
 .nav-split-row {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 38px;
-    gap: 6px;
+    grid-template-columns: minmax(0, 1fr) 42px;
+    gap: 8px;
 }
 
 .nav-split-row .nav-link {
@@ -299,9 +307,9 @@ input[type="number"]::-webkit-inner-spin-button {
 .nav-side-action {
     display: grid;
     place-items: center;
-    width: 38px;
-    min-width: 38px;
-    height: 38px;
+    width: 42px;
+    min-width: 42px;
+    height: 42px;
     border-radius: 8px;
     color: var(--muted);
     text-decoration: none;
@@ -4129,7 +4137,11 @@ body.theme-light .modal-backdrop {
     }
 
     .side-nav .nav-dropdown + .nav-dropdown {
-        margin-top: -5px;
+        margin-top: -4px;
+    }
+
+    .side-nav .nav-dropdown:has(+ .nav-dropdown) {
+        padding-bottom: 0;
     }
 
     .side-nav .nav-link,

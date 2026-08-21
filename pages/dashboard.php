@@ -166,31 +166,49 @@ if ($dbReady && $pdo !== null) {
             'icon' => 'hand-coins',
         ];
     }
+    $trendCostSelect = $canViewProductCost
+        ? ',
+                COALESCE(SUM(COALESCE(cost.total_cost, 0)), 0) AS sold_cost,
+                COALESCE(SUM(s.subtotal - s.discount - COALESCE(cost.total_cost, 0)), 0) AS gross_profit'
+        : ',
+                0 AS sold_cost,
+                0 AS gross_profit';
+    $trendCostJoin = $canViewProductCost
+        ? ' LEFT JOIN (
+            SELECT sale_id, COALESCE(SUM(quantity * unit_cost), 0) AS total_cost
+            FROM sale_items
+            GROUP BY sale_id
+         ) cost ON cost.sale_id = s.id'
+        : '';
     $trendRows = [];
     $trendStatement = $pdo->query(
-        'SELECT MONTH(sale_date) AS sale_month,
-                COALESCE(SUM(total), 0) AS revenue
-         FROM sales
-         WHERE YEAR(sale_date) = YEAR(CURRENT_DATE)
-         GROUP BY MONTH(sale_date)'
+        'SELECT MONTH(s.sale_date) AS sale_month,
+                COALESCE(SUM(s.total), 0) AS revenue' . $trendCostSelect . '
+         FROM sales s
+         ' . $trendCostJoin . '
+         WHERE YEAR(s.sale_date) = YEAR(CURRENT_DATE)
+         GROUP BY MONTH(s.sale_date)'
     );
 
     foreach ($trendStatement->fetchAll() as $row) {
-        $trendRows[(int) $row['sale_month']] = (float) $row['revenue'];
+        $trendRows[(int) $row['sale_month']] = $row;
     }
 
     for ($month = 1; $month <= 12; $month++) {
-        $monthlyTrend[$month - 1]['revenue'] = $trendRows[$month] ?? 0.0;
+        if (isset($trendRows[$month])) {
+            dashboard_apply_sales_trend_row($monthlyTrend[$month - 1], $trendRows[$month], $canViewProductCost);
+        }
     }
 
     $weeklyRows = [];
     $weeklyStatement = $pdo->prepare(
-        'SELECT DATE(sale_date) AS sale_day,
-                COALESCE(SUM(total), 0) AS revenue
-         FROM sales
-         WHERE sale_date >= :week_start
-           AND sale_date < :week_end
-         GROUP BY DATE(sale_date)'
+        'SELECT DATE(s.sale_date) AS sale_day,
+                COALESCE(SUM(s.total), 0) AS revenue' . $trendCostSelect . '
+         FROM sales s
+         ' . $trendCostJoin . '
+         WHERE s.sale_date >= :week_start
+           AND s.sale_date < :week_end
+         GROUP BY DATE(s.sale_date)'
     );
     $weeklyStatement->execute([
         ':week_start' => $selectedWeekStart->format('Y-m-d 00:00:00'),
@@ -198,21 +216,24 @@ if ($dbReady && $pdo !== null) {
     ]);
 
     foreach ($weeklyStatement->fetchAll() as $row) {
-        $weeklyRows[(string) $row['sale_day']] = (float) $row['revenue'];
+        $weeklyRows[(string) $row['sale_day']] = $row;
     }
 
     foreach ($weeklyTrend as $index => $day) {
-        $weeklyTrend[$index]['revenue'] = $weeklyRows[$day['date']] ?? 0.0;
+        if (isset($weeklyRows[$day['date']])) {
+            dashboard_apply_sales_trend_row($weeklyTrend[$index], $weeklyRows[$day['date']], $canViewProductCost);
+        }
     }
 
     $thirtyDayRows = [];
     $thirtyDayStatement = $pdo->prepare(
-        'SELECT DATE(sale_date) AS sale_day,
-                COALESCE(SUM(total), 0) AS revenue
-         FROM sales
-         WHERE sale_date >= :range_start
-           AND sale_date < :range_end
-         GROUP BY DATE(sale_date)'
+        'SELECT DATE(s.sale_date) AS sale_day,
+                COALESCE(SUM(s.total), 0) AS revenue' . $trendCostSelect . '
+         FROM sales s
+         ' . $trendCostJoin . '
+         WHERE s.sale_date >= :range_start
+           AND s.sale_date < :range_end
+         GROUP BY DATE(s.sale_date)'
     );
     $thirtyDayStatement->execute([
         ':range_start' => $thirtyDayStart->format('Y-m-d 00:00:00'),
@@ -220,11 +241,19 @@ if ($dbReady && $pdo !== null) {
     ]);
 
     foreach ($thirtyDayStatement->fetchAll() as $row) {
-        $thirtyDayRows[(string) $row['sale_day']] = (float) $row['revenue'];
+        $thirtyDayRows[(string) $row['sale_day']] = $row;
     }
 
     foreach ($thirtyDayTrend as $index => $day) {
-        $thirtyDayTrend[$index]['revenue'] = $thirtyDayRows[$day['date']] ?? 0.0;
+        if (isset($thirtyDayRows[$day['date']])) {
+            dashboard_apply_sales_trend_row($thirtyDayTrend[$index], $thirtyDayRows[$day['date']], $canViewProductCost);
+        }
+    }
+
+    if ($canViewProductCost) {
+        dashboard_apply_net_adjustments($pdo, $monthlyTrend, 'monthly', $currentYear);
+        dashboard_apply_net_adjustments($pdo, $weeklyTrend, 'daily', $selectedWeekStart->format('Y-m-d 00:00:00'), $selectedWeekEnd->format('Y-m-d 00:00:00'));
+        dashboard_apply_net_adjustments($pdo, $thirtyDayTrend, 'daily', $thirtyDayStart->format('Y-m-d 00:00:00'), $thirtyDayEnd->format('Y-m-d 00:00:00'));
     }
 
 }
@@ -316,21 +345,27 @@ $cashOutToday = $metrics['today_expenses'] + $metrics['today_customer_refunds'] 
                 <?php foreach ($trendData as $point): ?>
                     <?php
                     $height = $maxRevenue > 0 ? max(4, ((float) $point['revenue'] / $maxRevenue) * 100) : 0;
-                    $tooltipLabel = (string) $point['label'];
-                    $tooltipValue = format_money((float) $point['revenue']);
+                    $tooltipDate = (string) ($point['tooltip_date'] ?? $point['label']);
                     ?>
                     <div
                         class="dashboard-chart-bar"
                         tabindex="0"
-                        data-chart-label="<?php echo e($tooltipLabel); ?>"
-                        data-chart-value="<?php echo e($tooltipValue); ?>"
-                        aria-label="<?php echo e($tooltipLabel . ': ' . $tooltipValue); ?>"
+                        aria-label="<?php echo e($tooltipDate . ': ' . format_money((float) $point['revenue'])); ?>"
                     >
                         <span
+                            class="dashboard-chart-fill"
                             style="height: <?php echo e(number_format($height, 2, '.', '')); ?>%"
-                            data-chart-label="<?php echo e($tooltipLabel); ?>"
-                            data-chart-value="<?php echo e($tooltipValue); ?>"
-                        ></span>
+                        >
+                            <span class="dashboard-chart-tooltip" role="tooltip">
+                                <strong class="dashboard-chart-tooltip-date"><?php echo e($tooltipDate); ?></strong>
+                                <span><em>Revenue</em><strong><?php echo e(format_money((float) $point['revenue'])); ?></strong></span>
+                                <?php if ($canViewProductCost): ?>
+                                    <span><em>Sold cost</em><strong><?php echo e(format_money((float) $point['sold_cost'])); ?></strong></span>
+                                    <span><em>Gross profit</em><strong><?php echo e(format_money((float) $point['gross_profit'])); ?></strong></span>
+                                    <span><em>Net profit</em><strong><?php echo e(format_money((float) $point['net_profit'])); ?></strong></span>
+                                <?php endif; ?>
+                            </span>
+                        </span>
                     </div>
                 <?php endforeach; ?>
             </div>
@@ -353,8 +388,7 @@ $cashOutToday = $metrics['today_expenses'] + $metrics['today_customer_refunds'] 
     <aside class="panel alert-panel">
         <div class="panel-header compact">
             <div>
-                <p class="panel-label">Action Center</p>
-                <h2>Needs attention</h2>
+                <h2>Action Center</h2>
             </div>
         </div>
 
@@ -411,7 +445,11 @@ function dashboard_empty_month_trend(): array
         $trend[] = [
             'month' => $month,
             'label' => date('M', mktime(0, 0, 0, $month, 1)),
+            'tooltip_date' => date('M', mktime(0, 0, 0, $month, 1)),
             'revenue' => 0.0,
+            'sold_cost' => 0.0,
+            'gross_profit' => 0.0,
+            'net_profit' => 0.0,
         ];
     }
 
@@ -440,7 +478,11 @@ function dashboard_empty_week_trend(DateTimeImmutable $weekStart): array
         $trend[] = [
             'date' => $day->format('Y-m-d'),
             'label' => $day->format('D'),
+            'tooltip_date' => $day->format('M j'),
             'revenue' => 0.0,
+            'sold_cost' => 0.0,
+            'gross_profit' => 0.0,
+            'net_profit' => 0.0,
         ];
     }
 
@@ -456,11 +498,122 @@ function dashboard_empty_thirty_day_trend(DateTimeImmutable $startDate): array
         $trend[] = [
             'date' => $day->format('Y-m-d'),
             'label' => $day->format('M j'),
+            'tooltip_date' => $day->format('M j'),
             'revenue' => 0.0,
+            'sold_cost' => 0.0,
+            'gross_profit' => 0.0,
+            'net_profit' => 0.0,
         ];
     }
 
     return $trend;
+}
+
+function dashboard_apply_sales_trend_row(array &$point, array $row, bool $canViewProductCost): void
+{
+    $point['revenue'] = (float) ($row['revenue'] ?? 0);
+
+    if (! $canViewProductCost) {
+        return;
+    }
+
+    $point['sold_cost'] = (float) ($row['sold_cost'] ?? 0);
+    $point['gross_profit'] = (float) ($row['gross_profit'] ?? 0);
+    $point['net_profit'] = $point['gross_profit'];
+}
+
+function dashboard_apply_net_adjustments(PDO $pdo, array &$trend, string $mode, int|string $startOrYear, ?string $endDateTime = null): void
+{
+    $indexByPeriod = [];
+
+    foreach ($trend as $index => $point) {
+        $periodKey = $mode === 'monthly' ? (int) ($point['month'] ?? 0) : (string) ($point['date'] ?? '');
+
+        if ($periodKey !== 0 && $periodKey !== '') {
+            $indexByPeriod[$periodKey] = $index;
+        }
+    }
+
+    if ($indexByPeriod === []) {
+        return;
+    }
+
+    if ($mode === 'monthly') {
+        $expensePeriod = 'MONTH(expense_date)';
+        $returnPeriod = 'MONTH(sr.return_date)';
+        $supplierRefundPeriod = 'MONTH(supplier_refund_date)';
+        $expenseWhere = 'YEAR(expense_date) = :year';
+        $returnWhere = 'YEAR(sr.return_date) = :year';
+        $supplierRefundWhere = 'YEAR(supplier_refund_date) = :year';
+        $params = ['year' => (int) $startOrYear];
+    } else {
+        $expensePeriod = 'DATE(expense_date)';
+        $returnPeriod = 'DATE(sr.return_date)';
+        $supplierRefundPeriod = 'DATE(supplier_refund_date)';
+        $expenseWhere = 'expense_date >= DATE(:start_date) AND expense_date < DATE(:end_date)';
+        $returnWhere = 'sr.return_date >= :start_date AND sr.return_date < :end_date';
+        $supplierRefundWhere = 'supplier_refund_date >= DATE(:start_date) AND supplier_refund_date < DATE(:end_date)';
+        $params = [
+            'start_date' => (string) $startOrYear,
+            'end_date' => (string) $endDateTime,
+        ];
+    }
+
+    $expenseStatement = $pdo->prepare(
+        'SELECT ' . $expensePeriod . ' AS period_key,
+                COALESCE(SUM(amount), 0) AS amount
+         FROM expenses
+         WHERE status = "active"
+           AND ' . $expenseWhere . '
+         GROUP BY ' . $expensePeriod
+    );
+    $expenseStatement->execute($params);
+
+    foreach ($expenseStatement->fetchAll() as $row) {
+        $key = $mode === 'monthly' ? (int) $row['period_key'] : (string) $row['period_key'];
+
+        if (isset($indexByPeriod[$key])) {
+            $trend[$indexByPeriod[$key]]['net_profit'] -= (float) $row['amount'];
+        }
+    }
+
+    $returnStatement = $pdo->prepare(
+        'SELECT ' . $returnPeriod . ' AS period_key,
+                COALESCE(SUM(sri.total), 0) AS return_value,
+                COALESCE(SUM(CASE WHEN sri.restock = 1 THEN sri.quantity * sri.unit_cost ELSE 0 END), 0) AS return_cost_recovered
+         FROM sales_return_items sri
+         INNER JOIN sales_returns sr ON sr.id = sri.return_id
+         WHERE ' . $returnWhere . '
+         GROUP BY ' . $returnPeriod
+    );
+    $returnStatement->execute($params);
+
+    foreach ($returnStatement->fetchAll() as $row) {
+        $key = $mode === 'monthly' ? (int) $row['period_key'] : (string) $row['period_key'];
+
+        if (isset($indexByPeriod[$key])) {
+            $trend[$indexByPeriod[$key]]['net_profit'] -= (float) $row['return_value'];
+            $trend[$indexByPeriod[$key]]['net_profit'] += (float) $row['return_cost_recovered'];
+        }
+    }
+
+    $supplierRefundStatement = $pdo->prepare(
+        'SELECT ' . $supplierRefundPeriod . ' AS period_key,
+                COALESCE(SUM(supplier_refund_amount), 0) AS amount
+         FROM warranty_claims
+         WHERE supplier_refund_date IS NOT NULL
+           AND ' . $supplierRefundWhere . '
+         GROUP BY ' . $supplierRefundPeriod
+    );
+    $supplierRefundStatement->execute($params);
+
+    foreach ($supplierRefundStatement->fetchAll() as $row) {
+        $key = $mode === 'monthly' ? (int) $row['period_key'] : (string) $row['period_key'];
+
+        if (isset($indexByPeriod[$key])) {
+            $trend[$indexByPeriod[$key]]['net_profit'] += (float) $row['amount'];
+        }
+    }
 }
 
 function dashboard_week_range_label(DateTimeImmutable $weekStart, DateTimeImmutable $weekEnd): string

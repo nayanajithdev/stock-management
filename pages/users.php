@@ -314,6 +314,7 @@ $showUserForm = $canManageUsers && ($isEditing || (string) ($_GET['modal'] ?? ''
                         <?php
                         $isOwner = (string) $user['role'] === 'owner';
                         $isCurrentUser = (int) $user['id'] === (int) ($currentUser['id'] ?? 0);
+                        $isActive = (string) $user['status'] === 'active';
                         $nextStatus = (string) $user['status'] === 'active' ? 'inactive' : 'active';
                         ?>
                         <tr>
@@ -333,9 +334,10 @@ $showUserForm = $canManageUsers && ($isEditing || (string) ($_GET['modal'] ?? ''
                                             <?php echo csrf_field(); ?>
                                             <input type="hidden" name="user_id" value="<?php echo (int) $user['id']; ?>">
                                             <input type="hidden" name="status" value="<?php echo e($nextStatus); ?>">
-                                            <button class="icon-button <?php echo $nextStatus === 'inactive' ? 'danger-button' : ''; ?>" type="submit" aria-label="<?php echo e(ucfirst($nextStatus)); ?> user">
-                                                <i data-lucide="<?php echo $nextStatus === 'inactive' ? 'user-x' : 'user-check'; ?>"></i>
-                                            </button>
+                                            <label class="user-status-switch" aria-label="<?php echo e(ucfirst($nextStatus)); ?> user">
+                                                <input type="checkbox" <?php echo $isActive ? 'checked' : ''; ?> onchange="this.form.submit()">
+                                                <span aria-hidden="true"></span>
+                                            </label>
                                         </form>
                                     </div>
                                 <?php else: ?>

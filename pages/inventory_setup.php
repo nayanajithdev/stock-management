@@ -5,6 +5,8 @@
 $section = (string) ($_GET['section'] ?? 'categories');
 $setupSearch = trim((string) ($_GET['q'] ?? ''));
 $validSections = ['categories', 'brands', 'suppliers'];
+$setupPageSize = 50;
+$setupPageNumber = max(1, (int) ($_GET['p'] ?? 1));
 
 if (! in_array($section, $validSections, true)) {
     $section = 'categories';
@@ -12,9 +14,29 @@ if (! in_array($section, $validSections, true)) {
 
 $editType = (string) ($_GET['edit_type'] ?? '');
 $editId = (int) ($_GET['edit_id'] ?? 0);
+
+if ($editId > 0) {
+    $section = match ($editType) {
+        'brand' => 'brands',
+        'supplier' => 'suppliers',
+        'category' => 'categories',
+        default => $section,
+    };
+}
+
 $categories = [];
 $brands = [];
 $suppliers = [];
+$setupTotals = [
+    'categories' => 0,
+    'brands' => 0,
+    'suppliers' => 0,
+];
+$setupTotalPages = [
+    'categories' => 1,
+    'brands' => 1,
+    'suppliers' => 1,
+];
 $editingCategory = null;
 $editingBrand = null;
 $editingSupplier = null;
@@ -26,52 +48,104 @@ $summary = [
 ];
 
 if ($dbReady && $pdo !== null) {
+    $categoryCountSql = 'SELECT COUNT(*) FROM categories c';
+    $categoryParams = [];
+
+    if ($setupSearch !== '') {
+        $categoryCountSql .= ' WHERE c.name LIKE :search OR c.description LIKE :search';
+        $categoryParams['search'] = '%' . $setupSearch . '%';
+    }
+
+    $categoryCountStatement = $pdo->prepare($categoryCountSql);
+    $categoryCountStatement->execute($categoryParams);
+    $setupTotals['categories'] = (int) $categoryCountStatement->fetchColumn();
+
+    $brandCountSql = 'SELECT COUNT(*) FROM brands b';
+    $brandParams = [];
+
+    if ($setupSearch !== '') {
+        $brandCountSql .= ' WHERE b.name LIKE :search';
+        $brandParams['search'] = '%' . $setupSearch . '%';
+    }
+
+    $brandCountStatement = $pdo->prepare($brandCountSql);
+    $brandCountStatement->execute($brandParams);
+    $setupTotals['brands'] = (int) $brandCountStatement->fetchColumn();
+
+    $supplierCountSql = 'SELECT COUNT(*) FROM suppliers s';
+    $supplierParams = [];
+
+    if ($setupSearch !== '') {
+        $supplierCountSql .= ' WHERE s.name LIKE :search OR s.contact_person LIKE :search OR s.phone LIKE :search OR s.email LIKE :search';
+        $supplierParams['search'] = '%' . $setupSearch . '%';
+    }
+
+    $supplierCountStatement = $pdo->prepare($supplierCountSql);
+    $supplierCountStatement->execute($supplierParams);
+    $setupTotals['suppliers'] = (int) $supplierCountStatement->fetchColumn();
+
+    foreach ($setupTotals as $setupSection => $setupTotal) {
+        $setupTotalPages[$setupSection] = max(1, (int) ceil($setupTotal / $setupPageSize));
+    }
+
+    $setupPageNumber = min($setupPageNumber, $setupTotalPages[$section]);
+    $setupOffset = ($setupPageNumber - 1) * $setupPageSize;
+
     $categorySql = 'SELECT c.*,
                            COUNT(p.id) AS product_count
                     FROM categories c
                     LEFT JOIN products p ON p.category_id = c.id';
-    $categoryParams = [];
 
     if ($setupSearch !== '') {
         $categorySql .= ' WHERE c.name LIKE :search OR c.description LIKE :search';
-        $categoryParams['search'] = '%' . $setupSearch . '%';
     }
 
-    $categorySql .= ' GROUP BY c.id ORDER BY c.is_active DESC, c.name ASC';
+    $categorySql .= ' GROUP BY c.id ORDER BY c.is_active DESC, c.name ASC LIMIT :limit OFFSET :offset';
     $categoryStatement = $pdo->prepare($categorySql);
-    $categoryStatement->execute($categoryParams);
+    foreach ($categoryParams as $key => $value) {
+        $categoryStatement->bindValue(':' . $key, $value);
+    }
+    $categoryStatement->bindValue(':limit', $setupPageSize, PDO::PARAM_INT);
+    $categoryStatement->bindValue(':offset', $setupOffset, PDO::PARAM_INT);
+    $categoryStatement->execute();
     $categories = $categoryStatement->fetchAll();
 
     $brandSql = 'SELECT b.*,
                         COUNT(p.id) AS product_count
                  FROM brands b
                  LEFT JOIN products p ON p.brand_id = b.id';
-    $brandParams = [];
 
     if ($setupSearch !== '') {
         $brandSql .= ' WHERE b.name LIKE :search';
-        $brandParams['search'] = '%' . $setupSearch . '%';
     }
 
-    $brandSql .= ' GROUP BY b.id ORDER BY b.is_active DESC, b.name ASC';
+    $brandSql .= ' GROUP BY b.id ORDER BY b.is_active DESC, b.name ASC LIMIT :limit OFFSET :offset';
     $brandStatement = $pdo->prepare($brandSql);
-    $brandStatement->execute($brandParams);
+    foreach ($brandParams as $key => $value) {
+        $brandStatement->bindValue(':' . $key, $value);
+    }
+    $brandStatement->bindValue(':limit', $setupPageSize, PDO::PARAM_INT);
+    $brandStatement->bindValue(':offset', $setupOffset, PDO::PARAM_INT);
+    $brandStatement->execute();
     $brands = $brandStatement->fetchAll();
 
     $supplierSql = 'SELECT s.*,
                            COUNT(p.id) AS product_count
                     FROM suppliers s
                     LEFT JOIN products p ON p.supplier_id = s.id';
-    $supplierParams = [];
 
     if ($setupSearch !== '') {
         $supplierSql .= ' WHERE s.name LIKE :search OR s.contact_person LIKE :search OR s.phone LIKE :search OR s.email LIKE :search';
-        $supplierParams['search'] = '%' . $setupSearch . '%';
     }
 
-    $supplierSql .= ' GROUP BY s.id ORDER BY s.is_active DESC, s.name ASC';
+    $supplierSql .= ' GROUP BY s.id ORDER BY s.is_active DESC, s.name ASC LIMIT :limit OFFSET :offset';
     $supplierStatement = $pdo->prepare($supplierSql);
-    $supplierStatement->execute($supplierParams);
+    foreach ($supplierParams as $key => $value) {
+        $supplierStatement->bindValue(':' . $key, $value);
+    }
+    $supplierStatement->bindValue(':limit', $setupPageSize, PDO::PARAM_INT);
+    $supplierStatement->bindValue(':offset', $setupOffset, PDO::PARAM_INT);
+    $supplierStatement->execute();
     $suppliers = $supplierStatement->fetchAll();
 
     $summary['categories'] = (int) $pdo->query('SELECT COUNT(*) FROM categories WHERE is_active = 1')->fetchColumn();
@@ -173,7 +247,7 @@ if ($dbReady && $pdo !== null) {
                     <h2><?php echo $editingCategory === null ? 'Add Category' : 'Edit Category'; ?></h2>
                 </div>
                 <?php if ($editingCategory !== null): ?>
-                    <a class="muted-link" href="<?php echo e(app_url('?page=inventory-setup&section=categories')); ?>">Cancel edit</a>
+                    <a class="muted-link" href="<?php echo e(app_url('?' . setup_page_query('categories', $setupPageNumber, $setupSearch))); ?>">Cancel edit</a>
                 <?php endif; ?>
             </div>
 
@@ -236,6 +310,7 @@ if ($dbReady && $pdo !== null) {
                     </tbody>
                 </table>
             </div>
+            <?php render_setup_pagination('categories', $setupPageNumber, $setupTotalPages['categories'], $setupSearch); ?>
         </article>
     </section>
 <?php endif; ?>
@@ -248,7 +323,7 @@ if ($dbReady && $pdo !== null) {
                     <h2><?php echo $editingBrand === null ? 'Add Brand' : 'Edit Brand'; ?></h2>
                 </div>
                 <?php if ($editingBrand !== null): ?>
-                    <a class="muted-link" href="<?php echo e(app_url('?page=inventory-setup&section=brands')); ?>">Cancel edit</a>
+                    <a class="muted-link" href="<?php echo e(app_url('?' . setup_page_query('brands', $setupPageNumber, $setupSearch))); ?>">Cancel edit</a>
                 <?php endif; ?>
             </div>
 
@@ -305,6 +380,7 @@ if ($dbReady && $pdo !== null) {
                     </tbody>
                 </table>
             </div>
+            <?php render_setup_pagination('brands', $setupPageNumber, $setupTotalPages['brands'], $setupSearch); ?>
         </article>
     </section>
 <?php endif; ?>
@@ -317,7 +393,7 @@ if ($dbReady && $pdo !== null) {
                     <h2><?php echo $editingSupplier === null ? 'Add Supplier' : 'Edit Supplier'; ?></h2>
                 </div>
                 <?php if ($editingSupplier !== null): ?>
-                    <a class="muted-link" href="<?php echo e(app_url('?page=inventory-setup&section=suppliers')); ?>">Cancel edit</a>
+                    <a class="muted-link" href="<?php echo e(app_url('?' . setup_page_query('suppliers', $setupPageNumber, $setupSearch))); ?>">Cancel edit</a>
                 <?php endif; ?>
             </div>
 
@@ -396,16 +472,117 @@ if ($dbReady && $pdo !== null) {
                     </tbody>
                 </table>
             </div>
+            <?php render_setup_pagination('suppliers', $setupPageNumber, $setupTotalPages['suppliers'], $setupSearch); ?>
         </article>
     </section>
 <?php endif; ?>
 
 <?php
+function render_setup_pagination(string $section, int $pageNumber, int $totalPages, string $setupSearch): void
+{
+    if ($totalPages <= 1) {
+        return;
+    }
+
+    $previousQuery = setup_page_query($section, $pageNumber - 1, $setupSearch);
+    $nextQuery = setup_page_query($section, $pageNumber + 1, $setupSearch);
+    ?>
+    <div class="pagination-row product-pagination" aria-label="<?php echo e(ucfirst($section) . ' pages'); ?>">
+        <?php if ($pageNumber <= 1): ?>
+            <span class="product-page-button disabled">Previous</span>
+        <?php else: ?>
+            <a class="product-page-button" href="<?php echo e(app_url('?' . $previousQuery)); ?>">Previous</a>
+        <?php endif; ?>
+
+        <?php foreach (setup_pagination_pages($pageNumber, $totalPages) as $paginationPage): ?>
+            <?php if ($paginationPage === 'ellipsis'): ?>
+                <span class="product-page-ellipsis">...</span>
+            <?php elseif ((int) $paginationPage === $pageNumber): ?>
+                <span class="product-page-button active" aria-current="page"><?php echo (int) $paginationPage; ?></span>
+            <?php else: ?>
+                <a class="product-page-button" href="<?php echo e(app_url('?' . setup_page_query($section, (int) $paginationPage, $setupSearch))); ?>"><?php echo (int) $paginationPage; ?></a>
+            <?php endif; ?>
+        <?php endforeach; ?>
+
+        <?php if ($pageNumber >= $totalPages): ?>
+            <span class="product-page-button disabled">Next</span>
+        <?php else: ?>
+            <a class="product-page-button" href="<?php echo e(app_url('?' . $nextQuery)); ?>">Next</a>
+        <?php endif; ?>
+    </div>
+    <?php
+}
+
+function setup_page_query(string $section, int $pageNumber, string $setupSearch): string
+{
+    $query = [
+        'page' => 'inventory-setup',
+        'section' => $section,
+        'p' => max(1, $pageNumber),
+    ];
+
+    if ($setupSearch !== '') {
+        $query['q'] = $setupSearch;
+    }
+
+    return http_build_query($query);
+}
+
+function setup_pagination_pages(int $pageNumber, int $totalPages): array
+{
+    if ($totalPages <= 7) {
+        return range(1, $totalPages);
+    }
+
+    $pages = [1];
+    $start = max(2, $pageNumber - 1);
+    $end = min($totalPages - 1, $pageNumber + 1);
+
+    if ($pageNumber <= 3) {
+        $start = 2;
+        $end = 4;
+    } elseif ($pageNumber >= $totalPages - 2) {
+        $start = $totalPages - 3;
+        $end = $totalPages - 1;
+    }
+
+    if ($start > 2) {
+        $pages[] = 'ellipsis';
+    }
+
+    for ($page = $start; $page <= $end; $page++) {
+        $pages[] = $page;
+    }
+
+    if ($end < $totalPages - 1) {
+        $pages[] = 'ellipsis';
+    }
+
+    $pages[] = $totalPages;
+
+    return $pages;
+}
+
 function render_master_actions(string $entity, int $id, int $isActive, string $section): void
 {
+    $editQuery = [
+        'page' => 'inventory-setup',
+        'section' => $section,
+        'edit_type' => $entity,
+        'edit_id' => $id,
+    ];
+
+    if (isset($_GET['p']) && (int) $_GET['p'] > 1) {
+        $editQuery['p'] = max(1, (int) $_GET['p']);
+    }
+
+    if (isset($_GET['q']) && trim((string) $_GET['q']) !== '') {
+        $editQuery['q'] = trim((string) $_GET['q']);
+    }
+
     ?>
     <div class="table-actions">
-        <a class="icon-button" href="<?php echo e(app_url('?page=inventory-setup&section=' . $section . '&edit_type=' . $entity . '&edit_id=' . $id)); ?>" aria-label="Edit">
+        <a class="icon-button" href="<?php echo e(app_url('?' . http_build_query($editQuery))); ?>" aria-label="Edit">
             <i data-lucide="pencil"></i>
         </a>
         <form method="post" action="<?php echo e(app_url('actions/master_archive.php')); ?>" data-confirm="Delete this record permanently? Linked products and history will keep working, but this setup label will be removed.">

@@ -194,7 +194,7 @@ $pages = [
     'purchase-history' => [
         'title' => 'Purchase History',
         'description' => 'View received stock and supplier purchase history',
-        'view' => __DIR__ . '/../pages/purchase_history.php',
+        'view' => __DIR__ . '/../pages/purchase_history_current.php',
     ],
     'supplier-credit' => [
         'title' => 'Supplier Credit',

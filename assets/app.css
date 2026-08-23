@@ -3036,6 +3036,12 @@ select,
     gap: 10px;
 }
 
+.purchase-history-filter {
+    grid-template-columns: minmax(220px, 280px) 40px;
+    justify-content: end;
+    margin-left: auto;
+}
+
 .movement-filter {
     grid-template-columns: minmax(180px, 280px) 170px 40px;
 }

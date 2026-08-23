@@ -214,12 +214,30 @@ if ($dbReady && $pdo !== null) {
         </div>
 
         <?php if ($totalPages > 1): ?>
-            <div class="pagination-row">
+            <div class="pagination-row product-pagination" aria-label="Activity log pages">
                 <?php $previousQuery = activity_page_query($pageNumber - 1); ?>
                 <?php $nextQuery = activity_page_query($pageNumber + 1); ?>
-                <a class="ghost-button <?php echo $pageNumber <= 1 ? 'disabled' : ''; ?>" href="<?php echo e($pageNumber <= 1 ? '#' : app_url('?' . $previousQuery)); ?>">Previous</a>
-                <span>Page <?php echo (int) $pageNumber; ?> of <?php echo (int) $totalPages; ?></span>
-                <a class="ghost-button <?php echo $pageNumber >= $totalPages ? 'disabled' : ''; ?>" href="<?php echo e($pageNumber >= $totalPages ? '#' : app_url('?' . $nextQuery)); ?>">Next</a>
+                <?php if ($pageNumber <= 1): ?>
+                    <span class="product-page-button disabled">Previous</span>
+                <?php else: ?>
+                    <a class="product-page-button" href="<?php echo e(app_url('?' . $previousQuery)); ?>">Previous</a>
+                <?php endif; ?>
+
+                <?php foreach (activity_pagination_pages($pageNumber, $totalPages) as $paginationPage): ?>
+                    <?php if ($paginationPage === 'ellipsis'): ?>
+                        <span class="product-page-ellipsis">...</span>
+                    <?php elseif ((int) $paginationPage === $pageNumber): ?>
+                        <span class="product-page-button active" aria-current="page"><?php echo (int) $paginationPage; ?></span>
+                    <?php else: ?>
+                        <a class="product-page-button" href="<?php echo e(app_url('?' . activity_page_query((int) $paginationPage))); ?>"><?php echo (int) $paginationPage; ?></a>
+                    <?php endif; ?>
+                <?php endforeach; ?>
+
+                <?php if ($pageNumber >= $totalPages): ?>
+                    <span class="product-page-button disabled">Next</span>
+                <?php else: ?>
+                    <a class="product-page-button" href="<?php echo e(app_url('?' . $nextQuery)); ?>">Next</a>
+                <?php endif; ?>
             </div>
         <?php endif; ?>
     <?php endif; ?>
@@ -278,6 +296,41 @@ function activity_page_query(int $pageNumber): string
     $query['p'] = max(1, $pageNumber);
 
     return http_build_query($query);
+}
+
+function activity_pagination_pages(int $pageNumber, int $totalPages): array
+{
+    if ($totalPages <= 7) {
+        return range(1, $totalPages);
+    }
+
+    $pages = [1];
+    $start = max(2, $pageNumber - 1);
+    $end = min($totalPages - 1, $pageNumber + 1);
+
+    if ($pageNumber <= 3) {
+        $start = 2;
+        $end = 4;
+    } elseif ($pageNumber >= $totalPages - 2) {
+        $start = $totalPages - 3;
+        $end = $totalPages - 1;
+    }
+
+    if ($start > 2) {
+        $pages[] = 'ellipsis';
+    }
+
+    for ($page = $start; $page <= $end; $page++) {
+        $pages[] = $page;
+    }
+
+    if ($end < $totalPages - 1) {
+        $pages[] = 'ellipsis';
+    }
+
+    $pages[] = $totalPages;
+
+    return $pages;
 }
 
 function activity_cost_sensitive_actions(): array

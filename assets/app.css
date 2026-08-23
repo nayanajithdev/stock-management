@@ -237,7 +237,9 @@ input[type="number"]::-webkit-inner-spin-button {
     border: 0;
     border-radius: 8px;
     background: transparent;
-    color: var(--muted);
+    color: #c7c7c7;
+    font-size: 16px;
+    font-weight: 400;
     padding: 0 12px;
     cursor: pointer;
 }
@@ -278,7 +280,9 @@ input[type="number"]::-webkit-inner-spin-button {
     min-height: 42px;
     padding: 0 12px;
     border-radius: 8px;
-    color: var(--muted);
+    color: #c7c7c7;
+    font-size: 16px;
+    font-weight: 400;
     text-decoration: none;
 }
 
@@ -311,7 +315,7 @@ input[type="number"]::-webkit-inner-spin-button {
     min-width: 42px;
     height: 42px;
     border-radius: 8px;
-    color: var(--muted);
+    color: #c7c7c7;
     text-decoration: none;
 }
 
@@ -1611,6 +1615,10 @@ meter {
 
 .stock-pill.low {
     color: var(--danger);
+}
+
+.sale-row .stock-pill {
+    border-color: transparent;
 }
 
 .tracking-panel {
@@ -3639,6 +3647,30 @@ body.theme-light .sidebar {
     background: rgba(255, 255, 255, .96);
 }
 
+body.theme-light .nav-link:not(.active),
+body.theme-light .nav-dropdown-toggle,
+body.theme-light .nav-side-action:not(.active) {
+    color: #5f6f84;
+}
+
+body.theme-light .nav-link:not(.active):hover,
+body.theme-light .nav-dropdown-toggle:hover,
+body.theme-light .nav-dropdown.open > .nav-dropdown-toggle,
+body.theme-light .nav-side-action:not(.active):hover {
+    background: #eef4fb;
+    color: #1f5f91;
+}
+
+body.theme-light .nav-link.disabled {
+    color: #a8b0ba;
+    opacity: 1;
+}
+
+body.theme-light .nav-link.disabled:hover {
+    background: transparent;
+    color: #a8b0ba;
+}
+
 body.theme-light .topbar {
     background: rgba(255, 255, 255, .92);
 }
@@ -3846,6 +3878,10 @@ body.theme-light .setup-notice {
 body.theme-light .purchase-row,
 body.theme-light .sale-row {
     border-color: rgba(15, 23, 42, .08);
+}
+
+body.theme-light .sale-row .stock-pill {
+    border-color: transparent;
 }
 
 body.theme-light .return-choice-card:hover,

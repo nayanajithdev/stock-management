@@ -164,7 +164,7 @@ $pages = [
     'dashboard' => [
         'title' => 'Dashboard',
         'description' => 'Stock, sales, and reorder overview',
-        'view' => __DIR__ . '/../pages/dashboard.php',
+        'view' => __DIR__ . '/../pages/dashboard_current.php',
     ],
     'products' => [
         'title' => 'Products',

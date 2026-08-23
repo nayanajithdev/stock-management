@@ -27,6 +27,7 @@ $discount = max(0.0, input_decimal('discount'));
 $tax = max(0.0, input_decimal('tax'));
 $paid = max(0.0, input_decimal('paid'));
 $productIds = $_POST['product_id'] ?? [];
+$productSearches = $_POST['product_search'] ?? [];
 $quantities = $_POST['quantity'] ?? [];
 $unitPrices = $_POST['unit_price'] ?? [];
 $warrantyMonthsInput = $_POST['warranty_months'] ?? [];
@@ -41,7 +42,7 @@ if ($canChangeSaleDate && ! preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/', $sal
     sale_save_fail('Sale date is not valid.');
 }
 
-if (! is_array($productIds) || ! is_array($quantities) || ! is_array($unitPrices) || ! is_array($warrantyMonthsInput) || ! is_array($lineDiscounts)) {
+if (! is_array($productIds) || ! is_array($productSearches) || ! is_array($quantities) || ! is_array($unitPrices) || ! is_array($warrantyMonthsInput) || ! is_array($lineDiscounts)) {
     sale_save_fail('Sale items are not valid.');
 }
 
@@ -49,6 +50,7 @@ $items = [];
 
 foreach ($productIds as $index => $rawProductId) {
     $productId = (int) $rawProductId;
+    $productSearch = trim((string) ($productSearches[$index] ?? ''));
     $quantity = max(0, (int) ($quantities[$index] ?? 0));
     $unitPrice = str_replace(',', '', trim((string) ($unitPrices[$index] ?? '0')));
     $unitPrice = is_numeric($unitPrice) ? max(0.0, (float) $unitPrice) : 0.0;
@@ -56,7 +58,7 @@ foreach ($productIds as $index => $rawProductId) {
     $lineDiscount = str_replace(',', '', trim((string) ($lineDiscounts[$index] ?? '0')));
     $lineDiscount = is_numeric($lineDiscount) ? max(0.0, (float) $lineDiscount) : 0.0;
 
-    if ($productId <= 0 && $quantity === 0 && $unitPrice <= 0) {
+    if ($productId <= 0 && $productSearch === '') {
         continue;
     }
 

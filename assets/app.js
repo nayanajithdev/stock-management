@@ -1106,6 +1106,24 @@ if (saleForm) {
         });
     };
 
+    const removeBlankSaleRows = () => {
+        rowsContainer.querySelectorAll('[data-sale-row]').forEach((row, index) => {
+            if (index === 0) {
+                return;
+            }
+
+            const productHidden = row.querySelector('[data-sale-product]');
+            const productInput = row.querySelector('[data-sale-product-search]');
+
+            if ((productHidden?.value || '').trim() === '' && (productInput?.value || '').trim() === '') {
+                row.remove();
+            }
+        });
+
+        refreshSaleRemoveButtons();
+        recalculateSale();
+    };
+
     const hydrateSaleRow = (row) => {
         const productInput = row.querySelector('[data-sale-product-search]');
         const productHidden = row.querySelector('[data-sale-product]');
@@ -1418,6 +1436,8 @@ if (saleForm) {
             recalculateSale();
         });
     }
+
+    saleForm.addEventListener('submit', removeBlankSaleRows);
 
     refreshSaleRemoveButtons();
     recalculateSale();

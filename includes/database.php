@@ -112,6 +112,7 @@ function app_database_ready(PDO $pdo): bool
         && app_column_exists($pdo, 'login_attempts', 'was_success')
         && app_column_exists($pdo, 'products', 'item_tracking')
         && app_column_exists($pdo, 'purchase_items', 'warranty_months')
+        && app_column_exists($pdo, 'sale_items', 'item_name')
         && app_column_exists($pdo, 'sale_items', 'warranty_months')
         && app_column_exists($pdo, 'stock_movements', 'warranty_months')
         && app_column_exists($pdo, 'warranty_claims', 'sale_item_id')
@@ -196,6 +197,12 @@ function app_relax_nullable_columns(PDO $pdo): void
         && app_column_exists($pdo, 'products', 'reorder_level')
         && ! app_column_is_nullable($pdo, 'products', 'reorder_level')) {
         app_schema_exec($pdo, 'ALTER TABLE products MODIFY reorder_level INT UNSIGNED NULL DEFAULT NULL');
+    }
+
+    if (app_tables_exist($pdo, ['sale_items'])
+        && app_column_exists($pdo, 'sale_items', 'product_id')
+        && ! app_column_is_nullable($pdo, 'sale_items', 'product_id')) {
+        app_schema_exec($pdo, 'ALTER TABLE sale_items MODIFY product_id INT UNSIGNED NULL');
     }
 }
 
@@ -464,7 +471,8 @@ SQL,
 CREATE TABLE IF NOT EXISTS sale_items (
     id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     sale_id BIGINT UNSIGNED NOT NULL,
-    product_id INT UNSIGNED NOT NULL,
+    product_id INT UNSIGNED NULL,
+    item_name VARCHAR(180) NULL,
     quantity INT UNSIGNED NOT NULL,
     unit_price DECIMAL(12,2) NOT NULL DEFAULT 0.00,
     unit_cost DECIMAL(12,2) NOT NULL DEFAULT 0.00,
@@ -765,6 +773,7 @@ function app_add_missing_columns(PDO $pdo): void
         'sale_items' => [
             'sale_id' => 'BIGINT UNSIGNED NULL',
             'product_id' => 'INT UNSIGNED NULL',
+            'item_name' => 'VARCHAR(180) NULL',
             'quantity' => 'INT UNSIGNED NOT NULL DEFAULT 0',
             'unit_price' => 'DECIMAL(12,2) NOT NULL DEFAULT 0.00',
             'unit_cost' => 'DECIMAL(12,2) NOT NULL DEFAULT 0.00',

@@ -47,7 +47,7 @@ body.theme-light {
     --warn: #b7791f;
     --danger: #dc2626;
     --shadow: 0 16px 38px rgba(15, 23, 42, .08);
-    --action-blue-bg: linear-gradient(180deg, #3b86eb 0%, #1f70df 100%);
+    --action-blue-bg: #3b86eb;
     --action-blue-border: rgba(47, 128, 237, .34);
     --action-blue-shadow: 0 8px 18px rgba(20, 103, 223, .16);
     --panel-blue-bg: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
@@ -372,7 +372,7 @@ input[type="number"]::-webkit-inner-spin-button {
     display: flex;
     align-items: center;
     justify-content: flex-end;
-    gap: 10px;
+    gap: 12px;
     margin-left: auto;
     min-width: 0;
 }
@@ -390,7 +390,7 @@ input[type="number"]::-webkit-inner-spin-button {
 .date-pill {
     display: inline-flex;
     align-items: center;
-    min-height: 44px;
+    min-height: 40px;
     color: var(--text);
     white-space: nowrap;
 }
@@ -400,6 +400,7 @@ input[type="number"]::-webkit-inner-spin-button {
     border: 0;
     background: transparent;
     color: var(--text);
+    font-size: 14px;
 }
 
 .online-pill::before {
@@ -412,7 +413,17 @@ input[type="number"]::-webkit-inner-spin-button {
 }
 
 .date-pill {
-    padding: 0 14px;
+    padding: 0 12px;
+    font-size: 13px;
+    font-weight: 400;
+}
+
+.topbar-account-divider {
+    display: block;
+    width: 1px;
+    height: 34px;
+    background: var(--line);
+    margin: 0 4px 0 2px;
 }
 
 .user-menu {
@@ -431,6 +442,14 @@ input[type="number"]::-webkit-inner-spin-button {
     cursor: pointer;
 }
 
+.topbar .user-menu-toggle {
+    min-width: 194px;
+    min-height: 40px;
+    border: 0;
+    background: transparent;
+    padding: 4px 0;
+}
+
 .theme-toggle-form {
     margin: 0;
 }
@@ -438,8 +457,8 @@ input[type="number"]::-webkit-inner-spin-button {
 .theme-toggle {
     display: inline-grid;
     place-items: center;
-    width: 44px;
-    height: 44px;
+    width: 40px;
+    height: 40px;
     border: 1px solid var(--line);
     border-radius: 8px;
     background: rgba(255, 255, 255, .035);
@@ -460,8 +479,8 @@ input[type="number"]::-webkit-inner-spin-button {
 }
 
 .theme-toggle svg {
-    width: 21px;
-    height: 21px;
+    width: 19px;
+    height: 19px;
 }
 
 .theme-toggle-moon {
@@ -500,6 +519,17 @@ body.theme-light .theme-toggle-moon {
     background: var(--text);
     color: #111820;
     font-weight: 800;
+}
+
+.topbar .user-avatar-fallback {
+    width: 40px;
+    height: 40px;
+    flex: 0 0 40px;
+    border-radius: 999px;
+    background: rgba(44, 82, 125, .28);
+    color: #7cc7ff;
+    font-size: 12px;
+    letter-spacing: 0;
 }
 
 .user-avatar-icon {
@@ -1670,6 +1700,58 @@ meter {
 
 .product-suggestions[hidden] {
     display: none;
+}
+
+.sale-custom-item-popover {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    z-index: 35;
+    display: grid;
+    width: min(360px, 100%);
+    gap: 10px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--bg);
+    box-shadow: 0 18px 38px rgba(0, 0, 0, .34);
+    padding: 12px;
+}
+
+.sale-custom-item-popover[hidden] {
+    display: none;
+}
+
+.sale-custom-item-popover label {
+    display: grid;
+    gap: 6px;
+}
+
+.sale-custom-item-popover span {
+    display: block;
+    color: var(--muted);
+    font-size: 12px;
+}
+
+.sale-custom-item-popover input {
+    width: 100%;
+    min-height: 38px;
+    border: 1px solid var(--input-border);
+    border-radius: 8px;
+    background: var(--surface);
+    color: var(--text);
+    padding: 0 10px;
+    outline: none;
+}
+
+.sale-custom-item-popover input:focus {
+    border-color: rgba(14, 165, 233, .72);
+    box-shadow: 0 0 0 3px rgba(14, 165, 233, .14);
+}
+
+.sale-custom-item-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
 }
 
 .product-suggestion-item {
@@ -3715,6 +3797,20 @@ body.theme-light .user-menu-dropdown a {
     border-color: rgba(15, 23, 42, .08);
 }
 
+body.theme-light .topbar .user-menu-toggle {
+    border-color: transparent;
+    background: transparent;
+}
+
+body.theme-light .topbar .user-avatar-fallback {
+    background: rgba(44, 82, 125, .16);
+    color: #2c527d;
+}
+
+body.theme-light .topbar-account-divider {
+    background: rgba(15, 23, 42, .12);
+}
+
 body.theme-light .search-box,
 body.theme-light .table-search,
 body.theme-light .period-select,
@@ -3900,11 +3996,18 @@ body.theme-light .service-outcome-card:has(input:checked) {
 }
 
 body.theme-light .product-suggestions,
+body.theme-light .sale-custom-item-popover,
 body.theme-light .info-tooltip-popover,
 body.theme-light .th-filter-popover,
 body.theme-light .date-suggestions {
     background: #ffffff;
     box-shadow: var(--shadow);
+}
+
+body.theme-light .sale-custom-item-popover input {
+    background: #f7f7f7;
+    color: var(--text);
+    color-scheme: light;
 }
 
 body.theme-light .table-wrap {
@@ -4121,6 +4224,7 @@ body.theme-light .modal-backdrop {
 
     .topbar-account .online-pill,
     .date-pill,
+    .topbar-account-divider,
     .topbar-account .user-menu {
         display: none;
     }

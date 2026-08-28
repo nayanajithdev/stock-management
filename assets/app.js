@@ -1062,7 +1062,9 @@ if (saleForm) {
             const quantity = Math.max(0, Number.parseFloat(row.querySelector('[data-sale-quantity]')?.value || '0'));
             const price = Math.max(0, Number.parseFloat(row.querySelector('[data-sale-price]')?.value || '0'));
             const discount = Math.max(0, Number.parseFloat(row.querySelector('[data-sale-line-discount]')?.value || '0'));
-            const stock = Math.max(0, Number.parseInt(row.querySelector('[data-sale-product]')?.dataset.stock || '0', 10));
+            const productHidden = row.querySelector('[data-sale-product]');
+            const isCustomItem = productHidden?.dataset.custom === '1';
+            const stock = Math.max(0, Number.parseInt(productHidden?.dataset.stock || '0', 10));
             const lineTotal = Math.max(0, (quantity * price) - discount);
             const lineTotalInput = row.querySelector('[data-sale-line-total]');
             const stockDisplay = row.querySelector('[data-sale-stock]');
@@ -1072,8 +1074,8 @@ if (saleForm) {
             }
 
             if (stockDisplay) {
-                stockDisplay.textContent = String(stock);
-                stockDisplay.classList.toggle('low', quantity > stock);
+                stockDisplay.textContent = isCustomItem ? '-' : String(stock);
+                stockDisplay.classList.toggle('low', !isCustomItem && quantity > stock);
             }
 
             subtotal += lineTotal;
@@ -1114,8 +1116,9 @@ if (saleForm) {
 
             const productHidden = row.querySelector('[data-sale-product]');
             const productInput = row.querySelector('[data-sale-product-search]');
+            const customNameHidden = row.querySelector('[data-sale-custom-name]');
 
-            if ((productHidden?.value || '').trim() === '' && (productInput?.value || '').trim() === '') {
+            if ((productHidden?.value || '').trim() === '' && (customNameHidden?.value || '').trim() === '' && (productInput?.value || '').trim() === '') {
                 row.remove();
             }
         });
@@ -1131,6 +1134,13 @@ if (saleForm) {
         const priceInput = row.querySelector('[data-sale-price]');
         const quantityInput = row.querySelector('[data-sale-quantity]');
         const stockDisplay = row.querySelector('[data-sale-stock]');
+        const customNameHidden = row.querySelector('[data-sale-custom-name]');
+        const customCostHidden = row.querySelector('[data-sale-custom-cost]');
+        const customPopover = row.querySelector('[data-sale-custom-popover]');
+        const customNameInput = row.querySelector('[data-sale-custom-name-input]');
+        const customCostInput = row.querySelector('[data-sale-custom-cost-input]');
+        const customApplyButton = row.querySelector('[data-sale-custom-apply]');
+        const customCancelButton = row.querySelector('[data-sale-custom-cancel]');
         let searchTimer = null;
         let searchToken = 0;
         let selectedCategory = null;
@@ -1163,6 +1173,7 @@ if (saleForm) {
                 productHidden.dataset.stock = '0';
                 productHidden.dataset.price = '0';
                 productHidden.dataset.cost = '0';
+                productHidden.dataset.custom = '0';
             }
 
             if (quantityInput) {
@@ -1174,17 +1185,115 @@ if (saleForm) {
             }
         };
 
+        const closeCustomPopover = () => {
+            if (customPopover) {
+                customPopover.hidden = true;
+            }
+        };
+
+        const clearCustomItem = () => {
+            if (customNameHidden) {
+                customNameHidden.value = '';
+            }
+
+            if (customCostHidden) {
+                customCostHidden.value = '0.00';
+            }
+
+            if (customNameInput) {
+                customNameInput.value = '';
+            }
+
+            if (customCostInput) {
+                customCostInput.value = '0.00';
+            }
+
+            closeCustomPopover();
+        };
+
+        const openCustomPopover = (prefillName = '') => {
+            closeSuggestions();
+
+            if (customNameInput && prefillName !== '' && customNameInput.value.trim() === '') {
+                customNameInput.value = prefillName;
+            }
+
+            if (customPopover) {
+                customPopover.hidden = false;
+            }
+
+            window.setTimeout(() => {
+                customNameInput?.focus();
+                customNameInput?.select();
+            }, 0);
+        };
+
+        const applyCustomItem = () => {
+            const name = (customNameInput?.value || '').trim();
+            const cost = Math.max(0, Number.parseFloat(customCostInput?.value || '0') || 0);
+            const isLastRow = row === rowsContainer.querySelector('[data-sale-row]:last-child');
+
+            if (name === '') {
+                customNameInput?.focus();
+                return;
+            }
+
+            if (productHidden) {
+                productHidden.value = '';
+                productHidden.dataset.stock = '0';
+                productHidden.dataset.price = priceInput?.value || '0';
+                productHidden.dataset.cost = money(cost);
+                productHidden.dataset.custom = '1';
+            }
+
+            if (customNameHidden) {
+                customNameHidden.value = name;
+            }
+
+            if (customCostHidden) {
+                customCostHidden.value = money(cost);
+            }
+
+            if (customCostInput) {
+                customCostInput.value = money(cost);
+            }
+
+            if (productInput) {
+                productInput.value = name;
+            }
+
+            if (quantityInput) {
+                quantityInput.removeAttribute('max');
+            }
+
+            if (stockDisplay) {
+                stockDisplay.textContent = '-';
+                stockDisplay.classList.remove('low');
+            }
+
+            selectedCategory = null;
+            closeCustomPopover();
+            recalculateSale();
+
+            if (isLastRow) {
+                const nextRow = createSaleRow();
+                nextRow?.querySelector('[data-sale-product-search]')?.focus();
+            }
+        };
+
         const selectProduct = (product) => {
             const isLastRow = row === rowsContainer.querySelector('[data-sale-row]:last-child');
             const stock = Math.max(0, Number.parseInt(product.stock || '0', 10) || 0);
             const price = Math.max(0, Number.parseFloat(product.price || '0') || 0);
             selectedCategory = null;
+            clearCustomItem();
 
             if (productHidden) {
                 productHidden.value = String(product.id || '');
                 productHidden.dataset.stock = String(stock);
                 productHidden.dataset.price = String(price);
                 productHidden.dataset.cost = String(Math.max(0, Number.parseFloat(product.cost || '0') || 0));
+                productHidden.dataset.custom = '0';
             }
 
             if (productInput) {
@@ -1314,6 +1423,11 @@ if (saleForm) {
             clearSelectedProduct();
             recalculateSale();
 
+            if (rawQuery.startsWith('#')) {
+                openCustomPopover(rawQuery.slice(1).trim());
+                return;
+            }
+
             if (!categoryMode && categoryId <= 0 && query.length < 2) {
                 closeSuggestions();
                 return;
@@ -1352,14 +1466,30 @@ if (saleForm) {
 
         if (productInput) {
             productInput.addEventListener('input', () => {
+                const rawValue = productInput.value.trim();
+                window.clearTimeout(searchTimer);
+
+                if (rawValue.startsWith('#')) {
+                    clearSelectedProduct();
+                    openCustomPopover(rawValue.slice(1).trim());
+                    recalculateSale();
+                    return;
+                }
+
+                clearCustomItem();
                 clearSelectedProduct();
                 recalculateSale();
-                window.clearTimeout(searchTimer);
                 searchTimer = window.setTimeout(runProductSearch, 180);
             });
 
             productInput.addEventListener('focus', () => {
-                if (productInput.value.trim().length >= 2) {
+                if (productHidden?.dataset.custom === '1') {
+                    return;
+                }
+
+                if (productInput.value.trim().startsWith('#')) {
+                    openCustomPopover(productInput.value.trim().slice(1).trim());
+                } else if (productInput.value.trim().length >= 2) {
                     runProductSearch();
                 }
             });
@@ -1381,6 +1511,41 @@ if (saleForm) {
             closeSuggestionListAfterFocusLeave(productInput, suggestions, closeSuggestions);
         });
 
+        customApplyButton?.addEventListener('click', applyCustomItem);
+
+        customCancelButton?.addEventListener('click', () => {
+            closeCustomPopover();
+
+            if ((customNameHidden?.value || '').trim() === '') {
+                if (productInput?.value.trim().startsWith('#')) {
+                    productInput.value = '';
+                }
+
+                clearSelectedProduct();
+                recalculateSale();
+            }
+        });
+
+        customNameInput?.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                applyCustomItem();
+            } else if (event.key === 'Escape') {
+                event.preventDefault();
+                closeCustomPopover();
+            }
+        });
+
+        customCostInput?.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                applyCustomItem();
+            } else if (event.key === 'Escape') {
+                event.preventDefault();
+                closeCustomPopover();
+            }
+        });
+
         const removeButton = row.querySelector('[data-remove-sale-row]');
         if (removeButton) {
             removeButton.addEventListener('click', () => {
@@ -1392,6 +1557,23 @@ if (saleForm) {
                 refreshSaleRemoveButtons();
                 recalculateSale();
             });
+        }
+
+        if ((customNameHidden?.value || '').trim() !== '') {
+            if (productHidden) {
+                productHidden.dataset.custom = '1';
+                productHidden.dataset.stock = '0';
+                productHidden.dataset.cost = customCostHidden?.value || productHidden.dataset.cost || '0';
+            }
+
+            if (quantityInput) {
+                quantityInput.removeAttribute('max');
+            }
+
+            if (stockDisplay) {
+                stockDisplay.textContent = '-';
+                stockDisplay.classList.remove('low');
+            }
         }
     };
 

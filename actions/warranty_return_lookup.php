@@ -43,7 +43,7 @@ function warranty_return_lookup_search(PDO $pdo, string $query): array
                 COALESCE(SUM(si.quantity - COALESCE(r.returned_quantity, 0) - COALESCE(w.claimed_quantity, 0)), 0) AS available_units
          FROM customers c
          INNER JOIN sales s ON s.customer_id = c.id
-         INNER JOIN sale_items si ON si.sale_id = s.id
+         INNER JOIN sale_items si ON si.sale_id = s.id AND si.product_id IS NOT NULL
          LEFT JOIN (
             SELECT sale_item_id, COALESCE(SUM(quantity), 0) AS returned_quantity
             FROM sales_return_items
@@ -100,7 +100,7 @@ function warranty_return_lookup_search(PDO $pdo, string $query): array
                 COALESCE(SUM(si.quantity - COALESCE(r.returned_quantity, 0) - COALESCE(w.claimed_quantity, 0)), 0) AS available_units
          FROM sales s
          LEFT JOIN customers c ON c.id = s.customer_id
-         INNER JOIN sale_items si ON si.sale_id = s.id
+         INNER JOIN sale_items si ON si.sale_id = s.id AND si.product_id IS NOT NULL
          LEFT JOIN (
             SELECT sale_item_id, COALESCE(SUM(quantity), 0) AS returned_quantity
             FROM sales_return_items
@@ -156,7 +156,7 @@ function warranty_return_lookup_invoices(PDO $pdo, int $customerId): array
                 COALESCE(SUM(si.quantity - COALESCE(r.returned_quantity, 0) - COALESCE(w.claimed_quantity, 0)), 0) AS available_units
          FROM sales s
          LEFT JOIN customers c ON c.id = s.customer_id
-         INNER JOIN sale_items si ON si.sale_id = s.id
+         INNER JOIN sale_items si ON si.sale_id = s.id AND si.product_id IS NOT NULL
          LEFT JOIN (
             SELECT sale_item_id, COALESCE(SUM(quantity), 0) AS returned_quantity
             FROM sales_return_items
@@ -224,6 +224,7 @@ function warranty_return_lookup_items(PDO $pdo, int $saleId): array
             GROUP BY sale_item_id
          ) w ON w.sale_item_id = si.id
          WHERE si.sale_id = :sale_id
+           AND si.product_id IS NOT NULL
          HAVING available_quantity > 0
          ORDER BY si.id ASC'
     );

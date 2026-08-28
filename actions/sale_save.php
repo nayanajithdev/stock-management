@@ -28,6 +28,8 @@ $tax = max(0.0, input_decimal('tax'));
 $paid = max(0.0, input_decimal('paid'));
 $productIds = $_POST['product_id'] ?? [];
 $productSearches = $_POST['product_search'] ?? [];
+$customItemNames = $_POST['custom_item_name'] ?? [];
+$customItemCosts = $_POST['custom_item_cost'] ?? [];
 $quantities = $_POST['quantity'] ?? [];
 $unitPrices = $_POST['unit_price'] ?? [];
 $warrantyMonthsInput = $_POST['warranty_months'] ?? [];
@@ -42,7 +44,7 @@ if ($canChangeSaleDate && ! preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/', $sal
     sale_save_fail('Sale date is not valid.');
 }
 
-if (! is_array($productIds) || ! is_array($productSearches) || ! is_array($quantities) || ! is_array($unitPrices) || ! is_array($warrantyMonthsInput) || ! is_array($lineDiscounts)) {
+if (! is_array($productIds) || ! is_array($productSearches) || ! is_array($customItemNames) || ! is_array($customItemCosts) || ! is_array($quantities) || ! is_array($unitPrices) || ! is_array($warrantyMonthsInput) || ! is_array($lineDiscounts)) {
     sale_save_fail('Sale items are not valid.');
 }
 
@@ -51,6 +53,9 @@ $items = [];
 foreach ($productIds as $index => $rawProductId) {
     $productId = (int) $rawProductId;
     $productSearch = trim((string) ($productSearches[$index] ?? ''));
+    $customItemName = substr(trim((string) ($customItemNames[$index] ?? '')), 0, 180);
+    $customItemCost = str_replace(',', '', trim((string) ($customItemCosts[$index] ?? '0')));
+    $customItemCost = is_numeric($customItemCost) ? max(0.0, (float) $customItemCost) : 0.0;
     $quantity = max(0, (int) ($quantities[$index] ?? 0));
     $unitPrice = str_replace(',', '', trim((string) ($unitPrices[$index] ?? '0')));
     $unitPrice = is_numeric($unitPrice) ? max(0.0, (float) $unitPrice) : 0.0;
@@ -58,11 +63,17 @@ foreach ($productIds as $index => $rawProductId) {
     $lineDiscount = str_replace(',', '', trim((string) ($lineDiscounts[$index] ?? '0')));
     $lineDiscount = is_numeric($lineDiscount) ? max(0.0, (float) $lineDiscount) : 0.0;
 
-    if ($productId <= 0 && $productSearch === '') {
+    if ($productId <= 0 && $productSearch === '' && $customItemName === '') {
         continue;
     }
 
-    if ($productId <= 0 || $quantity <= 0 || $unitPrice <= 0) {
+    if ($productId <= 0 && $customItemName === '' && str_starts_with($productSearch, '#')) {
+        $customItemName = substr(trim(ltrim($productSearch, '#')), 0, 180);
+    }
+
+    $isCustomItem = $productId <= 0 && $customItemName !== '';
+
+    if ((! $isCustomItem && $productId <= 0) || $quantity <= 0 || $unitPrice <= 0) {
         sale_save_fail('Each sale line needs a product, quantity, and unit price.');
     }
 
@@ -73,9 +84,11 @@ foreach ($productIds as $index => $rawProductId) {
     }
 
     $items[] = [
-        'product_id' => $productId,
+        'product_id' => $isCustomItem ? null : $productId,
+        'item_name' => $isCustomItem ? $customItemName : null,
         'quantity' => $quantity,
         'unit_price' => $unitPrice,
+        'unit_cost' => $isCustomItem ? $customItemCost : null,
         'warranty_months' => $warrantyMonths,
         'line_discount' => $lineDiscount,
     ];
@@ -169,9 +182,9 @@ try {
     $productStatement = $pdo->prepare('SELECT id, name, current_stock, cost_price FROM products WHERE id = :id AND status = "active" FOR UPDATE');
     $itemStatement = $pdo->prepare(
         'INSERT INTO sale_items
-            (sale_id, product_id, quantity, unit_price, unit_cost, warranty_months, discount, total)
+            (sale_id, product_id, item_name, quantity, unit_price, unit_cost, warranty_months, discount, total)
          VALUES
-            (:sale_id, :product_id, :quantity, :unit_price, :unit_cost, :warranty_months, :discount, :total)'
+            (:sale_id, :product_id, :item_name, :quantity, :unit_price, :unit_cost, :warranty_months, :discount, :total)'
     );
     $stockUpdate = $pdo->prepare(
         'UPDATE products
@@ -187,6 +200,22 @@ try {
     );
 
     foreach ($items as $item) {
+        if ($item['product_id'] === null) {
+            $lineTotal = ($item['quantity'] * $item['unit_price']) - $item['line_discount'];
+            $itemStatement->execute([
+                'sale_id' => $saleId,
+                'product_id' => null,
+                'item_name' => $item['item_name'],
+                'quantity' => $item['quantity'],
+                'unit_price' => $item['unit_price'],
+                'unit_cost' => $item['unit_cost'],
+                'warranty_months' => $item['warranty_months'],
+                'discount' => $item['line_discount'],
+                'total' => $lineTotal,
+            ]);
+            continue;
+        }
+
         $productStatement->execute(['id' => $item['product_id']]);
         $product = $productStatement->fetch();
 
@@ -208,6 +237,7 @@ try {
         $itemStatement->execute([
             'sale_id' => $saleId,
             'product_id' => $item['product_id'],
+            'item_name' => null,
             'quantity' => $quantity,
             'unit_price' => $item['unit_price'],
             'unit_cost' => $unitCost,
@@ -272,6 +302,8 @@ function sale_save_old_input(): array
     $arrayKeys = [
         'product_id',
         'product_search',
+        'custom_item_name',
+        'custom_item_cost',
         'quantity',
         'unit_price',
         'warranty_months',

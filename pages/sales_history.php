@@ -36,7 +36,13 @@ if ($dbReady && $pdo !== null) {
     $saleParams = [];
 
     if ($saleSearch !== '') {
-        $where[] = '(s.invoice_no LIKE :search OR c.name LIKE :search OR c.phone LIKE :search OR c.email LIKE :search)';
+        $where[] = '(s.invoice_no LIKE :search OR c.name LIKE :search OR c.phone LIKE :search OR c.email LIKE :search OR EXISTS (
+            SELECT 1
+            FROM sale_items search_si
+            LEFT JOIN products search_p ON search_p.id = search_si.product_id
+            WHERE search_si.sale_id = s.id
+              AND (search_si.item_name LIKE :search OR search_p.sku LIKE :search OR search_p.name LIKE :search OR search_p.model LIKE :search)
+        ))';
         $saleParams['search'] = '%' . $saleSearch . '%';
     }
 

@@ -3,22 +3,12 @@
 /** @var bool $dbReady */
 /** @var ?array $currentUser */
 
-$hasSaleProducts = false;
 $saleOldInput = sales_form_pull_old_input($dbReady && $pdo instanceof PDO ? $pdo : null);
 $saleRows = $saleOldInput['rows'] ?? [[]];
 $canChangeSaleDate = $dbReady && $pdo instanceof PDO && auth_user_has_permission($pdo, $currentUser ?? null, 'sale_date_change');
 $saleDateValue = $canChangeSaleDate
     ? (string) ($saleOldInput['sale_date'] ?? date('Y-m-d\TH:i'))
     : date('Y-m-d\TH:i');
-
-if ($dbReady && $pdo !== null) {
-    $hasSaleProducts = (int) $pdo->query(
-        'SELECT COUNT(*)
-         FROM products
-         WHERE status = "active"
-           AND current_stock > 0'
-    )->fetchColumn() > 0;
-}
 ?>
 
 <div class="page-heading">
@@ -43,8 +33,6 @@ if ($dbReady && $pdo !== null) {
 
         <?php if (! $dbReady): ?>
             <p class="empty-state">Import <code>database/schema.sql</code> before selling.</p>
-        <?php elseif (! $hasSaleProducts): ?>
-            <p class="empty-state">Add products and stock before creating invoices.</p>
         <?php else: ?>
             <form class="sale-form" method="post" action="<?php echo e(app_url('actions/sale_save.php')); ?>" data-sale-form data-sale-product-search-url="<?php echo e(app_url('actions/sale_product_search.php')); ?>" data-sale-customer-search-url="<?php echo e(app_url('actions/customer_search.php')); ?>" <?php echo $saleOldInput !== [] ? 'data-sale-preserve-paid="1"' : ''; ?>>
                 <?php echo csrf_field(); ?>
@@ -89,7 +77,7 @@ if ($dbReady && $pdo !== null) {
                 <div class="sale-footer">
                     <div class="purchase-note">
                         <i data-lucide="info"></i>
-                        <span>Saving an invoice reduces stock and writes sale movement records for each item.</span>
+                        <span>Stock items reduce inventory. Custom items stay out of stock but still count for sales and profit.</span>
                     </div>
 
                     <div class="purchase-totals">
@@ -201,33 +189,41 @@ function sales_form_normalize_old_rows(array $oldInput, ?PDO $pdo): array
     $productSearches = is_array($oldInput['product_search'] ?? null) ? $oldInput['product_search'] : [];
     $quantities = is_array($oldInput['quantity'] ?? null) ? $oldInput['quantity'] : [];
     $unitPrices = is_array($oldInput['unit_price'] ?? null) ? $oldInput['unit_price'] : [];
+    $customItemNames = is_array($oldInput['custom_item_name'] ?? null) ? $oldInput['custom_item_name'] : [];
+    $customItemCosts = is_array($oldInput['custom_item_cost'] ?? null) ? $oldInput['custom_item_cost'] : [];
     $warrantyMonths = is_array($oldInput['warranty_months'] ?? null) ? $oldInput['warranty_months'] : [];
     $lineDiscounts = is_array($oldInput['line_discount'] ?? null) ? $oldInput['line_discount'] : [];
     $productDetails = sales_form_product_details($productIds, $pdo);
-    $rowCount = max(count($productIds), count($productSearches), count($quantities), count($unitPrices), count($warrantyMonths), count($lineDiscounts), 1);
+    $rowCount = max(count($productIds), count($productSearches), count($quantities), count($unitPrices), count($customItemNames), count($customItemCosts), count($warrantyMonths), count($lineDiscounts), 1);
     $rows = [];
 
     for ($index = 0; $index < $rowCount; $index++) {
         $productId = max(0, (int) ($productIds[$index] ?? 0));
         $product = $productDetails[$productId] ?? null;
         $productSearch = trim((string) ($productSearches[$index] ?? ''));
+        $customItemName = substr(trim((string) ($customItemNames[$index] ?? '')), 0, 180);
 
         if (is_array($product)) {
             $productSearch = $product['label'];
+            $customItemName = '';
+        } elseif ($customItemName !== '') {
+            $productId = 0;
+            $productSearch = $customItemName;
         }
 
         $row = [
             'product_id' => $productId > 0 ? (string) $productId : '',
             'product_search' => $productSearch,
+            'custom_item_name' => $customItemName,
             'stock' => is_array($product) ? (string) $product['stock'] : '0',
             'price' => sales_form_money_value($unitPrices[$index] ?? (is_array($product) ? $product['price'] : '0.00')),
-            'cost' => is_array($product) ? sales_form_money_value($product['cost']) : '0.00',
+            'cost' => is_array($product) ? sales_form_money_value($product['cost']) : sales_form_money_value($customItemCosts[$index] ?? '0.00'),
             'warranty_months' => max(0, (int) ($warrantyMonths[$index] ?? 0)),
             'quantity' => max(1, (int) ($quantities[$index] ?? 1)),
             'line_discount' => sales_form_money_value($lineDiscounts[$index] ?? '0.00'),
         ];
 
-        if ($row['product_id'] === '' && $row['product_search'] === '' && $row['price'] === '0.00' && $row['line_discount'] === '0.00') {
+        if ($row['product_id'] === '' && $row['custom_item_name'] === '' && $row['product_search'] === '' && $row['price'] === '0.00' && $row['line_discount'] === '0.00') {
             if ($index > 0) {
                 continue;
             }
@@ -301,6 +297,7 @@ function render_sale_row(array $row = []): void
 {
     $productId = (string) ($row['product_id'] ?? '');
     $productSearch = (string) ($row['product_search'] ?? '');
+    $customItemName = (string) ($row['custom_item_name'] ?? '');
     $stock = max(0, (int) ($row['stock'] ?? 0));
     $price = sales_form_money_value($row['price'] ?? '0.00');
     $cost = sales_form_money_value($row['cost'] ?? '0.00');
@@ -311,18 +308,34 @@ function render_sale_row(array $row = []): void
     <div class="sale-row" data-sale-row>
         <div class="field compact-field product-picker" data-sale-product-picker>
             <span>Product</span>
-            <input type="hidden" name="product_id[]" value="<?php echo e($productId); ?>" data-stock="<?php echo e($stock); ?>" data-price="<?php echo e($price); ?>" data-cost="<?php echo e($cost); ?>" data-sale-product required>
-            <input type="search" name="product_search[]" value="<?php echo e($productSearch); ?>" placeholder="Search product, SKU, barcode or @category" autocomplete="off" data-sale-product-search>
+            <input type="hidden" name="product_id[]" value="<?php echo e($productId); ?>" data-stock="<?php echo e($stock); ?>" data-price="<?php echo e($price); ?>" data-cost="<?php echo e($cost); ?>" data-custom="<?php echo $customItemName !== '' ? '1' : '0'; ?>" data-sale-product required>
+            <input type="hidden" name="custom_item_name[]" value="<?php echo e($customItemName); ?>" data-sale-custom-name>
+            <input type="hidden" name="custom_item_cost[]" value="<?php echo e($cost); ?>" data-sale-custom-cost>
+            <input type="search" name="product_search[]" value="<?php echo e($productSearch); ?>" placeholder="Search product, SKU, barcode, @category or #custom" autocomplete="off" data-sale-product-search>
             <div class="product-suggestions" data-sale-product-suggestions hidden></div>
+            <div class="sale-custom-item-popover" data-sale-custom-popover hidden>
+                <label>
+                    <span>Item name</span>
+                    <input type="text" value="<?php echo e($customItemName); ?>" maxlength="180" data-sale-custom-name-input>
+                </label>
+                <label>
+                    <span>Cost</span>
+                    <input type="number" value="<?php echo e($customItemName !== '' ? $cost : '0.00'); ?>" min="0" step="0.01" data-sale-custom-cost-input>
+                </label>
+                <div class="sale-custom-item-actions">
+                    <button type="button" class="top-action" data-sale-custom-apply>Apply</button>
+                    <button type="button" class="ghost-button" data-sale-custom-cancel>Cancel</button>
+                </div>
+            </div>
         </div>
         <label class="field compact-field">
             <span>Warranty</span>
             <input type="number" name="warranty_months[]" value="<?php echo e($warrantyMonths); ?>" min="0" step="1" data-sale-warranty>
         </label>
-        <div class="stock-pill" data-sale-stock><?php echo e($stock); ?></div>
+        <div class="stock-pill" data-sale-stock><?php echo $customItemName !== '' ? '-' : e($stock); ?></div>
         <label class="field compact-field">
             <span>Qty</span>
-            <input type="number" name="quantity[]" value="<?php echo e($quantity); ?>" min="1" step="1" <?php echo $stock > 0 ? 'max="' . e($stock) . '"' : ''; ?> data-sale-quantity required>
+            <input type="number" name="quantity[]" value="<?php echo e($quantity); ?>" min="1" step="1" <?php echo $stock > 0 && $customItemName === '' ? 'max="' . e($stock) . '"' : ''; ?> data-sale-quantity required>
         </label>
         <label class="field compact-field">
             <span>Price</span>

@@ -25,7 +25,8 @@ if ($dbReady && $pdo !== null) {
               AND status <> "rejected"
             GROUP BY sale_item_id
          ) w ON w.sale_item_id = si.id
-         WHERE si.quantity - COALESCE(r.returned_quantity, 0) - COALESCE(w.claimed_quantity, 0) > 0'
+         WHERE si.product_id IS NOT NULL
+           AND si.quantity - COALESCE(r.returned_quantity, 0) - COALESCE(w.claimed_quantity, 0) > 0'
     )->fetchColumn() > 0;
 
     $claimSql = 'SELECT wc.*,

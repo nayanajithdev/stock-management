@@ -68,7 +68,7 @@ if ($dbReady && $pdo !== null) {
                                        COALESCE(SUM(' . $lineRevenueSql . ' - (si.quantity * si.unit_cost)), 0) AS gross_profit
                                 FROM sale_items si
                                 INNER JOIN sales s ON s.id = si.sale_id
-                                INNER JOIN products p ON p.id = si.product_id
+                                LEFT JOIN products p ON p.id = si.product_id
                 WHERE s.sale_date BETWEEN :day_start AND :day_end';
             $salesSummaryParams = [
                 'day_start' => $activeStartDateTime,
@@ -76,6 +76,7 @@ if ($dbReady && $pdo !== null) {
             ];
             $salesSql = 'SELECT s.sale_date,
                                      p.sku,
+                                     si.item_name,
                                      p.name AS product_name,
                                      p.model,
                                      si.quantity,
@@ -87,7 +88,7 @@ if ($dbReady && $pdo !== null) {
                                      (' . $lineRevenueSql . ' - (si.quantity * si.unit_cost)) AS profit
                               FROM sale_items si
                               INNER JOIN sales s ON s.id = si.sale_id
-                              INNER JOIN products p ON p.id = si.product_id
+                              LEFT JOIN products p ON p.id = si.product_id
                               WHERE s.sale_date BETWEEN :day_start AND :day_end';
             $salesParams = [
                 'day_start' => $activeStartDateTime,
@@ -100,6 +101,7 @@ if ($dbReady && $pdo !== null) {
                     OR p.sku LIKE :search
                     OR p.name LIKE :search
                     OR p.model LIKE :search
+                    OR si.item_name LIKE :search
                 )';
                 $salesSummaryParams['search'] = '%' . $activeSalesSearch . '%';
                 $salesSql .= ' AND (
@@ -107,6 +109,7 @@ if ($dbReady && $pdo !== null) {
                     OR p.sku LIKE :search
                     OR p.name LIKE :search
                     OR p.model LIKE :search
+                    OR si.item_name LIKE :search
                 )';
                 $salesParams['search'] = '%' . $activeSalesSearch . '%';
             }
@@ -278,6 +281,15 @@ if ($dbReady && $pdo !== null) {
 
         <article class="stat-card">
             <div>
+                <span><?php echo $reportTab === 'daily-sales' ? 'Today Sold Cost' : 'Sold Cost'; ?></span>
+                <strong><?php echo e(format_money($summary['sold_cost'])); ?></strong>
+            </div>
+            <div class="stat-icon"><i data-lucide="package-check"></i></div>
+            <small>Item cost from selected sales</small>
+        </article>
+
+        <article class="stat-card">
+            <div>
                 <span><?php echo $canViewProductCost ? 'Gross Profit' : 'Units Sold'; ?></span>
                 <strong><?php echo $canViewProductCost ? e(format_money($summary['gross_profit'])) : (int) $summary['units_sold']; ?></strong>
             </div>
@@ -292,15 +304,6 @@ if ($dbReady && $pdo !== null) {
             </div>
             <div class="stat-icon"><i data-lucide="<?php echo $canViewProductCost ? 'chart-line' : 'shield-check'; ?>"></i></div>
             <small><?php echo $canViewProductCost ? 'After expenses, returns, supplier refunds' : 'Active cases'; ?></small>
-        </article>
-
-        <article class="stat-card">
-            <div>
-                <span><?php echo $reportTab === 'daily-sales' ? 'Today Sold Cost' : 'Sold Cost'; ?></span>
-                <strong><?php echo e(format_money($summary['sold_cost'])); ?></strong>
-            </div>
-            <div class="stat-icon"><i data-lucide="package-check"></i></div>
-            <small>Item cost from selected sales</small>
         </article>
 
         <article class="stat-card">
@@ -347,12 +350,20 @@ if ($dbReady && $pdo !== null) {
                         <?php endif; ?>
 
                         <?php foreach ($salesItems as $item): ?>
-                            <?php $profit = (float) $item['profit']; ?>
+                            <?php
+                            $profit = (float) $item['profit'];
+                            $customItemName = trim((string) ($item['item_name'] ?? ''));
+                            $itemLabel = $customItemName !== ''
+                                ? $customItemName
+                                : trim((string) ($item['sku'] ?? '') . ' - ' . (string) ($item['product_name'] ?? ''), ' -');
+                            ?>
                             <tr>
                                 <td><?php echo e(date('Y-m-d H:i', strtotime((string) $item['sale_date']))); ?></td>
                                 <td>
-                                    <strong class="table-title"><?php echo e($item['sku'] . ' - ' . $item['product_name']); ?></strong>
-                                    <?php if (! empty($item['model'])): ?>
+                                    <strong class="table-title"><?php echo e($itemLabel); ?></strong>
+                                    <?php if ($customItemName !== ''): ?>
+                                        <span class="table-subtitle">Non-stock item</span>
+                                    <?php elseif (! empty($item['model'])): ?>
                                         <span class="table-subtitle"><?php echo e($item['model']); ?></span>
                                     <?php endif; ?>
                                 </td>

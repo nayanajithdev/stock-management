@@ -8,6 +8,11 @@
         $canOpenSales = isset($pdo) && $pdo instanceof PDO && auth_user_has_permission($pdo, $currentUser, 'sales');
         $profileName = trim((string) ($currentUser['full_name'] ?? 'User'));
         $profileRole = (string) ($currentUser['role_label'] ?? auth_role_label((string) ($currentUser['role'] ?? 'cashier')));
+        $profileInitials = strtoupper(substr(preg_replace('/[^A-Za-z0-9]/', '', $profileName) ?: 'U', 0, 1));
+        $nameParts = preg_split('/\s+/', $profileName, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+        if (count($nameParts) > 1) {
+            $profileInitials = strtoupper(substr((string) $nameParts[0], 0, 1) . substr((string) $nameParts[count($nameParts) - 1], 0, 1));
+        }
         $themeMode = (string) ($currentUser['theme_mode'] ?? 'dark') === 'light' ? 'light' : 'dark';
         $nextThemeMode = $themeMode === 'light' ? 'dark' : 'light';
         $themeLabel = $themeMode === 'light' ? 'Switch to dark mode' : 'Switch to light mode';
@@ -21,28 +26,7 @@
         <?php endif; ?>
 
         <div class="topbar-account">
-            <span class="online-pill">Online</span>
-
-            <div class="user-menu" data-user-menu>
-                <button class="user-menu-toggle" type="button" aria-haspopup="true" aria-expanded="false" data-user-menu-toggle>
-                    <span class="user-avatar user-avatar-icon" aria-hidden="true">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/>
-                            <circle cx="12" cy="7" r="4"/>
-                        </svg>
-                    </span>
-                    <span class="user-menu-text">
-                        <strong><?php echo e($profileName); ?></strong>
-                        <small><?php echo e($profileRole); ?></small>
-                    </span>
-                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-down-icon lucide-chevron-down" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
-                </button>
-
-                <div class="user-menu-dropdown" role="menu">
-                    <a href="<?php echo e(app_url('?page=profile')); ?>" role="menuitem">Account</a>
-                    <a class="user-menu-logout" href="<?php echo e(app_url('actions/logout.php')); ?>" role="menuitem">Logout</a>
-                </div>
-            </div>
+            <span class="date-pill"><?php echo e(date('d/m/Y')); ?></span>
 
             <form class="theme-toggle-form" action="<?php echo e(app_url('actions/theme_save.php')); ?>" method="post">
                 <?php echo csrf_field(); ?>
@@ -57,6 +41,24 @@
                     </span>
                 </button>
             </form>
+
+            <span class="topbar-account-divider" aria-hidden="true"></span>
+
+            <div class="user-menu" data-user-menu>
+                <button class="user-menu-toggle" type="button" aria-haspopup="true" aria-expanded="false" data-user-menu-toggle>
+                    <span class="user-avatar user-avatar-fallback" aria-hidden="true"><?php echo e($profileInitials); ?></span>
+                    <span class="user-menu-text">
+                        <strong><?php echo e($profileName); ?></strong>
+                        <small><?php echo e($profileRole); ?></small>
+                    </span>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-down-icon lucide-chevron-down" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+                </button>
+
+                <div class="user-menu-dropdown" role="menu">
+                    <a href="<?php echo e(app_url('?page=profile')); ?>" role="menuitem">Account</a>
+                    <a class="user-menu-logout" href="<?php echo e(app_url('actions/logout.php')); ?>" role="menuitem">Logout</a>
+                </div>
+            </div>
         </div>
     <?php endif; ?>
 </header>

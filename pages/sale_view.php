@@ -44,10 +44,11 @@ if ($dbReady && $pdo !== null && $saleId > 0) {
         $itemStatement = $pdo->prepare(
             'SELECT si.*,
                     p.sku,
+                    si.item_name,
                     p.name AS product_name,
                     p.model
              FROM sale_items si
-             INNER JOIN products p ON p.id = si.product_id
+             LEFT JOIN products p ON p.id = si.product_id
              WHERE si.sale_id = :sale_id
              ORDER BY si.id ASC'
         );
@@ -184,10 +185,16 @@ $balance = is_array($sale) ? sale_receivable_balance($sale['total'], $sale['paid
                     </thead>
                     <tbody>
                         <?php foreach ($items as $item): ?>
+                            <?php
+                            $itemName = trim((string) ($item['item_name'] ?? ''));
+                            $productLabel = $itemName !== ''
+                                ? $itemName
+                                : trim((string) ($item['sku'] ?? '') . ' - ' . (string) ($item['product_name'] ?? ''), ' -');
+                            ?>
                             <tr>
                                 <td>
-                                    <strong class="table-title"><?php echo e($item['sku'] . ' - ' . $item['product_name']); ?></strong>
-                                    <span class="table-subtitle"><?php echo e($item['model'] ?? ''); ?></span>
+                                    <strong class="table-title"><?php echo e($productLabel); ?></strong>
+                                    <span class="table-subtitle"><?php echo e($itemName !== '' ? 'Non-stock item' : (string) ($item['model'] ?? '')); ?></span>
                                 </td>
                                 <?php if ($invoiceHasWarranty): ?>
                                     <td>

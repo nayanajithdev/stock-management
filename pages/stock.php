@@ -29,11 +29,11 @@ if ($dbReady && $pdo !== null) {
          ORDER BY name ASC'
     )->fetchAll();
 
-    $summary['stock_units'] = (int) $pdo->query('SELECT COALESCE(SUM(current_stock), 0) FROM products WHERE status = "active"')->fetchColumn();
+    $summary['stock_units'] = (int) $pdo->query('SELECT COALESCE(SUM(current_stock), 0) FROM products WHERE status = "active" AND unlimited_stock = 0')->fetchColumn();
     if ($canViewProductCost) {
         $summary['stock_value'] = app_stock_value_total($pdo);
     }
-    $summary['low_stock'] = (int) $pdo->query('SELECT COUNT(*) FROM products WHERE status = "active" AND reorder_level IS NOT NULL AND current_stock <= reorder_level')->fetchColumn();
+    $summary['low_stock'] = (int) $pdo->query('SELECT COUNT(*) FROM products WHERE status = "active" AND unlimited_stock = 0 AND reorder_level IS NOT NULL AND current_stock <= reorder_level')->fetchColumn();
     $costSelect = $canViewProductCost
         ? ', ' . app_lot_unit_cost_sql('sm', 'pc', 'lco') . ' AS display_unit_cost'
         : '';

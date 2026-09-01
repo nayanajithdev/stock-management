@@ -35,7 +35,10 @@ $warrantyMonths = input_int('warranty_months');
 $itemTracking = isset($_POST['item_tracking']) ? 1 : 0;
 $rawReorderLevel = trim((string) ($_POST['reorder_level'] ?? ''));
 $reorderLevel = $rawReorderLevel === '' ? null : max(0, (int) $rawReorderLevel);
-$openingStock = input_int('opening_stock');
+$rawOpeningStock = trim((string) ($_POST['opening_stock'] ?? '0'));
+$unlimitedStock = str_starts_with($rawOpeningStock, '*') ? 1 : 0;
+$openingStockValue = $unlimitedStock === 1 ? trim(substr($rawOpeningStock, 1)) : $rawOpeningStock;
+$openingStock = $openingStockValue === '' ? 0 : max(0, (int) $openingStockValue);
 $purchaseDate = trim((string) ($_POST['purchase_date'] ?? date('Y-m-d')));
 $formRedirect = '?page=products' . ($productId !== null ? '&edit=' . $productId : '&form=product');
 
@@ -141,9 +144,9 @@ try {
 
     $statement = $pdo->prepare(
         'INSERT INTO products
-            (category_id, brand_id, supplier_id, sku, barcode, name, model, description, cost_price, selling_price, wholesale_price, warranty_months, item_tracking, reorder_level, current_stock)
+            (category_id, brand_id, supplier_id, sku, barcode, name, model, description, cost_price, selling_price, wholesale_price, warranty_months, item_tracking, unlimited_stock, reorder_level, current_stock)
          VALUES
-            (:category_id, :brand_id, :supplier_id, :sku, :barcode, :name, :model, :description, :cost_price, :selling_price, :wholesale_price, :warranty_months, :item_tracking, :reorder_level, :current_stock)'
+            (:category_id, :brand_id, :supplier_id, :sku, :barcode, :name, :model, :description, :cost_price, :selling_price, :wholesale_price, :warranty_months, :item_tracking, :unlimited_stock, :reorder_level, :current_stock)'
     );
     $statement->execute([
         'category_id' => $categoryId,
@@ -159,13 +162,14 @@ try {
         'wholesale_price' => $wholesalePrice,
         'warranty_months' => $warrantyMonths,
         'item_tracking' => $itemTracking,
+        'unlimited_stock' => $unlimitedStock,
         'reorder_level' => $reorderLevel,
-        'current_stock' => $openingStock,
+        'current_stock' => $unlimitedStock === 1 ? 0 : $openingStock,
     ]);
 
     $newProductId = (int) $pdo->lastInsertId();
 
-    if ($openingStock > 0) {
+    if ($openingStock > 0 && $unlimitedStock !== 1) {
         $movement = $pdo->prepare(
             'INSERT INTO stock_movements
                 (product_id, movement_type, quantity_change, stock_after, unit_cost, warranty_months, reference_type, reference_id, notes, created_by, created_at)

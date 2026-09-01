@@ -113,6 +113,7 @@ CREATE TABLE IF NOT EXISTS products (
     wholesale_price DECIMAL(12,2) NOT NULL DEFAULT 0.00,
     warranty_months INT UNSIGNED NOT NULL DEFAULT 0,
     item_tracking TINYINT(1) NOT NULL DEFAULT 0,
+    unlimited_stock TINYINT(1) NOT NULL DEFAULT 0,
     reorder_level INT UNSIGNED NULL DEFAULT NULL,
     current_stock INT NOT NULL DEFAULT 0,
     status VARCHAR(20) NOT NULL DEFAULT 'active',

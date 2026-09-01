@@ -47,8 +47,8 @@ if ($dbReady && $pdo !== null) {
     $suppliers = app_fetch_options($pdo, 'suppliers');
 
     $summary['products'] = (int) $pdo->query('SELECT COUNT(*) FROM products WHERE status = "active"')->fetchColumn();
-    $summary['low_stock'] = (int) $pdo->query('SELECT COUNT(*) FROM products WHERE status = "active" AND reorder_level IS NOT NULL AND current_stock <= reorder_level')->fetchColumn();
-    $summary['stock_units'] = (int) $pdo->query('SELECT COALESCE(SUM(current_stock), 0) FROM products WHERE status = "active"')->fetchColumn();
+    $summary['low_stock'] = (int) $pdo->query('SELECT COUNT(*) FROM products WHERE status = "active" AND unlimited_stock = 0 AND reorder_level IS NOT NULL AND current_stock <= reorder_level')->fetchColumn();
+    $summary['stock_units'] = (int) $pdo->query('SELECT COALESCE(SUM(current_stock), 0) FROM products WHERE status = "active" AND unlimited_stock = 0')->fetchColumn();
     if ($canViewProductCost) {
         $summary['stock_value'] = app_stock_value_total($pdo);
     }
@@ -77,7 +77,7 @@ if ($dbReady && $pdo !== null) {
     }
 
     if ($stockFilter === 'needs_reorder') {
-        $where[] = 'p.reorder_level IS NOT NULL AND p.current_stock <= p.reorder_level';
+        $where[] = 'p.unlimited_stock = 0 AND p.reorder_level IS NOT NULL AND p.current_stock <= p.reorder_level';
     }
 
     $whereSql = $where === [] ? '' : ' WHERE ' . implode(' AND ', $where);
@@ -329,7 +329,7 @@ if ($stockFilter !== '') {
 
                     <label class="field">
                         <span>Opening Stock</span>
-                        <input type="number" name="opening_stock" value="0" min="0" step="1">
+                        <input type="text" name="opening_stock" value="0" inputmode="numeric" pattern="\*?\d*" placeholder="0 or * for unlimited">
                     </label>
                 <?php elseif ($editingProduct === null): ?>
                     <input type="hidden" name="opening_stock" value="0">
@@ -520,7 +520,8 @@ if ($stockFilter !== '') {
                     <?php foreach ($products as $product): ?>
                         <?php
                         $hasReorderLevel = $product['reorder_level'] !== null;
-                        $isLow = $hasReorderLevel && (int) $product['current_stock'] <= (int) $product['reorder_level'];
+                        $isUnlimitedStock = (int) ($product['unlimited_stock'] ?? 0) === 1;
+                        $isLow = ! $isUnlimitedStock && $hasReorderLevel && (int) $product['current_stock'] <= (int) $product['reorder_level'];
                         ?>
                         <tr>
                             <td><?php echo e($product['sku']); ?></td>
@@ -530,7 +531,7 @@ if ($stockFilter !== '') {
                             </td>
                             <td><?php echo e($product['brand_name'] ?? ''); ?></td>
                             <td><?php echo e($product['category_name'] ?? ''); ?></td>
-                            <td class="<?php echo $isLow ? 'text-danger' : ''; ?>"><?php echo (int) $product['current_stock']; ?></td>
+                            <td class="<?php echo $isLow ? 'text-danger' : ''; ?>"><?php echo $isUnlimitedStock ? 'Unlimited' : (int) $product['current_stock']; ?></td>
                             <td><?php echo $hasReorderLevel ? (int) $product['reorder_level'] : '-'; ?></td>
                             <?php if ($canViewProductCost): ?>
                                 <td><?php echo e(format_money($product['latest_cost_price'] ?? $product['cost_price'])); ?></td>

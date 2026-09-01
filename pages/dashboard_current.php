@@ -101,7 +101,7 @@ if ($dbReady && $pdo !== null) {
          WHERE sr.return_date >= DATE_FORMAT(CURRENT_DATE, "%Y-%m-01")'
     )->fetchColumn();
     $metrics['receivable'] = dashboard_receivable_total($pdo);
-    $metrics['low_stock'] = (int) $pdo->query('SELECT COUNT(*) FROM products WHERE status = "active" AND reorder_level IS NOT NULL AND current_stock <= reorder_level')->fetchColumn();
+    $metrics['low_stock'] = (int) $pdo->query('SELECT COUNT(*) FROM products WHERE status = "active" AND unlimited_stock = 0 AND reorder_level IS NOT NULL AND current_stock <= reorder_level')->fetchColumn();
     $metrics['open_warranty'] = (int) $pdo->query('SELECT COUNT(*) FROM warranty_claims WHERE status IN ("received", "sent_to_supplier", "ready_for_pickup")')->fetchColumn();
     $metrics['warranty_expiring'] = dashboard_warranty_expiring_lots($pdo);
 

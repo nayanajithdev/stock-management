@@ -179,7 +179,7 @@ try {
     ]);
     $saleId = (int) $pdo->lastInsertId();
 
-    $productStatement = $pdo->prepare('SELECT id, name, current_stock, cost_price FROM products WHERE id = :id AND status = "active" FOR UPDATE');
+    $productStatement = $pdo->prepare('SELECT id, name, current_stock, cost_price, unlimited_stock FROM products WHERE id = :id AND status = "active" FOR UPDATE');
     $itemStatement = $pdo->prepare(
         'INSERT INTO sale_items
             (sale_id, product_id, item_name, quantity, unit_price, unit_cost, warranty_months, discount, total)
@@ -225,14 +225,15 @@ try {
 
         $currentStock = (int) $product['current_stock'];
         $quantity = (int) $item['quantity'];
+        $isUnlimitedStock = (int) ($product['unlimited_stock'] ?? 0) === 1;
 
-        if ($quantity > $currentStock) {
+        if (! $isUnlimitedStock && $quantity > $currentStock) {
             throw new RuntimeException($product['name'] . ' has only ' . $currentStock . ' in stock.');
         }
 
         $lineTotal = ($quantity * $item['unit_price']) - $item['line_discount'];
-        $newStock = $currentStock - $quantity;
-        $unitCost = sale_fifo_unit_cost($pdo, (int) $item['product_id'], $quantity, (float) $product['cost_price']);
+        $newStock = $isUnlimitedStock ? $currentStock : $currentStock - $quantity;
+        $unitCost = $isUnlimitedStock ? (float) $product['cost_price'] : sale_fifo_unit_cost($pdo, (int) $item['product_id'], $quantity, (float) $product['cost_price']);
 
         $itemStatement->execute([
             'sale_id' => $saleId,
@@ -246,20 +247,22 @@ try {
             'total' => $lineTotal,
         ]);
 
-        $stockUpdate->execute([
-            'current_stock' => $newStock,
-            'id' => $item['product_id'],
-        ]);
+        if (! $isUnlimitedStock) {
+            $stockUpdate->execute([
+                'current_stock' => $newStock,
+                'id' => $item['product_id'],
+            ]);
 
-        $movementStatement->execute([
-            'product_id' => $item['product_id'],
-            'quantity_change' => -$quantity,
-            'stock_after' => $newStock,
-            'unit_cost' => $unitCost,
-            'reference_id' => $saleId,
-            'notes' => 'Sold on invoice ' . $invoiceNo,
-            'created_by' => (int) ($currentUser['id'] ?? 0) ?: null,
-        ]);
+            $movementStatement->execute([
+                'product_id' => $item['product_id'],
+                'quantity_change' => -$quantity,
+                'stock_after' => $newStock,
+                'unit_cost' => $unitCost,
+                'reference_id' => $saleId,
+                'notes' => 'Sold on invoice ' . $invoiceNo,
+                'created_by' => (int) ($currentUser['id'] ?? 0) ?: null,
+            ]);
+        }
     }
 
     $pdo->commit();

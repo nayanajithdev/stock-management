@@ -1064,6 +1064,7 @@ if (saleForm) {
             const discount = Math.max(0, Number.parseFloat(row.querySelector('[data-sale-line-discount]')?.value || '0'));
             const productHidden = row.querySelector('[data-sale-product]');
             const isCustomItem = productHidden?.dataset.custom === '1';
+            const isUnlimitedStock = productHidden?.dataset.unlimited === '1';
             const stock = Math.max(0, Number.parseInt(productHidden?.dataset.stock || '0', 10));
             const lineTotal = Math.max(0, (quantity * price) - discount);
             const lineTotalInput = row.querySelector('[data-sale-line-total]');
@@ -1074,8 +1075,8 @@ if (saleForm) {
             }
 
             if (stockDisplay) {
-                stockDisplay.textContent = isCustomItem ? '-' : String(stock);
-                stockDisplay.classList.toggle('low', !isCustomItem && quantity > stock);
+                stockDisplay.textContent = isCustomItem ? '-' : (isUnlimitedStock ? 'Unlimited' : String(stock));
+                stockDisplay.classList.toggle('low', !isCustomItem && !isUnlimitedStock && quantity > stock);
             }
 
             subtotal += lineTotal;
@@ -1171,6 +1172,7 @@ if (saleForm) {
             if (productHidden) {
                 productHidden.value = '';
                 productHidden.dataset.stock = '0';
+                productHidden.dataset.unlimited = '0';
                 productHidden.dataset.price = '0';
                 productHidden.dataset.cost = '0';
                 productHidden.dataset.custom = '0';
@@ -1241,6 +1243,7 @@ if (saleForm) {
             if (productHidden) {
                 productHidden.value = '';
                 productHidden.dataset.stock = '0';
+                productHidden.dataset.unlimited = '0';
                 productHidden.dataset.price = priceInput?.value || '0';
                 productHidden.dataset.cost = money(cost);
                 productHidden.dataset.custom = '1';
@@ -1285,12 +1288,14 @@ if (saleForm) {
             const isLastRow = row === rowsContainer.querySelector('[data-sale-row]:last-child');
             const stock = Math.max(0, Number.parseInt(product.stock || '0', 10) || 0);
             const price = Math.max(0, Number.parseFloat(product.price || '0') || 0);
+            const isUnlimitedStock = product.unlimited === true;
             selectedCategory = null;
             clearCustomItem();
 
             if (productHidden) {
                 productHidden.value = String(product.id || '');
                 productHidden.dataset.stock = String(stock);
+                productHidden.dataset.unlimited = isUnlimitedStock ? '1' : '0';
                 productHidden.dataset.price = String(price);
                 productHidden.dataset.cost = String(Math.max(0, Number.parseFloat(product.cost || '0') || 0));
                 productHidden.dataset.custom = '0';
@@ -1305,12 +1310,16 @@ if (saleForm) {
             }
 
             if (quantityInput) {
-                quantityInput.max = String(stock);
+                if (isUnlimitedStock) {
+                    quantityInput.removeAttribute('max');
+                } else {
+                    quantityInput.max = String(stock);
+                }
             }
 
             if (stockDisplay) {
-                stockDisplay.textContent = String(stock);
-                stockDisplay.classList.toggle('low', stock <= 0);
+                stockDisplay.textContent = isUnlimitedStock ? 'Unlimited' : String(stock);
+                stockDisplay.classList.toggle('low', !isUnlimitedStock && stock <= 0);
             }
 
             closeSuggestions();
@@ -1385,7 +1394,7 @@ if (saleForm) {
                     <span></span>
                 `;
                 button.querySelector('strong').textContent = product.label || '';
-                button.querySelector('span').textContent = `${product.category ? `${product.category} / ` : ''}Stock ${product.stock ?? 0} / Sell ${money(Number.parseFloat(product.price || '0'))}`;
+                button.querySelector('span').textContent = `${product.category ? `${product.category} / ` : ''}Stock ${product.unlimited === true ? 'Unlimited' : product.stock ?? 0} / Sell ${money(Number.parseFloat(product.price || '0'))}`;
                 button.addEventListener('mousedown', (event) => event.preventDefault());
                 button.addEventListener('click', () => selectProduct(product));
                 suggestions.appendChild(button);
@@ -1563,6 +1572,7 @@ if (saleForm) {
             if (productHidden) {
                 productHidden.dataset.custom = '1';
                 productHidden.dataset.stock = '0';
+                productHidden.dataset.unlimited = '0';
                 productHidden.dataset.cost = customCostHidden?.value || productHidden.dataset.cost || '0';
             }
 

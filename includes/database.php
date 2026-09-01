@@ -111,6 +111,7 @@ function app_database_ready(PDO $pdo): bool
         && app_column_exists($pdo, 'login_attempts', 'ip_address')
         && app_column_exists($pdo, 'login_attempts', 'was_success')
         && app_column_exists($pdo, 'products', 'item_tracking')
+        && app_column_exists($pdo, 'products', 'unlimited_stock')
         && app_column_exists($pdo, 'purchase_items', 'warranty_months')
         && app_column_exists($pdo, 'sale_items', 'item_name')
         && app_column_exists($pdo, 'sale_items', 'warranty_months')
@@ -327,6 +328,7 @@ CREATE TABLE IF NOT EXISTS products (
     wholesale_price DECIMAL(12,2) NOT NULL DEFAULT 0.00,
     warranty_months INT UNSIGNED NOT NULL DEFAULT 0,
     item_tracking TINYINT(1) NOT NULL DEFAULT 0,
+    unlimited_stock TINYINT(1) NOT NULL DEFAULT 0,
     reorder_level INT UNSIGNED NULL DEFAULT NULL,
     current_stock INT NOT NULL DEFAULT 0,
     status VARCHAR(20) NOT NULL DEFAULT 'active',
@@ -680,6 +682,7 @@ function app_add_missing_columns(PDO $pdo): void
             'wholesale_price' => 'DECIMAL(12,2) NOT NULL DEFAULT 0.00',
             'warranty_months' => 'INT UNSIGNED NOT NULL DEFAULT 0',
             'item_tracking' => 'TINYINT(1) NOT NULL DEFAULT 0',
+            'unlimited_stock' => 'TINYINT(1) NOT NULL DEFAULT 0',
             'reorder_level' => 'INT UNSIGNED NULL DEFAULT NULL',
             'current_stock' => 'INT NOT NULL DEFAULT 0',
             'status' => 'VARCHAR(20) NOT NULL DEFAULT \'active\'',

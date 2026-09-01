@@ -19,7 +19,7 @@
     --shadow: 0 20px 50px rgba(0, 0, 0, .28);
     --action-blue-bg: #2c527d;
     --action-blue-border: #262a2f;
-    --action-blue-shadow: inset 0 1px rgba(255, 255, 255, .08), 0 6px 16px rgba(25, 54, 93, .18);
+    --action-blue-shadow: none;
     --panel-blue-bg: #22262b;
     --panel-blue-border: #24282d;
 }
@@ -27,12 +27,12 @@
 body.theme-dark {
     --action-blue-bg: #2c527d;
     --action-blue-border: #262a2f;
-    --action-blue-shadow: inset 0 1px rgba(255, 255, 255, .08), 0 6px 16px rgba(25, 54, 93, .18);
+    --action-blue-shadow: none;
 }
 
 body.theme-light {
     color-scheme: light;
-    --bg: #f8fbff;
+    --bg: #f5f5f5;
     --surface: #ffffff;
     --surface-2: #f3f7fd;
     --surface-3: #e8f1ff;
@@ -49,9 +49,9 @@ body.theme-light {
     --shadow: 0 16px 38px rgba(15, 23, 42, .08);
     --action-blue-bg: #3b86eb;
     --action-blue-border: rgba(47, 128, 237, .34);
-    --action-blue-shadow: 0 8px 18px rgba(20, 103, 223, .16);
-    --panel-blue-bg: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
-    --panel-blue-border: #dfe8f3;
+    --action-blue-shadow: none;
+    --panel-blue-bg: #ffffff;
+    --panel-blue-border: #0000001a;
 }
 
 * {
@@ -67,10 +67,7 @@ body {
 }
 
 body.theme-light {
-    background:
-        linear-gradient(90deg, rgba(248, 251, 255, .98), rgba(255, 255, 255, .94)),
-        radial-gradient(circle at top left, rgba(11, 116, 240, .10), transparent 32%),
-        #f8fbff;
+    background: #f5f5f5;
 }
 
 button,
@@ -713,7 +710,6 @@ body.theme-light .theme-toggle-moon {
     border: 1px solid var(--panel-blue-border);
     border-radius: 8px;
     background: var(--panel-blue-bg);
-    box-shadow: var(--shadow);
     padding: 24px;
 }
 
@@ -884,7 +880,6 @@ h2 {
     border: 1px solid var(--panel-blue-border);
     border-radius: 8px;
     background: var(--panel-blue-bg);
-    box-shadow: var(--shadow);
 }
 
 .stat-card {
@@ -3738,7 +3733,7 @@ body.theme-light .sidebar {
 body.theme-light .nav-link:not(.active),
 body.theme-light .nav-dropdown-toggle,
 body.theme-light .nav-side-action:not(.active) {
-    color: #5f6f84;
+    color: #102033;
 }
 
 body.theme-light .nav-link:not(.active):hover,
@@ -3746,7 +3741,12 @@ body.theme-light .nav-dropdown-toggle:hover,
 body.theme-light .nav-dropdown.open > .nav-dropdown-toggle,
 body.theme-light .nav-side-action:not(.active):hover {
     background: #eef4fb;
-    color: #1f5f91;
+    color: #102033;
+}
+
+body.theme-light .nav-link.active,
+body.theme-light .nav-side-action.active {
+    color: #ffffff;
 }
 
 body.theme-light .nav-link.disabled {

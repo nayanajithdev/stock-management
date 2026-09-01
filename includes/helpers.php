@@ -274,7 +274,7 @@ function app_lot_unit_cost_sql(string $movementAlias = 'sm', string $costAlias =
 function app_stock_values_by_product(PDO $pdo, array $productIds = []): array
 {
     $productIds = array_values(array_unique(array_filter(array_map('intval', $productIds), static fn (int $id): bool => $id > 0)));
-    $productSql = 'SELECT id, current_stock, cost_price FROM products WHERE status = "active"';
+    $productSql = 'SELECT id, current_stock, cost_price FROM products WHERE status = "active" AND unlimited_stock = 0';
 
     if ($productIds !== []) {
         $productSql .= ' AND id IN (' . implode(',', $productIds) . ')';

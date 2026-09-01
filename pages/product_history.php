@@ -102,7 +102,7 @@ if ($dbReady && $pdo !== null && $productId > 0) {
                 <span><?php echo e($product['sku']); ?></span>
                 <span><?php echo e($product['brand_name'] ?: 'No brand'); ?></span>
                 <span><?php echo e($product['category_name'] ?: 'Uncategorized'); ?></span>
-                <span>Current stock: <?php echo (int) $product['current_stock']; ?></span>
+                <span>Current stock: <?php echo (int) ($product['unlimited_stock'] ?? 0) === 1 ? 'Unlimited' : (int) $product['current_stock']; ?></span>
                 <span>Stock in: <?php echo (int) $summary['stock_in']; ?></span>
                 <span>Stock out: <?php echo (int) $summary['stock_out']; ?></span>
             </div>

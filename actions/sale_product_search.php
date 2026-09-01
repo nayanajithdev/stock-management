@@ -20,7 +20,7 @@ if (str_starts_with($query, '@')) {
     $categoryQuery = trim(mb_substr($query, 1));
     $categoryWhere = 'c.is_active = 1
                       AND p.status = "active"
-                      AND p.current_stock > 0';
+                      AND (p.current_stock > 0 OR p.unlimited_stock = 1)';
     $categoryParams = [];
 
     if ($categoryQuery !== '') {
@@ -78,7 +78,7 @@ $search = '%' . $query . '%';
 $prefix = $query . '%';
 $where = [
     'p.status = "active"',
-    'p.current_stock > 0',
+    '(p.current_stock > 0 OR p.unlimited_stock = 1)',
 ];
 $params = [];
 
@@ -124,6 +124,7 @@ $statement = $pdo->prepare(
             p.name,
             p.model,
             p.current_stock,
+            p.unlimited_stock,
             p.cost_price,
             p.selling_price,
             p.warranty_months,
@@ -155,6 +156,7 @@ foreach ($statement->fetchAll() as $product) {
         'model' => $model,
         'category' => (string) ($product['category_name'] ?? ''),
         'stock' => (int) $product['current_stock'],
+        'unlimited' => (int) ($product['unlimited_stock'] ?? 0) === 1,
         'cost' => $canViewProductCost ? (float) $product['cost_price'] : null,
         'cost_hidden' => ! $canViewProductCost,
         'price' => (float) $product['selling_price'],

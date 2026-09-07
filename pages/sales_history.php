@@ -215,6 +215,9 @@ $hasFilters = $saleSearch !== '' || $statusFilter !== 'all' || $startDate !== ''
                                 <a class="icon-button" href="<?php echo e(app_url('?page=sale-view&id=' . (int) $sale['id'])); ?>" aria-label="View invoice">
                                     <i data-lucide="file-text"></i>
                                 </a>
+                                <a class="icon-button" href="<?php echo e(app_url('?page=sales&edit=' . (int) $sale['id'])); ?>" aria-label="Edit invoice">
+                                    <i data-lucide="pencil"></i>
+                                </a>
                             </td>
                         </tr>
                     <?php endforeach; ?>

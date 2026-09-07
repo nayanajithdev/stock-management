@@ -3,17 +3,23 @@
 /** @var bool $dbReady */
 /** @var ?array $currentUser */
 
-$saleOldInput = sales_form_pull_old_input($dbReady && $pdo instanceof PDO ? $pdo : null);
+$saleEditId = max(0, (int) ($_GET['edit'] ?? 0));
+$saleOldInput = sales_form_pull_old_input($dbReady && $pdo instanceof PDO ? $pdo : null, $saleEditId);
 $saleRows = $saleOldInput['rows'] ?? [[]];
+$isEditingSale = $saleEditId > 0 && (int) ($saleOldInput['sale_id'] ?? 0) === $saleEditId;
+$saleEditMissing = $saleEditId > 0 && ! $isEditingSale;
 $canChangeSaleDate = $dbReady && $pdo instanceof PDO && auth_user_has_permission($pdo, $currentUser ?? null, 'sale_date_change');
-$saleDateValue = $canChangeSaleDate
+$saleDateValue = $canChangeSaleDate || $isEditingSale
     ? (string) ($saleOldInput['sale_date'] ?? date('Y-m-d\TH:i'))
     : date('Y-m-d\TH:i');
 ?>
 
 <div class="page-heading">
     <div>
-        <h1>Sales</h1>
+        <h1><?php echo $isEditingSale ? 'Edit Invoice' : 'Sales'; ?></h1>
+        <?php if ($isEditingSale): ?>
+            <p class="table-subtitle"><?php echo e($saleOldInput['invoice_no'] ?? ''); ?></p>
+        <?php endif; ?>
     </div>
     <a class="top-action" href="<?php echo e(app_url('?page=sales-history')); ?>">
         <i data-lucide="file-text"></i>
@@ -26,16 +32,25 @@ $saleDateValue = $canChangeSaleDate
         <div class="panel-header">
             <div>
                 <p class="panel-label">Checkout</p>
-                <h2>Create invoice</h2>
+                <h2><?php echo $isEditingSale ? 'Edit invoice' : 'Create invoice'; ?></h2>
             </div>
             <a class="muted-link" href="<?php echo e(app_url('?page=products')); ?>">Manage products</a>
         </div>
 
         <?php if (! $dbReady): ?>
             <p class="empty-state">Import <code>database/schema.sql</code> before selling.</p>
+        <?php elseif ($saleEditMissing): ?>
+            <p class="empty-state">Invoice was not found.</p>
+            <a class="top-action inline-action" href="<?php echo e(app_url('?page=sales-history')); ?>">
+                <i data-lucide="arrow-left"></i>
+                Back to Sales History
+            </a>
         <?php else: ?>
             <form class="sale-form" method="post" action="<?php echo e(app_url('actions/sale_save.php')); ?>" data-sale-form data-sale-product-search-url="<?php echo e(app_url('actions/sale_product_search.php')); ?>" data-sale-customer-search-url="<?php echo e(app_url('actions/customer_search.php')); ?>" <?php echo $saleOldInput !== [] ? 'data-sale-preserve-paid="1"' : ''; ?>>
                 <?php echo csrf_field(); ?>
+                <?php if ($isEditingSale): ?>
+                    <input type="hidden" name="sale_id" value="<?php echo (int) $saleEditId; ?>">
+                <?php endif; ?>
 
                 <div class="sale-meta">
                     <div class="field product-picker" data-sale-customer-picker>
@@ -119,13 +134,16 @@ $saleDateValue = $canChangeSaleDate
                 </div>
 
                 <div class="form-actions">
+                    <?php if ($isEditingSale): ?>
+                        <a class="ghost-button" href="<?php echo e(app_url('?page=sale-view&id=' . (int) $saleEditId)); ?>">Cancel</a>
+                    <?php endif; ?>
                     <button class="top-action" type="submit" name="after_save" value="print">
                         <i data-lucide="printer"></i>
-                        Save and Print
+                        <?php echo $isEditingSale ? 'Update and Print' : 'Save and Print'; ?>
                     </button>
                     <button class="top-action" type="submit" name="after_save" value="stay">
                         <i data-lucide="save"></i>
-                        Save Invoice
+                        <?php echo $isEditingSale ? 'Update Invoice' : 'Save Invoice'; ?>
                     </button>
                 </div>
             </form>
@@ -139,16 +157,24 @@ $saleDateValue = $canChangeSaleDate
 </section>
 
 <?php
-function sales_form_pull_old_input(?PDO $pdo): array
+function sales_form_pull_old_input(?PDO $pdo, int $saleEditId = 0): array
 {
     $oldInput = $_SESSION['sale_form_old'] ?? null;
     unset($_SESSION['sale_form_old']);
 
-    if (! is_array($oldInput)) {
-        return [];
+    if (is_array($oldInput)) {
+        $oldSaleId = max(0, (int) ($oldInput['sale_id'] ?? 0));
+
+        if (($saleEditId > 0 && $oldSaleId === $saleEditId) || ($saleEditId <= 0 && $oldSaleId <= 0)) {
+            return sales_form_normalize_old_input($oldInput, $pdo);
+        }
     }
 
-    return sales_form_normalize_old_input($oldInput, $pdo);
+    if ($saleEditId > 0 && $pdo instanceof PDO) {
+        return sales_form_fetch_invoice_input($pdo, $saleEditId);
+    }
+
+    return [];
 }
 
 function sales_form_normalize_old_input(array $oldInput, ?PDO $pdo): array
@@ -171,6 +197,8 @@ function sales_form_normalize_old_input(array $oldInput, ?PDO $pdo): array
     $rows = sales_form_normalize_old_rows($oldInput, $pdo);
 
     return [
+        'sale_id' => max(0, (int) ($oldInput['sale_id'] ?? 0)),
+        'invoice_no' => trim((string) ($oldInput['invoice_no'] ?? '')),
         'customer_id' => $customerId,
         'customer_name' => $customerName,
         'customer_phone' => $customerPhone,
@@ -185,6 +213,7 @@ function sales_form_normalize_old_input(array $oldInput, ?PDO $pdo): array
 
 function sales_form_normalize_old_rows(array $oldInput, ?PDO $pdo): array
 {
+    $saleItemIds = is_array($oldInput['sale_item_id'] ?? null) ? $oldInput['sale_item_id'] : [];
     $productIds = is_array($oldInput['product_id'] ?? null) ? $oldInput['product_id'] : [];
     $productSearches = is_array($oldInput['product_search'] ?? null) ? $oldInput['product_search'] : [];
     $quantities = is_array($oldInput['quantity'] ?? null) ? $oldInput['quantity'] : [];
@@ -193,34 +222,47 @@ function sales_form_normalize_old_rows(array $oldInput, ?PDO $pdo): array
     $customItemCosts = is_array($oldInput['custom_item_cost'] ?? null) ? $oldInput['custom_item_cost'] : [];
     $warrantyMonths = is_array($oldInput['warranty_months'] ?? null) ? $oldInput['warranty_months'] : [];
     $lineDiscounts = is_array($oldInput['line_discount'] ?? null) ? $oldInput['line_discount'] : [];
+    $originalProductIds = is_array($oldInput['original_product_id'] ?? null) ? $oldInput['original_product_id'] : [];
+    $originalQuantities = is_array($oldInput['original_quantity'] ?? null) ? $oldInput['original_quantity'] : [];
     $productDetails = sales_form_product_details($productIds, $pdo);
-    $rowCount = max(count($productIds), count($productSearches), count($quantities), count($unitPrices), count($customItemNames), count($customItemCosts), count($warrantyMonths), count($lineDiscounts), 1);
+    $rowCount = max(count($saleItemIds), count($productIds), count($productSearches), count($quantities), count($unitPrices), count($customItemNames), count($customItemCosts), count($warrantyMonths), count($lineDiscounts), count($originalProductIds), count($originalQuantities), 1);
     $rows = [];
 
     for ($index = 0; $index < $rowCount; $index++) {
+        $saleItemId = max(0, (int) ($saleItemIds[$index] ?? 0));
         $productId = max(0, (int) ($productIds[$index] ?? 0));
         $product = $productDetails[$productId] ?? null;
         $productSearch = trim((string) ($productSearches[$index] ?? ''));
         $customItemName = substr(trim((string) ($customItemNames[$index] ?? '')), 0, 180);
+        $quantity = max(1, (int) ($quantities[$index] ?? 1));
+        $originalProductId = max(0, (int) ($originalProductIds[$index] ?? 0));
+        $originalQuantity = max(0, (int) ($originalQuantities[$index] ?? 0));
+        $editableStock = is_array($product) ? (int) $product['stock'] : 0;
 
         if (is_array($product)) {
             $productSearch = $product['label'];
             $customItemName = '';
+            if ($saleItemId > 0 && $originalProductId === $productId) {
+                $editableStock += $originalQuantity;
+            }
         } elseif ($customItemName !== '') {
             $productId = 0;
             $productSearch = $customItemName;
         }
 
         $row = [
+            'sale_item_id' => $saleItemId > 0 ? (string) $saleItemId : '',
             'product_id' => $productId > 0 ? (string) $productId : '',
             'product_search' => $productSearch,
             'custom_item_name' => $customItemName,
-            'stock' => is_array($product) ? (string) $product['stock'] : '0',
+            'original_product_id' => $originalProductId > 0 ? (string) $originalProductId : '',
+            'original_quantity' => $originalQuantity > 0 ? (string) $originalQuantity : '',
+            'stock' => is_array($product) ? (string) $editableStock : '0',
             'unlimited_stock' => is_array($product) ? (int) $product['unlimited_stock'] : 0,
             'price' => sales_form_money_value($unitPrices[$index] ?? (is_array($product) ? $product['price'] : '0.00')),
             'cost' => is_array($product) ? sales_form_money_value($product['cost']) : sales_form_money_value($customItemCosts[$index] ?? '0.00'),
             'warranty_months' => max(0, (int) ($warrantyMonths[$index] ?? 0)),
-            'quantity' => max(1, (int) ($quantities[$index] ?? 1)),
+            'quantity' => $quantity,
             'line_discount' => sales_form_money_value($lineDiscounts[$index] ?? '0.00'),
         ];
 
@@ -234,6 +276,94 @@ function sales_form_normalize_old_rows(array $oldInput, ?PDO $pdo): array
     }
 
     return $rows;
+}
+
+function sales_form_fetch_invoice_input(PDO $pdo, int $saleId): array
+{
+    $saleStatement = $pdo->prepare(
+        'SELECT s.*,
+                c.name AS customer_name,
+                c.phone AS customer_phone
+         FROM sales s
+         LEFT JOIN customers c ON c.id = s.customer_id
+         WHERE s.id = :id
+         LIMIT 1'
+    );
+    $saleStatement->execute(['id' => $saleId]);
+    $sale = $saleStatement->fetch();
+
+    if (! is_array($sale)) {
+        return [];
+    }
+
+    $itemStatement = $pdo->prepare(
+        'SELECT si.*,
+                p.sku,
+                p.name AS product_name,
+                p.model,
+                p.current_stock,
+                p.unlimited_stock,
+                p.cost_price,
+                p.selling_price
+         FROM sale_items si
+         LEFT JOIN products p ON p.id = si.product_id
+         WHERE si.sale_id = :sale_id
+         ORDER BY si.id ASC'
+    );
+    $itemStatement->execute(['sale_id' => $saleId]);
+
+    $oldInput = [
+        'sale_id' => (string) $saleId,
+        'invoice_no' => (string) $sale['invoice_no'],
+        'customer_id' => (string) ($sale['customer_id'] ?? ''),
+        'customer_name' => (string) ($sale['customer_name'] ?? ''),
+        'customer_phone' => (string) ($sale['customer_phone'] ?? ''),
+        'sale_date' => date('Y-m-d\TH:i', strtotime((string) $sale['sale_date'])),
+        'payment_method' => (string) $sale['payment_method'],
+        'discount' => (string) $sale['discount'],
+        'tax' => (string) $sale['tax'],
+        'paid' => (string) $sale['paid'],
+        'sale_item_id' => [],
+        'product_id' => [],
+        'product_search' => [],
+        'custom_item_name' => [],
+        'custom_item_cost' => [],
+        'quantity' => [],
+        'unit_price' => [],
+        'warranty_months' => [],
+        'line_discount' => [],
+        'original_product_id' => [],
+        'original_quantity' => [],
+    ];
+
+    foreach ($itemStatement->fetchAll() as $item) {
+        $productId = $item['product_id'] !== null ? (int) $item['product_id'] : 0;
+        $itemName = trim((string) ($item['item_name'] ?? ''));
+        $productLabel = '';
+
+        if ($productId > 0) {
+            $productLabel = trim((string) ($item['sku'] ?? '') . ' - ' . (string) ($item['product_name'] ?? ''), ' -');
+            $model = trim((string) ($item['model'] ?? ''));
+
+            if ($model !== '') {
+                $productLabel .= ' (' . $model . ')';
+            }
+        }
+
+        $oldInput['sale_item_id'][] = (string) $item['id'];
+        $oldInput['product_id'][] = $productId > 0 ? (string) $productId : '';
+        $oldInput['product_search'][] = $productId > 0 ? $productLabel : $itemName;
+        $oldInput['custom_item_name'][] = $productId > 0 ? '' : $itemName;
+        $oldInput['custom_item_cost'][] = (string) $item['unit_cost'];
+        $oldInput['quantity'][] = (string) $item['quantity'];
+        $oldInput['unit_price'][] = (string) $item['unit_price'];
+        $oldInput['warranty_months'][] = (string) $item['warranty_months'];
+        $oldInput['line_discount'][] = (string) $item['discount'];
+        $oldInput['original_product_id'][] = $productId > 0 ? (string) $productId : '';
+        $oldInput['original_quantity'][] = $productId > 0 ? (string) $item['quantity'] : '';
+    }
+
+    return sales_form_normalize_old_input($oldInput, $pdo);
 }
 
 function sales_form_product_details(array $productIds, ?PDO $pdo): array
@@ -297,7 +427,10 @@ function sales_form_money_value(mixed $value): string
 
 function render_sale_row(array $row = []): void
 {
+    $saleItemId = (string) ($row['sale_item_id'] ?? '');
     $productId = (string) ($row['product_id'] ?? '');
+    $originalProductId = (string) ($row['original_product_id'] ?? '');
+    $originalQuantity = (string) ($row['original_quantity'] ?? '');
     $productSearch = (string) ($row['product_search'] ?? '');
     $customItemName = (string) ($row['custom_item_name'] ?? '');
     $isUnlimitedStock = (int) ($row['unlimited_stock'] ?? 0) === 1;
@@ -311,6 +444,9 @@ function render_sale_row(array $row = []): void
     <div class="sale-row" data-sale-row>
         <div class="field compact-field product-picker" data-sale-product-picker>
             <span>Product</span>
+            <input type="hidden" name="sale_item_id[]" value="<?php echo e($saleItemId); ?>">
+            <input type="hidden" name="original_product_id[]" value="<?php echo e($originalProductId); ?>">
+            <input type="hidden" name="original_quantity[]" value="<?php echo e($originalQuantity); ?>">
             <input type="hidden" name="product_id[]" value="<?php echo e($productId); ?>" data-stock="<?php echo e($stock); ?>" data-unlimited="<?php echo $isUnlimitedStock ? '1' : '0'; ?>" data-price="<?php echo e($price); ?>" data-cost="<?php echo e($cost); ?>" data-custom="<?php echo $customItemName !== '' ? '1' : '0'; ?>" data-sale-product required>
             <input type="hidden" name="custom_item_name[]" value="<?php echo e($customItemName); ?>" data-sale-custom-name>
             <input type="hidden" name="custom_item_cost[]" value="<?php echo e($cost); ?>" data-sale-custom-cost>

@@ -119,6 +119,10 @@ $balance = is_array($sale) ? sale_receivable_balance($sale['total'], $sale['paid
                 <i data-lucide="arrow-left"></i>
                 Sales
             </a>
+            <a class="top-action" href="<?php echo e(app_url('?page=sales&edit=' . (int) $sale['id'])); ?>">
+                <i data-lucide="pencil"></i>
+                Edit
+            </a>
             <button class="top-action" type="button" onclick="window.print()">
                 <i data-lucide="printer"></i>
                 Print

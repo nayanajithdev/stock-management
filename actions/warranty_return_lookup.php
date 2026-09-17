@@ -18,6 +18,7 @@ try {
     match ($type) {
         'invoices' => warranty_return_lookup_json(200, ['invoices' => warranty_return_lookup_invoices($pdo, (int) ($_GET['customer_id'] ?? 0))]),
         'items' => warranty_return_lookup_json(200, ['items' => warranty_return_lookup_items($pdo, (int) ($_GET['sale_id'] ?? 0))]),
+        'products' => warranty_return_lookup_json(200, ['products' => warranty_return_lookup_products($pdo, trim((string) ($_GET['q'] ?? '')))]),
         default => warranty_return_lookup_json(200, ['matches' => warranty_return_lookup_search($pdo, trim((string) ($_GET['q'] ?? '')))]),
     };
 } catch (Throwable) {
@@ -32,62 +33,6 @@ function warranty_return_lookup_search(PDO $pdo, string $query): array
 
     $search = '%' . $query . '%';
     $prefix = $query . '%';
-    $matches = [];
-
-    $customerStatement = $pdo->prepare(
-        'SELECT c.id,
-                c.name,
-                c.phone,
-                c.email,
-                COUNT(DISTINCT s.id) AS invoice_count,
-                COALESCE(SUM(si.quantity - COALESCE(r.returned_quantity, 0) - COALESCE(w.claimed_quantity, 0)), 0) AS available_units
-         FROM customers c
-         INNER JOIN sales s ON s.customer_id = c.id
-         INNER JOIN sale_items si ON si.sale_id = s.id AND si.product_id IS NOT NULL
-         LEFT JOIN (
-            SELECT sale_item_id, COALESCE(SUM(quantity), 0) AS returned_quantity
-            FROM sales_return_items
-            GROUP BY sale_item_id
-         ) r ON r.sale_item_id = si.id
-         LEFT JOIN (
-            SELECT sale_item_id, COUNT(*) AS claimed_quantity
-            FROM warranty_claims
-            WHERE sale_item_id IS NOT NULL
-              AND status <> "rejected"
-            GROUP BY sale_item_id
-         ) w ON w.sale_item_id = si.id
-         WHERE c.is_active = 1
-           AND (c.name LIKE :search OR c.phone LIKE :search OR c.email LIKE :search)
-         GROUP BY c.id
-         HAVING available_units > 0
-         ORDER BY
-            CASE
-                WHEN c.phone = :exact OR c.email = :exact THEN 0
-                WHEN c.name LIKE :prefix OR c.phone LIKE :prefix THEN 1
-                ELSE 2
-            END,
-            c.name ASC
-         LIMIT 8'
-    );
-    $customerStatement->execute([
-        'search' => $search,
-        'exact' => $query,
-        'prefix' => $prefix,
-    ]);
-
-    foreach ($customerStatement->fetchAll() as $customer) {
-        $phone = trim((string) ($customer['phone'] ?? ''));
-        $matches[] = [
-            'type' => 'customer',
-            'id' => (int) $customer['id'],
-            'label' => (string) $customer['name'],
-            'meta' => trim($phone . ' / ' . (int) $customer['invoice_count'] . ' invoice(s) / ' . (int) $customer['available_units'] . ' item(s)', ' /'),
-        ];
-    }
-
-    if (! warranty_return_lookup_should_search_invoices($query)) {
-        return $matches;
-    }
 
     $invoiceStatement = $pdo->prepare(
         'SELECT s.id AS sale_id,
@@ -113,30 +58,36 @@ function warranty_return_lookup_search(PDO $pdo, string $query): array
               AND status <> "rejected"
             GROUP BY sale_item_id
          ) w ON w.sale_item_id = si.id
-         WHERE s.invoice_no LIKE :search
+         WHERE s.invoice_no LIKE :invoice_search
+            OR c.name LIKE :name_search
+            OR c.phone LIKE :phone_search
+            OR c.email LIKE :email_search
          GROUP BY s.id
          HAVING available_units > 0
          ORDER BY
-            CASE WHEN s.invoice_no LIKE :prefix THEN 0 ELSE 1 END,
+            CASE
+                WHEN s.invoice_no = :invoice_exact OR c.phone = :phone_exact OR c.email = :email_exact THEN 0
+                WHEN s.invoice_no LIKE :invoice_prefix OR c.name LIKE :name_prefix OR c.phone LIKE :phone_prefix THEN 1
+                ELSE 2
+            END,
             s.sale_date DESC,
             s.id DESC
          LIMIT 8'
     );
     $invoiceStatement->execute([
-        'search' => $search,
-        'prefix' => $prefix,
+        'invoice_search' => $search,
+        'name_search' => $search,
+        'phone_search' => $search,
+        'email_search' => $search,
+        'invoice_exact' => $query,
+        'phone_exact' => $query,
+        'email_exact' => $query,
+        'invoice_prefix' => $prefix,
+        'name_prefix' => $prefix,
+        'phone_prefix' => $prefix,
     ]);
 
-    foreach ($invoiceStatement->fetchAll() as $invoice) {
-        $matches[] = warranty_return_lookup_invoice_payload($invoice);
-    }
-
-    return $matches;
-}
-
-function warranty_return_lookup_should_search_invoices(string $query): bool
-{
-    return preg_match('/^INV[\w-]*/i', trim($query)) === 1;
+    return array_map('warranty_return_lookup_invoice_payload', $invoiceStatement->fetchAll());
 }
 
 function warranty_return_lookup_invoices(PDO $pdo, int $customerId): array
@@ -200,6 +151,7 @@ function warranty_return_lookup_items(PDO $pdo, int $saleId): array
                 p.name AS product_name,
                 p.model,
                 p.current_stock,
+                p.unlimited_stock,
                 si.warranty_months,
                 COALESCE(r.returned_quantity, 0) AS returned_quantity,
                 COALESCE(w.claimed_quantity, 0) AS claimed_quantity,
@@ -238,6 +190,7 @@ function warranty_return_lookup_items(PDO $pdo, int $saleId): array
 
         $items[] = [
             'sale_item_id' => (int) $item['sale_item_id'],
+            'product_id' => (int) $item['product_id'],
             'label' => (string) $item['sku'] . ' - ' . (string) $item['product_name'],
             'sku' => (string) $item['sku'],
             'product' => (string) $item['product_name'],
@@ -247,6 +200,7 @@ function warranty_return_lookup_items(PDO $pdo, int $saleId): array
             'claimed' => (int) $item['claimed_quantity'],
             'available' => (int) $item['available_quantity'],
             'stock' => (int) $item['current_stock'],
+            'unlimited' => (int) ($item['unlimited_stock'] ?? 0) === 1,
             'price' => number_format(warranty_return_lookup_net_unit_price($item), 2, '.', ''),
             'warranty_months' => (int) $item['warranty_months'],
             'warranty_until' => $warrantyUntil,
@@ -255,6 +209,74 @@ function warranty_return_lookup_items(PDO $pdo, int $saleId): array
     }
 
     return $items;
+}
+
+function warranty_return_lookup_products(PDO $pdo, string $query): array
+{
+    if (mb_strlen($query) < 2) {
+        return [];
+    }
+
+    $search = '%' . $query . '%';
+    $prefix = $query . '%';
+    $statement = $pdo->prepare(
+        'SELECT p.id,
+                p.sku,
+                p.barcode,
+                p.name,
+                p.model,
+                p.current_stock,
+                p.unlimited_stock,
+                p.selling_price,
+                p.warranty_months
+         FROM products p
+         WHERE p.status = "active"
+           AND p.selling_price > 0
+           AND (p.current_stock > 0 OR p.unlimited_stock = 1)
+           AND (p.sku LIKE :sku_search
+                OR p.name LIKE :name_search
+                OR p.barcode LIKE :barcode_search
+                OR p.model LIKE :model_search)
+         ORDER BY CASE
+                    WHEN p.sku = :sku_exact OR p.barcode = :barcode_exact THEN 0
+                    WHEN p.sku LIKE :sku_prefix OR p.name LIKE :name_prefix THEN 1
+                    ELSE 2
+                  END,
+                  p.name ASC
+         LIMIT 12'
+    );
+    $statement->execute([
+        'sku_search' => $search,
+        'name_search' => $search,
+        'barcode_search' => $search,
+        'model_search' => $search,
+        'sku_exact' => $query,
+        'barcode_exact' => $query,
+        'sku_prefix' => $prefix,
+        'name_prefix' => $prefix,
+    ]);
+
+    $products = [];
+
+    foreach ($statement->fetchAll() as $product) {
+        $model = trim((string) ($product['model'] ?? ''));
+        $label = (string) $product['sku'] . ' - ' . (string) $product['name'];
+
+        if ($model !== '') {
+            $label .= ' (' . $model . ')';
+        }
+
+        $products[] = [
+            'id' => (int) $product['id'],
+            'label' => $label,
+            'stock' => (int) $product['current_stock'],
+            'unlimited' => (int) $product['unlimited_stock'] === 1,
+            'price' => number_format((float) $product['selling_price'], 2, '.', ''),
+            'warranty' => (int) $product['warranty_months'],
+        ];
+    }
+
+    return $products;
 }
 
 function warranty_return_lookup_net_unit_price(array $item): float

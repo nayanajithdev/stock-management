@@ -325,13 +325,16 @@ if ($dbReady && $pdo !== null) {
                             <td><?php echo e(ucfirst((string) $sale['payment_method'])); ?></td>
                             <td><span class="status <?php echo e(credit_status_class((string) $sale['status'], $balance)); ?>"><?php echo e($balance > 0 ? ucfirst((string) $sale['status']) : 'Closed'); ?></span></td>
                             <td>
-                                <?php if ($balance > 0): ?>
-                                    <a class="icon-button" href="<?php echo e(app_url('?page=credit-sales&collect=' . (int) $sale['id'] . '#payment-collection-form')); ?>" aria-label="Collect payment">
-                                        <i data-lucide="circle-dollar-sign"></i>
+                                <div class="table-actions">
+                                    <a class="icon-button" href="<?php echo e(app_url('?page=sale-view&id=' . (int) $sale['id'])); ?>" aria-label="View invoice">
+                                        <i data-lucide="eye"></i>
                                     </a>
-                                <?php else: ?>
-                                    <span class="muted-link">Closed</span>
-                                <?php endif; ?>
+                                    <?php if ($balance > 0): ?>
+                                        <a class="icon-button" href="<?php echo e(app_url('?page=credit-sales&collect=' . (int) $sale['id'] . '#payment-collection-form')); ?>" aria-label="Collect payment">
+                                            <i data-lucide="circle-dollar-sign"></i>
+                                        </a>
+                                    <?php endif; ?>
+                                </div>
                             </td>
                         </tr>
                     <?php endforeach; ?>
@@ -422,9 +425,14 @@ if ($dbReady && $pdo !== null) {
                             <td class="text-good"><?php echo e(format_money($payment['amount'])); ?></td>
                             <td><?php echo e($payment['notes'] ?? ''); ?></td>
                             <td>
-                                <a class="icon-button" href="<?php echo e(app_url('?page=payment-receipt&id=' . (int) $payment['id'])); ?>" aria-label="View payment receipt">
-                                    <i data-lucide="receipt-text"></i>
-                                </a>
+                                <div class="table-actions">
+                                    <a class="icon-button" href="<?php echo e(app_url('?page=sale-view&id=' . (int) $payment['sale_id'])); ?>" aria-label="View invoice">
+                                        <i data-lucide="eye"></i>
+                                    </a>
+                                    <a class="icon-button" href="<?php echo e(app_url('?page=payment-receipt&id=' . (int) $payment['id'])); ?>" aria-label="View payment receipt">
+                                        <i data-lucide="receipt-text"></i>
+                                    </a>
+                                </div>
                             </td>
                         </tr>
                     <?php endforeach; ?>

@@ -74,7 +74,9 @@ if ($dbReady && $pdo !== null) {
                 'day_start' => $activeStartDateTime,
                 'day_end' => $activeEndDateTime,
             ];
-            $salesSql = 'SELECT s.sale_date,
+            $salesSql = 'SELECT s.id AS sale_id,
+                                     s.invoice_no,
+                                     s.sale_date,
                                      p.sku,
                                      si.item_name,
                                      p.name AS product_name,
@@ -333,6 +335,7 @@ if ($dbReady && $pdo !== null) {
                     <thead>
                         <tr>
                             <th>Date</th>
+                            <th>Invoice</th>
                             <th>Item</th>
                             <th><?php echo report_sort_header('Qty', 'qty', $salesSort, $salesSortDir); ?></th>
                             <th><?php echo report_sort_header('Sell Price', 'sell_price', $salesSort, $salesSortDir); ?></th>
@@ -340,12 +343,13 @@ if ($dbReady && $pdo !== null) {
                             <th>Line Total</th>
                             <th>Total Cost</th>
                             <th><?php echo report_sort_header('Profit', 'profit', $salesSort, $salesSortDir); ?></th>
+                            <th>Action</th>
                         </tr>
                     </thead>
                     <tbody>
                         <?php if ($salesItems === []): ?>
                             <tr>
-                                <td colspan="8">No selling items found for the selected date<?php echo $reportTab === 'monthly-sales' ? ' range' : ''; ?>.</td>
+                                <td colspan="10">No selling items found for the selected date<?php echo $reportTab === 'monthly-sales' ? ' range' : ''; ?>.</td>
                             </tr>
                         <?php endif; ?>
 
@@ -359,6 +363,7 @@ if ($dbReady && $pdo !== null) {
                             ?>
                             <tr>
                                 <td><?php echo e(date('Y-m-d H:i', strtotime((string) $item['sale_date']))); ?></td>
+                                <td><?php echo e($item['invoice_no']); ?></td>
                                 <td>
                                     <strong class="table-title"><?php echo e($itemLabel); ?></strong>
                                     <?php if ($customItemName !== ''): ?>
@@ -373,6 +378,11 @@ if ($dbReady && $pdo !== null) {
                                 <td><?php echo e(format_money($item['line_total'])); ?></td>
                                 <td><?php echo e(format_money($item['total_cost'])); ?></td>
                                 <td class="<?php echo $profit >= 0 ? 'text-good' : 'text-danger'; ?>"><?php echo e(format_money($profit)); ?></td>
+                                <td>
+                                    <a class="icon-button" href="<?php echo e(app_url('?page=sale-view&id=' . (int) $item['sale_id'])); ?>" aria-label="View invoice">
+                                        <i data-lucide="eye"></i>
+                                    </a>
+                                </td>
                             </tr>
                         <?php endforeach; ?>
                     </tbody>

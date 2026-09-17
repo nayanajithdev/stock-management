@@ -60,6 +60,7 @@ try {
         'SELECT wc.*,
                 p.name AS product_name,
                 p.current_stock,
+                p.unlimited_stock,
                 p.cost_price
          FROM warranty_claims wc
          INNER JOIN products p ON p.id = wc.product_id
@@ -78,8 +79,10 @@ try {
     $customerReplacedAt = $claim['customer_replaced_at'] ?? null;
     $supplierReplacedAt = $claim['supplier_replaced_at'] ?? null;
     $stockNow = (int) $claim['current_stock'];
+    $unlimitedStock = (int) ($claim['unlimited_stock'] ?? 0) === 1;
     $productId = (int) $claim['product_id'];
     $productCost = (float) $claim['cost_price'];
+    $existingSupplierRefundAmount = (float) ($claim['supplier_refund_amount'] ?? 0);
     $now = date('Y-m-d H:i:s');
     $stockChanges = [];
 
@@ -89,7 +92,7 @@ try {
     }
 
     if ($supplierDecision === 'send_to_supplier') {
-        if (in_array($supplierReplacementStatus, ['received', 'none'], true)) {
+        if (in_array($supplierReplacementStatus, ['received', 'refunded', 'none'], true)) {
             throw new RuntimeException('Supplier handling is already finalized for this case.');
         }
 
@@ -98,8 +101,8 @@ try {
     }
 
     if ($supplierDecision === 'no_supplier_warranty') {
-        if ($supplierReplacementStatus === 'received') {
-            throw new RuntimeException('Supplier replacement was already received for this case.');
+        if (in_array($supplierReplacementStatus, ['received', 'refunded'], true)) {
+            throw new RuntimeException('Supplier recovery was already recorded for this case.');
         }
 
         if ($markSupplierReplacementReceived) {
@@ -112,29 +115,54 @@ try {
         $stockChanges[] = 'no supplier warranty';
     }
 
+    if ($supplierRefundAmount > 0) {
+        if ($supplierDecision !== '') {
+            throw new RuntimeException('Record the supplier refund separately from another supplier decision.');
+        }
+
+        if ($markSupplierReplacementReceived) {
+            throw new RuntimeException('Record either a supplier refund or a supplier replacement, not both.');
+        }
+
+        if (in_array($supplierReplacementStatus, ['received', 'none'], true)) {
+            throw new RuntimeException('Supplier recovery was already finalized for this case.');
+        }
+
+        $supplierReplacementStatus = 'refunded';
+        $supplierReplacedAt = $supplierReplacedAt ?: $now;
+
+        if ($existingSupplierRefundAmount !== $supplierRefundAmount) {
+            $stockChanges[] = 'supplier refund recorded';
+        }
+    } elseif ($supplierReplacementStatus === 'refunded') {
+        throw new RuntimeException('A finalized supplier refund cannot be removed. Update its amount instead.');
+    }
+
     if ($markSupplierReplacementReceived) {
         if ($supplierReplacementStatus === 'received') {
             throw new RuntimeException('Supplier replacement was already recorded for this case.');
         }
 
-        if ($supplierReplacementStatus === 'none') {
+        if (in_array($supplierReplacementStatus, ['refunded', 'none'], true)) {
             throw new RuntimeException('No supplier replacement is expected for this case.');
         }
 
-        $stockNow++;
-        warranty_return_update_product_stock($pdo, $productId, $stockNow);
-        warranty_return_insert_stock_movement(
-            $pdo,
-            $productId,
-            'warranty_supplier_in',
-            1,
-            $stockNow,
-            $productCost,
-            0,
-            $claimId,
-            'Supplier replacement received for ' . (string) $claim['claim_no'],
-            (int) ($currentUser['id'] ?? 0) ?: null
-        );
+        if (! $unlimitedStock) {
+            $stockNow++;
+            warranty_return_update_product_stock($pdo, $productId, $stockNow);
+            warranty_return_insert_stock_movement(
+                $pdo,
+                $productId,
+                'warranty_supplier_in',
+                1,
+                $stockNow,
+                $productCost,
+                0,
+                $claimId,
+                'Supplier replacement received for ' . (string) $claim['claim_no'],
+                (int) ($currentUser['id'] ?? 0) ?: null
+            );
+        }
         $supplierReplacementStatus = 'received';
         $supplierReplacedAt = $now;
         $stockChanges[] = 'supplier replacement received';
@@ -149,25 +177,27 @@ try {
             throw new RuntimeException('Customer was already refunded for this case.');
         }
 
-        if ($stockNow <= 0) {
+        if (! $unlimitedStock && $stockNow <= 0) {
             throw new RuntimeException('Not enough stock to issue a customer replacement.');
         }
 
-        $unitCost = warranty_return_fifo_unit_cost($pdo, $productId, 1, $productCost);
-        $stockNow--;
-        warranty_return_update_product_stock($pdo, $productId, $stockNow);
-        warranty_return_insert_stock_movement(
-            $pdo,
-            $productId,
-            'warranty_customer_out',
-            -1,
-            $stockNow,
-            $unitCost,
-            0,
-            $claimId,
-            'Customer replacement issued for ' . (string) $claim['claim_no'],
-            (int) ($currentUser['id'] ?? 0) ?: null
-        );
+        if (! $unlimitedStock) {
+            $unitCost = warranty_return_fifo_unit_cost($pdo, $productId, 1, $productCost);
+            $stockNow--;
+            warranty_return_update_product_stock($pdo, $productId, $stockNow);
+            warranty_return_insert_stock_movement(
+                $pdo,
+                $productId,
+                'warranty_customer_out',
+                -1,
+                $stockNow,
+                $unitCost,
+                0,
+                $claimId,
+                'Customer replacement issued for ' . (string) $claim['claim_no'],
+                (int) ($currentUser['id'] ?? 0) ?: null
+            );
+        }
         $customerReplacementStatus = 'issued';
         $customerReplacedAt = $now;
         $stockChanges[] = 'customer replacement issued';
@@ -175,14 +205,12 @@ try {
 
     if (! in_array($status, $finalStatuses, true)) {
         $customerDone = in_array($customerReplacementStatus, ['issued', 'refunded'], true);
-        $supplierDone = in_array($supplierReplacementStatus, ['received', 'none'], true);
+        $supplierDone = in_array($supplierReplacementStatus, ['received', 'refunded', 'none'], true);
 
         if ($customerDone && $supplierDone) {
             $status = 'resolved';
-        } elseif ($supplierReplacementStatus === 'received') {
+        } elseif (in_array($supplierReplacementStatus, ['received', 'refunded'], true)) {
             $status = 'ready_for_pickup';
-        } elseif ($customerDone && $status === 'received') {
-            $status = 'sent_to_supplier';
         }
     }
 

@@ -196,6 +196,11 @@ $pages = [
         'description' => 'View received stock and supplier purchase history',
         'view' => __DIR__ . '/../pages/purchase_history_current.php',
     ],
+    'purchase-view' => [
+        'title' => 'Purchase Invoice Details',
+        'description' => 'View supplier purchase invoice details and received items',
+        'view' => __DIR__ . '/../pages/purchase_view.php',
+    ],
     'supplier-credit' => [
         'title' => 'Supplier Credit',
         'description' => 'Track purchase balances and supplier payments',
@@ -230,6 +235,11 @@ $pages = [
         'title' => 'Warranty / Returns',
         'description' => 'Handle customer returns, warranty exchanges, supplier claims, and refunds',
         'view' => __DIR__ . '/../pages/warranty_returns.php',
+    ],
+    'recent-returns' => [
+        'title' => 'Recent Returns',
+        'description' => 'Review completed customer returns and refunds',
+        'view' => __DIR__ . '/../pages/recent_returns.php',
     ],
     'customers' => [
         'title' => 'Customers',

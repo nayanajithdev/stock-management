@@ -1185,6 +1185,46 @@ h2 {
     margin: 0;
 }
 
+.trend-metric-form {
+    display: flex;
+    position: relative;
+    align-items: center;
+    margin: 0;
+}
+
+.trend-metric-select {
+    box-sizing: border-box;
+    width: 132px;
+    height: 38px;
+    appearance: none;
+    -webkit-appearance: none;
+    border: 1px solid var(--input-border);
+    border-radius: 999px;
+    background: var(--bg);
+    color: var(--text);
+    color-scheme: dark;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 700;
+    line-height: 1;
+    outline: none;
+    padding: 0 34px 0 17px;
+}
+
+.trend-metric-chevron {
+    position: absolute;
+    right: 12px;
+    width: 16px;
+    height: 16px;
+    color: var(--muted);
+    pointer-events: none;
+}
+
+.trend-metric-select:focus {
+    border-color: rgba(14, 165, 233, .72);
+    box-shadow: 0 0 0 3px rgba(14, 165, 233, .14);
+}
+
 .trend-week-input {
     box-sizing: border-box;
     width: 150px;
@@ -1275,6 +1315,16 @@ h2 {
     transform: translateY(50%);
 }
 
+.dashboard-chart-zero-line {
+    position: absolute;
+    right: 0;
+    left: 0;
+    z-index: 1;
+    height: 1px;
+    background: rgba(248, 113, 113, .55);
+    pointer-events: none;
+}
+
 .dashboard-chart-average-line::after {
     content: attr(data-chart-label) "\A" attr(data-chart-value);
     position: absolute;
@@ -1316,10 +1366,8 @@ h2 {
 }
 
 .dashboard-chart-bar {
-    display: flex;
     position: relative;
     align-self: stretch;
-    align-items: end;
     min-width: 0;
     height: 100%;
     cursor: help;
@@ -1327,7 +1375,7 @@ h2 {
 }
 
 .dashboard-chart-fill {
-    position: relative;
+    position: absolute;
     display: block;
     width: 100%;
     min-height: 3px;
@@ -1336,9 +1384,19 @@ h2 {
     pointer-events: none;
 }
 
+.dashboard-chart-fill.is-negative {
+    border-radius: 0 0 2px 2px;
+    background: rgba(248, 113, 113, .42);
+}
+
 .dashboard-chart-bar:hover .dashboard-chart-fill,
 .dashboard-chart-bar:focus-visible .dashboard-chart-fill {
     background: var(--accent-2);
+}
+
+.dashboard-chart-bar:hover .dashboard-chart-fill.is-negative,
+.dashboard-chart-bar:focus-visible .dashboard-chart-fill.is-negative {
+    background: #f87171;
 }
 
 .dashboard-chart-tooltip {
@@ -2016,6 +2074,35 @@ input[readonly][aria-readonly="true"] {
     font-size: 12px;
 }
 
+.claim-current-state {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 8px;
+}
+
+.claim-current-state[hidden] {
+    display: none;
+}
+
+.claim-current-state span {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    min-height: 26px;
+    border: 1px solid rgba(255, 255, 255, .08);
+    border-radius: 999px;
+    background: rgba(0, 0, 0, .12);
+    color: var(--muted);
+    padding: 3px 9px;
+    font-size: 11px;
+}
+
+.claim-current-state strong {
+    color: var(--text);
+    font-size: 11px;
+}
+
 .service-wizard {
     display: grid;
     gap: 18px;
@@ -2056,9 +2143,175 @@ input[readonly][aria-readonly="true"] {
     font-weight: 800;
 }
 
+.warranty-service-panel {
+    width: 100%;
+}
+
+.service-step-body {
+    display: grid;
+    gap: 14px;
+    padding-left: 38px;
+}
+
+.service-invoice-search[hidden],
+.service-selected-invoice[hidden],
+.service-items-table-wrap[hidden] {
+    display: none;
+}
+
+.service-invoice-search input {
+    min-height: 44px;
+}
+
+.service-search-results {
+    max-height: 320px;
+}
+
+.service-invoice-result {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 16px;
+    padding: 11px 12px;
+}
+
+.service-invoice-result > span {
+    display: grid;
+    gap: 3px;
+    min-width: 0;
+}
+
+.service-invoice-result small {
+    overflow: hidden;
+    color: var(--muted);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.service-invoice-result b {
+    color: var(--text);
+    font-size: 13px;
+    text-align: right;
+    white-space: nowrap;
+}
+
+.service-selected-invoice {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    border: 1px solid rgba(14, 165, 233, .42);
+    border-radius: 8px;
+    background: rgba(14, 165, 233, .1);
+    padding: 13px 16px;
+}
+
+.service-selected-invoice > div {
+    display: grid;
+    gap: 4px;
+    min-width: 0;
+}
+
+.service-selected-invoice strong {
+    overflow: hidden;
+    color: var(--text);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.service-selected-invoice span {
+    color: var(--muted);
+    font-size: 12px;
+}
+
+.service-change-invoice {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 7px;
+    border: 0;
+    background: transparent;
+    color: var(--accent);
+    padding: 6px 0 6px 10px;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.service-change-invoice svg {
+    width: 15px;
+    height: 15px;
+}
+
+.service-items-table-wrap {
+    overflow: auto;
+    border: 1px solid rgba(255, 255, 255, .08);
+    border-radius: 8px;
+}
+
+.service-items-table {
+    width: 100%;
+    min-width: 620px;
+    border-collapse: collapse;
+}
+
+.service-items-table th,
+.service-items-table td {
+    padding: 11px 12px;
+}
+
+.service-items-table th:first-child,
+.service-items-table td:first-child {
+    width: 44px;
+    padding-right: 0;
+    text-align: center;
+}
+
+.service-items-table th:nth-child(n + 3),
+.service-items-table td:nth-child(n + 3) {
+    text-align: right;
+    white-space: nowrap;
+}
+
+.service-item-row {
+    cursor: pointer;
+    transition: background-color .16s ease;
+}
+
+.service-item-row:hover,
+.service-item-row.is-selected {
+    background: rgba(14, 165, 233, .1);
+}
+
+.service-item-row input {
+    width: 16px;
+    height: 16px;
+    accent-color: var(--accent);
+}
+
+.service-item-row td:nth-child(2) {
+    display: grid;
+    gap: 3px;
+}
+
+.service-item-row td:nth-child(2) strong {
+    color: var(--text);
+}
+
+.service-item-row td:nth-child(2) span {
+    color: var(--muted);
+    font-size: 12px;
+}
+
+.service-items-empty {
+    color: var(--muted);
+    padding: 24px 12px !important;
+    text-align: center !important;
+}
+
 .service-outcome-group {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
     gap: 10px;
 }
 
@@ -2068,6 +2321,49 @@ input[readonly][aria-readonly="true"] {
 
 [data-service-refund-fields][hidden] {
     display: none !important;
+}
+
+.service-exchange-fields {
+    display: grid;
+    gap: 12px;
+    border: 1px solid rgba(14, 165, 233, .3);
+    border-radius: 8px;
+    background: rgba(14, 165, 233, .06);
+    padding: 14px;
+}
+
+.service-exchange-fields[hidden] {
+    display: none;
+}
+
+.service-exchange-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.5fr) minmax(180px, .5fr);
+    gap: 14px;
+}
+
+.service-exchange-summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    border-top: 1px solid rgba(255, 255, 255, .08);
+    padding-top: 12px;
+}
+
+.service-exchange-summary[hidden] {
+    display: none;
+}
+
+.service-exchange-summary span {
+    color: var(--muted);
+    font-size: 12px;
+}
+
+.service-exchange-summary strong {
+    flex: 0 0 auto;
+    color: var(--accent-2);
+    font-size: 13px;
 }
 
 .service-outcome-card {
@@ -3965,11 +4261,36 @@ body.theme-light .replacement-option,
 body.theme-light .claim-stock-action,
 body.theme-light .claim-stock-actions,
 body.theme-light .service-outcome-card,
+body.theme-light .service-items-table-wrap,
 body.theme-light .security-note,
 body.theme-light .backup-info-box,
 body.theme-light .settings-receipt {
     border-color: rgba(15, 23, 42, .08);
     background: rgba(255, 255, 255, .72);
+}
+
+body.theme-light .service-selected-invoice {
+    border-color: rgba(11, 116, 240, .32);
+    background: rgba(11, 116, 240, .07);
+}
+
+body.theme-light .service-exchange-fields {
+    border-color: rgba(11, 116, 240, .24);
+    background: rgba(11, 116, 240, .04);
+}
+
+body.theme-light .service-exchange-summary {
+    border-top-color: rgba(15, 23, 42, .08);
+}
+
+body.theme-light .claim-current-state span {
+    border-color: rgba(15, 23, 42, .08);
+    background: rgba(15, 23, 42, .035);
+}
+
+body.theme-light .service-item-row:hover,
+body.theme-light .service-item-row.is-selected {
+    background: rgba(11, 116, 240, .07);
 }
 
 body.theme-light .flash,
@@ -4152,6 +4473,23 @@ body.theme-light .modal-backdrop {
 @media (max-width: 880px) {
     .app-shell {
         grid-template-columns: 1fr;
+    }
+
+    .service-step-body {
+        padding-left: 0;
+    }
+
+    .service-selected-invoice {
+        align-items: flex-start;
+    }
+
+    .service-exchange-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .service-exchange-summary {
+        align-items: flex-start;
+        flex-direction: column;
     }
 
     .sidebar {

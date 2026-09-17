@@ -20,15 +20,19 @@ $outcome = (string) ($_POST['outcome'] ?? '');
 $quantity = max(1, input_int('quantity'));
 $refundAmount = max(0.0, input_decimal('refund_amount'));
 $refundMethod = (string) ($_POST['refund_method'] ?? 'cash');
+$exchangeProductId = max(0, input_int('exchange_product_id'));
+$exchangeUnitPrice = max(0.0, input_decimal('exchange_unit_price'));
 $returnDate = trim((string) ($_POST['return_date'] ?? date('Y-m-d\TH:i')));
 $issueDescription = trim((string) ($_POST['issue_description'] ?? ''));
 $notes = nullable_string((string) ($_POST['notes'] ?? ''));
 $validRefundMethods = ['cash', 'card', 'bank', 'store_credit', 'none'];
 $validOutcomes = [
     'normal_restock',
+    'normal_exchange',
     'warranty_wait_supplier',
     'warranty_refund_now',
     'warranty_replace_now',
+    'warranty_exchange',
 ];
 
 if ($saleItemIds === [] || ! in_array($outcome, $validOutcomes, true)) {
@@ -62,9 +66,14 @@ try {
 
     $firstSaleItem = $saleItems[0];
     $saleId = (int) $firstSaleItem['sale_id'];
-    $isWarrantyOutcome = in_array($outcome, ['warranty_wait_supplier', 'warranty_refund_now', 'warranty_replace_now'], true);
+    $isWarrantyOutcome = in_array($outcome, ['warranty_wait_supplier', 'warranty_refund_now', 'warranty_replace_now', 'warranty_exchange'], true);
+    $isExchangeOutcome = in_array($outcome, ['normal_exchange', 'warranty_exchange'], true);
     $itemContexts = [];
     $maxRefund = 0.0;
+
+    if ($isExchangeOutcome && count($saleItems) !== 1) {
+        throw new RuntimeException('Exchange one invoice item at a time.');
+    }
 
     foreach ($saleItems as $saleItem) {
         if ((int) $saleItem['sale_id'] !== $saleId) {
@@ -95,7 +104,39 @@ try {
         ];
     }
 
-    if (! in_array($outcome, ['normal_restock', 'warranty_refund_now'], true)) {
+    $exchangeSale = null;
+    $exchangeDifference = 0.0;
+
+    if ($isExchangeOutcome) {
+        if ($exchangeProductId <= 0 || $exchangeUnitPrice <= 0) {
+            throw new RuntimeException('Select the new exchange item and enter its price.');
+        }
+
+        if ($exchangeProductId === (int) $firstSaleItem['product_id']) {
+            throw new RuntimeException('Choose a different product for an exchange. Use same-item replacement when the product is unchanged.');
+        }
+
+        $exchangeProduct = wr_fetch_exchange_product($pdo, $exchangeProductId);
+        $exchangeQuantity = (int) $itemContexts[0]['quantity'];
+        $exchangeTotal = round($exchangeQuantity * $exchangeUnitPrice, 2);
+        $exchangeDifference = round($exchangeTotal - $maxRefund, 2);
+
+        if (abs($exchangeDifference) > 0.005 && $refundMethod === 'none') {
+            throw new RuntimeException('Choose a settlement method because this exchange has a payment or refund difference.');
+        }
+
+        $exchangeSale = wr_create_exchange_sale(
+            $pdo,
+            $firstSaleItem,
+            $exchangeProduct,
+            $exchangeQuantity,
+            $exchangeUnitPrice,
+            $refundMethod,
+            $returnDate,
+            (int) ($currentUser['id'] ?? 0) ?: null
+        );
+        $refundAmount = $maxRefund;
+    } elseif (! in_array($outcome, ['normal_restock', 'warranty_refund_now'], true)) {
         $refundAmount = 0.0;
     }
 
@@ -107,16 +148,28 @@ try {
     $claimId = null;
     $summary = [];
 
-    if (in_array($outcome, ['normal_restock', 'warranty_refund_now'], true)) {
-        $restock = $outcome === 'normal_restock' ? 1 : 0;
-        $condition = $outcome === 'normal_restock' ? 'resellable' : 'warranty';
+    if (in_array($outcome, ['normal_restock', 'normal_exchange', 'warranty_refund_now', 'warranty_exchange'], true)) {
+        $restock = in_array($outcome, ['normal_restock', 'normal_exchange'], true) ? 1 : 0;
+        $condition = $restock === 1 ? 'resellable' : 'warranty';
+        $returnNotes = $issueDescription . ($notes !== null ? "\n" . $notes : '');
+
+        if (is_array($exchangeSale)) {
+            $settlementText = $exchangeDifference > 0
+                ? 'Customer pays ' . format_money($exchangeDifference)
+                : ($exchangeDifference < 0
+                    ? 'Customer refund ' . format_money(abs($exchangeDifference))
+                    : 'Even exchange');
+            $returnNotes .= "\nExchange invoice " . $exchangeSale['invoice_no'] . '. ' . $settlementText . '.';
+        }
+
         $returnId = wr_create_sales_return(
             $pdo,
             $firstSaleItem,
             $refundAmount,
             $refundMethod,
             $returnDate,
-            $issueDescription . ($notes !== null ? "\n" . $notes : '')
+            $returnNotes,
+            is_array($exchangeSale) ? 'exchange' : 'completed'
         );
 
         foreach ($itemContexts as $context) {
@@ -135,17 +188,22 @@ try {
 
         wr_recalculate_sale_status($pdo, $saleId);
         $summary[] = count($itemContexts) . ' return item(s) saved';
+
+        if (is_array($exchangeSale)) {
+            $summary[] = 'exchange invoice ' . $exchangeSale['invoice_no'] . ' created';
+        }
     }
 
-    if (in_array($outcome, ['warranty_wait_supplier', 'warranty_refund_now', 'warranty_replace_now'], true)) {
+    if (in_array($outcome, ['warranty_wait_supplier', 'warranty_refund_now', 'warranty_replace_now', 'warranty_exchange'], true)) {
         $claimStatus = $outcome === 'warranty_wait_supplier' ? 'sent_to_supplier' : 'received';
         $replacementMode = match ($outcome) {
             'warranty_replace_now' => 'replace_now',
             'warranty_refund_now' => 'refund_now',
+            'warranty_exchange' => 'exchange',
             default => 'wait_supplier',
         };
         $customerReplacementStatus = match ($outcome) {
-            'warranty_replace_now' => 'issued',
+            'warranty_replace_now', 'warranty_exchange' => 'issued',
             'warranty_refund_now' => 'refunded',
             default => 'pending',
         };
@@ -153,7 +211,7 @@ try {
         $customerReplacedAt = in_array($customerReplacementStatus, ['issued', 'refunded'], true) ? date('Y-m-d H:i:s') : null;
 
         foreach ($itemContexts as $context) {
-            $claimSaleItemId = $outcome === 'warranty_refund_now' ? null : $context['sale_item_id'];
+            $claimSaleItemId = in_array($outcome, ['warranty_refund_now', 'warranty_exchange'], true) ? null : $context['sale_item_id'];
             $claimId = wr_create_warranty_claim(
                 $pdo,
                 $context['item'],
@@ -185,7 +243,9 @@ try {
     $pdo->commit();
 
     app_log_activity($pdo, $currentUser, 'warranty_return_create', 'Saved warranty/return handling for invoice ' . $firstSaleItem['invoice_no'] . ' (' . implode(', ', $summary) . ').');
-    set_flash('success', 'Warranty / return record saved.');
+    set_flash('success', is_array($exchangeSale)
+        ? 'Exchange saved. New invoice: ' . $exchangeSale['invoice_no'] . '.'
+        : 'Warranty / return record saved.');
     redirect('?page=warranty-returns');
 } catch (Throwable $exception) {
     if ($pdo->inTransaction()) {
@@ -241,6 +301,7 @@ function wr_fetch_sale_items(PDO $pdo, array $saleItemIds): array
                 s.discount AS sale_discount,
                 p.name AS product_name,
                 p.current_stock,
+                p.unlimited_stock,
                 p.cost_price
          FROM sale_items si
          INNER JOIN sales s ON s.id = si.sale_id
@@ -284,14 +345,115 @@ function wr_available_item_quantity(PDO $pdo, int $saleItemId, int $soldQuantity
     return max(0, $soldQuantity - $returned - $claimed);
 }
 
-function wr_create_sales_return(PDO $pdo, array $saleItem, float $refundAmount, string $refundMethod, string $returnDate, string $notes): int
+function wr_fetch_exchange_product(PDO $pdo, int $productId): array
+{
+    $statement = $pdo->prepare(
+        'SELECT id,
+                sku,
+                name,
+                current_stock,
+                unlimited_stock,
+                cost_price,
+                selling_price,
+                warranty_months,
+                status
+         FROM products
+         WHERE id = :id
+         LIMIT 1
+         FOR UPDATE'
+    );
+    $statement->execute(['id' => $productId]);
+    $product = $statement->fetch();
+
+    if (! is_array($product) || (string) $product['status'] !== 'active') {
+        throw new RuntimeException('The selected exchange product is not available.');
+    }
+
+    if ((int) $product['unlimited_stock'] !== 1 && (int) $product['current_stock'] <= 0) {
+        throw new RuntimeException($product['name'] . ' is out of stock.');
+    }
+
+    return $product;
+}
+
+function wr_create_exchange_sale(PDO $pdo, array $originalSaleItem, array $product, int $quantity, float $unitPrice, string $settlementMethod, string $saleDate, ?int $userId): array
+{
+    if ((int) $product['unlimited_stock'] !== 1 && $quantity > (int) $product['current_stock']) {
+        throw new RuntimeException($product['name'] . ' has only ' . (int) $product['current_stock'] . ' in stock.');
+    }
+
+    $invoiceNo = wr_next_sale_invoice_no($pdo);
+    $saleTotal = round($quantity * $unitPrice, 2);
+    $paymentMethod = match ($settlementMethod) {
+        'store_credit' => 'credit',
+        'none' => 'exchange',
+        default => $settlementMethod,
+    };
+    $storedSaleDate = str_replace('T', ' ', $saleDate) . ':00';
+    $saleStatement = $pdo->prepare(
+        'INSERT INTO sales
+            (customer_id, invoice_no, sale_date, subtotal, discount, tax, total, paid, payment_method, status)
+         VALUES
+            (:customer_id, :invoice_no, :sale_date, :subtotal, 0.00, 0.00, :total, :paid, :payment_method, "paid")'
+    );
+    $saleStatement->execute([
+        'customer_id' => $originalSaleItem['customer_id'],
+        'invoice_no' => $invoiceNo,
+        'sale_date' => $storedSaleDate,
+        'subtotal' => $saleTotal,
+        'total' => $saleTotal,
+        'paid' => $saleTotal,
+        'payment_method' => $paymentMethod,
+    ]);
+    $saleId = (int) $pdo->lastInsertId();
+    $unitCost = wr_fifo_unit_cost($pdo, (int) $product['id'], $quantity, (float) $product['cost_price']);
+    $itemStatement = $pdo->prepare(
+        'INSERT INTO sale_items
+            (sale_id, product_id, item_name, quantity, unit_price, unit_cost, warranty_months, discount, total)
+         VALUES
+            (:sale_id, :product_id, NULL, :quantity, :unit_price, :unit_cost, :warranty_months, 0.00, :total)'
+    );
+    $itemStatement->execute([
+        'sale_id' => $saleId,
+        'product_id' => (int) $product['id'],
+        'quantity' => $quantity,
+        'unit_price' => $unitPrice,
+        'unit_cost' => $unitCost,
+        'warranty_months' => (int) $product['warranty_months'],
+        'total' => $saleTotal,
+    ]);
+
+    if ((int) $product['unlimited_stock'] !== 1) {
+        $newStock = wr_adjust_product_stock($pdo, (int) $product['id'], -$quantity, 'Not enough stock for the selected exchange item.');
+        wr_insert_stock_movement(
+            $pdo,
+            (int) $product['id'],
+            'sale',
+            -$quantity,
+            $newStock,
+            $unitCost,
+            'sale',
+            $saleId,
+            'Issued on exchange invoice ' . $invoiceNo . ' for original invoice ' . $originalSaleItem['invoice_no'],
+            $userId
+        );
+    }
+
+    return [
+        'sale_id' => $saleId,
+        'invoice_no' => $invoiceNo,
+        'total' => $saleTotal,
+    ];
+}
+
+function wr_create_sales_return(PDO $pdo, array $saleItem, float $refundAmount, string $refundMethod, string $returnDate, string $notes, string $status = 'completed'): int
 {
     $returnNo = wr_next_sales_return_no($pdo);
     $returnStatement = $pdo->prepare(
         'INSERT INTO sales_returns
             (sale_id, customer_id, return_no, return_date, refund_amount, refund_method, notes, status)
          VALUES
-            (:sale_id, :customer_id, :return_no, :return_date, :refund_amount, :refund_method, :notes, "completed")'
+            (:sale_id, :customer_id, :return_no, :return_date, :refund_amount, :refund_method, :notes, :status)'
     );
     $returnStatement->execute([
         'sale_id' => (int) $saleItem['sale_id'],
@@ -301,6 +463,7 @@ function wr_create_sales_return(PDO $pdo, array $saleItem, float $refundAmount, 
         'refund_amount' => $refundAmount,
         'refund_method' => $refundMethod,
         'notes' => $notes,
+        'status' => $status,
     ]);
 
     return (int) $pdo->lastInsertId();
@@ -367,6 +530,10 @@ function wr_create_warranty_claim(PDO $pdo, array $saleItem, ?int $saleItemId, s
 
 function wr_issue_customer_replacement(PDO $pdo, array $saleItem, int $claimId, ?int $userId): void
 {
+    if ((int) ($saleItem['unlimited_stock'] ?? 0) === 1) {
+        return;
+    }
+
     $unitCost = wr_fifo_unit_cost($pdo, (int) $saleItem['product_id'], 1, (float) $saleItem['cost_price']);
     $newStock = wr_adjust_product_stock($pdo, (int) $saleItem['product_id'], -1, 'Not enough stock to issue a customer replacement.');
     wr_insert_stock_movement($pdo, (int) $saleItem['product_id'], 'warranty_customer_out', -1, $newStock, $unitCost, 'warranty_claim', $claimId, 'Customer replacement issued for warranty/return claim', $userId);
@@ -475,6 +642,21 @@ function wr_next_sales_return_no(PDO $pdo): string
     $nextNumber = 1;
 
     if (preg_match('/-(\d+)$/', $lastReturn, $matches) === 1) {
+        $nextNumber = (int) $matches[1] + 1;
+    }
+
+    return $prefix . str_pad((string) $nextNumber, 4, '0', STR_PAD_LEFT);
+}
+
+function wr_next_sale_invoice_no(PDO $pdo): string
+{
+    $prefix = 'INV-' . date('Ymd') . '-';
+    $statement = $pdo->prepare('SELECT invoice_no FROM sales WHERE invoice_no LIKE :prefix ORDER BY id DESC LIMIT 1');
+    $statement->execute(['prefix' => $prefix . '%']);
+    $lastInvoice = (string) ($statement->fetchColumn() ?: '');
+    $nextNumber = 1;
+
+    if (preg_match('/-(\d+)$/', $lastInvoice, $matches) === 1) {
         $nextNumber = (int) $matches[1] + 1;
     }
 

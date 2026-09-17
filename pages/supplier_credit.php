@@ -290,13 +290,16 @@ if ($dbReady && $pdo !== null) {
                             <td class="<?php echo $balance > 0 ? 'text-danger' : ''; ?>"><?php echo e(format_money($balance)); ?></td>
                             <td><span class="status <?php echo e(supplier_credit_status_class((string) $purchase['status'], $balance)); ?>"><?php echo e($balance > 0 ? ucfirst((string) $purchase['status']) : 'Closed'); ?></span></td>
                             <td>
-                                <?php if ($balance > 0): ?>
-                                    <a class="icon-button" href="<?php echo e(app_url('?page=supplier-credit&collect=' . (int) $purchase['id'] . '#supplier-payment-form')); ?>" aria-label="Pay supplier">
-                                        <i data-lucide="hand-coins"></i>
+                                <div class="table-actions">
+                                    <a class="icon-button" href="<?php echo e(app_url('?page=purchase-view&id=' . (int) $purchase['id'])); ?>" aria-label="View purchase invoice">
+                                        <i data-lucide="eye"></i>
                                     </a>
-                                <?php else: ?>
-                                    <span class="muted-link">Closed</span>
-                                <?php endif; ?>
+                                    <?php if ($balance > 0): ?>
+                                        <a class="icon-button" href="<?php echo e(app_url('?page=supplier-credit&collect=' . (int) $purchase['id'] . '#supplier-payment-form')); ?>" aria-label="Pay supplier">
+                                            <i data-lucide="hand-coins"></i>
+                                        </a>
+                                    <?php endif; ?>
+                                </div>
                             </td>
                         </tr>
                     <?php endforeach; ?>
@@ -314,13 +317,12 @@ if ($dbReady && $pdo !== null) {
                         <th>Method</th>
                         <th>Amount</th>
                         <th>Notes</th>
+                        <th>Action</th>
                     </tr>
                 </thead>
                 <tbody>
                     <?php if ($recentPayments === []): ?>
-                        <tr>
-                            <td colspan="6">No supplier payments recorded yet.</td>
-                        </tr>
+                        <tr><td colspan="7">No supplier payments recorded yet.</td></tr>
                     <?php endif; ?>
 
                     <?php foreach ($recentPayments as $payment): ?>
@@ -334,6 +336,11 @@ if ($dbReady && $pdo !== null) {
                             <td><?php echo e(ucfirst((string) $payment['payment_method'])); ?></td>
                             <td class="text-good"><?php echo e(format_money($payment['amount'])); ?></td>
                             <td><?php echo e($payment['notes'] ?? ''); ?></td>
+                            <td>
+                                <a class="icon-button" href="<?php echo e(app_url('?page=purchase-view&id=' . (int) $payment['purchase_id'])); ?>" aria-label="View purchase invoice">
+                                    <i data-lucide="eye"></i>
+                                </a>
+                            </td>
                         </tr>
                     <?php endforeach; ?>
                 </tbody>

@@ -1696,11 +1696,14 @@ const serviceForm = document.querySelector('[data-service-form]');
 if (serviceForm) {
     const lookupUrl = serviceForm.dataset.serviceLookupUrl || '';
     const searchInput = serviceForm.querySelector('[data-service-search]');
+    const searchField = serviceForm.querySelector('[data-service-search-field]');
     const suggestions = serviceForm.querySelector('[data-service-suggestions]');
-    const invoiceList = serviceForm.querySelector('[data-service-invoices]');
+    const selectedInvoice = serviceForm.querySelector('[data-service-selected-invoice]');
+    const selectedInvoiceTitle = serviceForm.querySelector('[data-service-selected-invoice-title]');
+    const selectedInvoiceMeta = serviceForm.querySelector('[data-service-selected-invoice-meta]');
+    const changeInvoiceButton = serviceForm.querySelector('[data-service-change-invoice]');
+    const itemsWrap = serviceForm.querySelector('[data-service-items-wrap]');
     const itemList = serviceForm.querySelector('[data-service-items]');
-    const customerLabel = serviceForm.querySelector('[data-service-customer-label]');
-    const invoiceLabel = serviceForm.querySelector('[data-service-invoice-label]');
     const selectedItemsContainer = serviceForm.querySelector('[data-service-selected-items]');
     const outcomeHidden = serviceForm.querySelector('[data-service-outcome]');
     const pathStep = serviceForm.querySelector('[data-service-path-step]');
@@ -1710,22 +1713,36 @@ if (serviceForm) {
     const damagedOutcomes = serviceForm.querySelector('[data-service-damaged-outcomes]');
     const quantityInput = serviceForm.querySelector('[data-service-quantity]');
     const refundInput = serviceForm.querySelector('[data-service-refund]');
-    const refundFields = serviceForm.querySelectorAll('[data-service-refund-fields]');
+    const refundMethodField = serviceForm.querySelector('[data-service-refund-method-field]');
+    const refundAmountField = serviceForm.querySelector('[data-service-refund-amount-field]');
+    const methodLabel = serviceForm.querySelector('[data-service-method-label]');
+    const exchangeFields = serviceForm.querySelector('[data-service-exchange-fields]');
+    const exchangeSearchInput = serviceForm.querySelector('[data-service-exchange-search]');
+    const exchangeSuggestions = serviceForm.querySelector('[data-service-exchange-suggestions]');
+    const exchangeProductIdInput = serviceForm.querySelector('[data-service-exchange-product-id]');
+    const exchangePriceInput = serviceForm.querySelector('[data-service-exchange-price]');
+    const exchangeSummary = serviceForm.querySelector('[data-service-exchange-summary]');
+    const exchangeProductSummary = serviceForm.querySelector('[data-service-exchange-product-summary]');
+    const exchangeSettlement = serviceForm.querySelector('[data-service-exchange-settlement]');
     const preview = serviceForm.querySelector('[data-service-preview]');
     const selectedItems = new Map();
     let searchTimer = null;
+    let exchangeSearchTimer = null;
     let searchToken = 0;
-    let invoiceToken = 0;
+    let exchangeSearchToken = 0;
     let itemToken = 0;
+    let exchangeProduct = null;
 
     const money = (value) => Number.isFinite(value) ? value.toFixed(2) : '0.00';
-    const warrantyOutcomes = ['warranty_wait_supplier', 'warranty_refund_now', 'warranty_replace_now'];
+    const currency = (value) => `Rs. ${money(Number.parseFloat(value || '0'))}`;
+    const warrantyOutcomes = ['warranty_wait_supplier', 'warranty_refund_now', 'warranty_replace_now', 'warranty_exchange'];
     const replacementOutcomes = ['warranty_replace_now'];
     const refundOutcomes = ['normal_restock', 'warranty_refund_now'];
+    const exchangeOutcomes = ['normal_exchange', 'warranty_exchange'];
 
-    const setListMessage = (container, message) => {
-        if (container) {
-            container.innerHTML = `<p class="return-choice-empty">${message}</p>`;
+    const setItemMessage = (message) => {
+        if (itemList) {
+            itemList.innerHTML = `<tr><td colspan="5" class="service-items-empty">${message}</td></tr>`;
         }
     };
 
@@ -1745,6 +1762,98 @@ if (serviceForm) {
 
         suggestions.innerHTML = `<div class="product-suggestion-empty">${message}</div>`;
         suggestions.hidden = false;
+    };
+
+    const closeExchangeSuggestions = () => {
+        if (!exchangeSuggestions) {
+            return;
+        }
+
+        exchangeSuggestions.hidden = true;
+        exchangeSuggestions.innerHTML = '';
+    };
+
+    const showExchangeSuggestionMessage = (message) => {
+        if (!exchangeSuggestions) {
+            return;
+        }
+
+        exchangeSuggestions.innerHTML = `<div class="product-suggestion-empty">${message}</div>`;
+        exchangeSuggestions.hidden = false;
+    };
+
+    const clearExchangeSelection = (clearSearch = true) => {
+        exchangeProduct = null;
+
+        if (exchangeProductIdInput) {
+            exchangeProductIdInput.value = '';
+        }
+
+        if (exchangePriceInput) {
+            exchangePriceInput.value = '';
+        }
+
+        if (clearSearch && exchangeSearchInput) {
+            exchangeSearchInput.value = '';
+        }
+
+        if (exchangeSummary) {
+            exchangeSummary.hidden = true;
+        }
+
+        closeExchangeSuggestions();
+    };
+
+    const renderExchangeSettlement = () => {
+        if (!exchangeOutcomes.includes(outcomeHidden?.value || '')) {
+            return;
+        }
+
+        const selected = Array.from(selectedItems.values());
+
+        if (!exchangeProduct || selected.length !== 1) {
+            if (exchangeSummary) {
+                exchangeSummary.hidden = true;
+            }
+
+            if (preview) {
+                preview.textContent = 'Select the new item for this exchange.';
+            }
+
+            return;
+        }
+
+        const quantity = Math.max(1, Number.parseInt(quantityInput?.value || '1', 10) || 1);
+        const oldCredit = quantity * Number.parseFloat(selected[0].price || '0');
+        const newTotal = quantity * Number.parseFloat(exchangePriceInput?.value || '0');
+        const difference = newTotal - oldCredit;
+        let settlementText = 'Even exchange. No payment or refund.';
+
+        if (difference > 0.005) {
+            settlementText = `Customer pays ${currency(difference)}.`;
+        } else if (difference < -0.005) {
+            settlementText = `Refund customer ${currency(Math.abs(difference))}.`;
+        }
+
+        if (exchangeSummary) {
+            exchangeSummary.hidden = false;
+        }
+
+        if (exchangeProductSummary) {
+            const stockText = exchangeProduct.unlimited ? 'Unlimited stock' : `${exchangeProduct.stock} in stock`;
+            exchangeProductSummary.textContent = `${exchangeProduct.label} / ${quantity} unit(s) / ${stockText} / Old credit ${currency(oldCredit)} / New total ${currency(newTotal)}`;
+        }
+
+        if (exchangeSettlement) {
+            exchangeSettlement.textContent = settlementText;
+        }
+
+        if (preview) {
+            const supplierText = outcomeHidden?.value === 'warranty_exchange'
+                ? ' The damaged item will be held for a supplier decision.'
+                : ' The returned item will go back into sellable stock.';
+            preview.textContent = settlementText + supplierText;
+        }
     };
 
     const resetAfterItem = () => {
@@ -1778,11 +1887,17 @@ if (serviceForm) {
         if (damagedOutcomes) {
             damagedOutcomes.hidden = true;
         }
+
+        if (exchangeFields) {
+            exchangeFields.hidden = true;
+        }
+
+        clearExchangeSelection();
     };
 
     const updateOutcomeAvailability = () => {
         const selected = Array.from(selectedItems.values());
-        const hasStock = selected.length > 0 && selected.every((item) => Number.parseInt(item.stock ?? '0', 10) > 0);
+        const hasStock = selected.length > 0 && selected.every((item) => item.unlimited || Number.parseInt(item.stock ?? '0', 10) > 0);
 
         serviceForm.querySelectorAll('[data-service-needs-warranty]').forEach((card) => {
             const input = card.querySelector('input');
@@ -1806,6 +1921,19 @@ if (serviceForm) {
                 }
             }
         });
+
+        serviceForm.querySelectorAll('[data-service-exchange-outcome]').forEach((card) => {
+            const input = card.querySelector('input');
+            const disabled = selected.length !== 1;
+            card.classList.toggle('is-disabled', disabled);
+
+            if (input) {
+                input.disabled = disabled;
+                if (disabled) {
+                    input.checked = false;
+                }
+            }
+        });
     };
 
     const showOutcomeStep = (path) => {
@@ -1814,7 +1942,7 @@ if (serviceForm) {
         }
 
         outcomeStep.hidden = false;
-        normalOutcomes.hidden = path !== 'normal_return';
+        normalOutcomes.hidden = path !== 'good_item';
         damagedOutcomes.hidden = path !== 'damaged_item';
         detailsStep.hidden = true;
 
@@ -1845,6 +1973,11 @@ if (serviceForm) {
         const refund = Number.parseFloat(refundInput?.value || '0') || 0;
         const unitText = selectedItems.size > 1 ? `${selectedItems.size} selected item(s)` : `${quantity} unit(s)`;
 
+        if (exchangeOutcomes.includes(outcome)) {
+            renderExchangeSettlement();
+            return;
+        }
+
         const text = {
             normal_restock: `Refund ${money(refund)} and return ${unitText} to sellable stock.`,
             warranty_wait_supplier: 'Create a warranty case and mark it sent to supplier. Customer waits for the result.',
@@ -1866,13 +1999,31 @@ if (serviceForm) {
         const selected = Array.from(selectedItems.values());
         const isRefund = refundOutcomes.includes(outcome);
         const isWarranty = warrantyOutcomes.includes(outcome);
+        const isExchange = exchangeOutcomes.includes(outcome);
         const fixedOne = isWarranty || selected.length > 1;
         const maxQuantity = selected.length === 1 ? (selected[0].available || 1) : 1;
 
-        refundFields.forEach((field) => {
-            field.hidden = !isRefund;
-            field.style.display = isRefund ? '' : 'none';
-        });
+        if (refundMethodField) {
+            refundMethodField.hidden = !(isRefund || isExchange);
+            refundMethodField.style.display = isRefund || isExchange ? '' : 'none';
+        }
+
+        if (refundAmountField) {
+            refundAmountField.hidden = !isRefund;
+            refundAmountField.style.display = isRefund ? '' : 'none';
+        }
+
+        if (methodLabel) {
+            methodLabel.textContent = isExchange ? 'Settlement Method' : 'Refund Method';
+        }
+
+        if (exchangeFields) {
+            exchangeFields.hidden = !isExchange;
+        }
+
+        if (!isExchange) {
+            clearExchangeSelection();
+        }
 
         if (quantityInput) {
             quantityInput.max = String(maxQuantity);
@@ -1917,21 +2068,23 @@ if (serviceForm) {
         }
     };
 
-    const toggleItem = (item, button) => {
+    const toggleItem = (item, row, checkbox, selected) => {
         const itemId = String(item.sale_item_id || '');
 
         if (!itemId) {
             return;
         }
 
-        if (selectedItems.has(itemId)) {
-            selectedItems.delete(itemId);
-            button?.classList.remove('active');
-            button?.setAttribute('aria-pressed', 'false');
-        } else {
+        if (selected) {
             selectedItems.set(itemId, item);
-            button?.classList.add('active');
-            button?.setAttribute('aria-pressed', 'true');
+        } else {
+            selectedItems.delete(itemId);
+        }
+
+        row?.classList.toggle('is-selected', selected);
+
+        if (checkbox) {
+            checkbox.checked = selected;
         }
 
         syncSelectedItemInputs();
@@ -1955,30 +2108,44 @@ if (serviceForm) {
 
         clearSelectedItems();
 
+        if (itemsWrap) {
+            itemsWrap.hidden = false;
+        }
+
         if (!items.length) {
-            setListMessage(itemList, 'No available items found for this invoice.');
+            setItemMessage('No available items found for this invoice.');
             return;
         }
 
         itemList.innerHTML = '';
 
         items.forEach((item) => {
-            const button = document.createElement('button');
-            button.type = 'button';
-            button.className = 'return-choice-card';
-            button.setAttribute('aria-pressed', 'false');
-            button.innerHTML = `
-                <strong></strong>
-                <span></span>
-                <small></small>
+            const row = document.createElement('tr');
+            row.className = 'service-item-row';
+            row.innerHTML = `
+                <td><input type="checkbox" aria-label="Select invoice item"></td>
+                <td><strong></strong><span></span></td>
+                <td data-service-item-available></td>
+                <td data-service-item-stock></td>
+                <td data-service-item-price></td>
             `;
-            button.querySelector('strong').textContent = item.label || '';
-            button.querySelector('span').textContent = `Available ${item.available ?? 0} / Stock ${item.stock ?? 0} / Price ${money(Number.parseFloat(item.price || '0'))}`;
-            button.querySelector('small').textContent = item.warranty_until
+            const checkbox = row.querySelector('input[type="checkbox"]');
+            row.querySelector('strong').textContent = item.label || '';
+            row.querySelector('span').textContent = item.warranty_until
                 ? `Invoice warranty until ${item.warranty_until}`
                 : 'Invoice warranty not set';
-            button.addEventListener('click', () => toggleItem(item, button));
-            itemList.appendChild(button);
+            row.querySelector('[data-service-item-available]').textContent = String(item.available ?? 0);
+            row.querySelector('[data-service-item-stock]').textContent = String(item.stock ?? 0);
+            row.querySelector('[data-service-item-price]').textContent = currency(item.price);
+            checkbox?.addEventListener('change', () => toggleItem(item, row, checkbox, checkbox.checked));
+            row.addEventListener('click', (event) => {
+                if (event.target === checkbox) {
+                    return;
+                }
+
+                toggleItem(item, row, checkbox, !checkbox?.checked);
+            });
+            itemList.appendChild(row);
         });
     };
 
@@ -1989,10 +2156,26 @@ if (serviceForm) {
 
         const token = ++itemToken;
         clearSelectedItems();
-        setListMessage(itemList, 'Loading items...');
+        setItemMessage('Loading invoice items...');
 
-        if (invoiceLabel) {
-            invoiceLabel.textContent = `${invoice.invoice_no || invoice.label} / ${invoice.customer || 'Walk-in Customer'}`;
+        if (searchField) {
+            searchField.hidden = true;
+        }
+
+        if (selectedInvoice) {
+            selectedInvoice.hidden = false;
+        }
+
+        if (itemsWrap) {
+            itemsWrap.hidden = false;
+        }
+
+        if (selectedInvoiceTitle) {
+            selectedInvoiceTitle.textContent = `${invoice.invoice_no || invoice.label} / ${invoice.customer || 'Walk-in Customer'}`;
+        }
+
+        if (selectedInvoiceMeta) {
+            selectedInvoiceMeta.textContent = `${invoice.date || ''} / ${currency(invoice.total)} / ${invoice.available ?? 0} available unit(s)`;
         }
 
         fetch(`${lookupUrl}?type=items&sale_id=${encodeURIComponent(invoice.sale_id)}`, {
@@ -2008,75 +2191,7 @@ if (serviceForm) {
             })
             .catch(() => {
                 if (token === itemToken) {
-                    setListMessage(itemList, 'Could not load items.');
-                }
-            });
-    };
-
-    const renderInvoices = (invoices) => {
-        if (!invoiceList) {
-            return;
-        }
-
-        clearSelectedItems();
-        setListMessage(itemList, 'Select an invoice to view items.');
-
-        if (!invoices.length) {
-            setListMessage(invoiceList, 'No invoices found.');
-            return;
-        }
-
-        invoiceList.innerHTML = '';
-
-        invoices.forEach((invoice) => {
-            const button = document.createElement('button');
-            button.type = 'button';
-            button.className = 'return-choice-card';
-            button.innerHTML = `
-                <strong></strong>
-                <span></span>
-                <small></small>
-            `;
-            button.querySelector('strong').textContent = invoice.invoice_no || invoice.label || '';
-            button.querySelector('span').textContent = `${invoice.date || ''} / ${invoice.customer || 'Walk-in Customer'}`;
-            button.querySelector('small').textContent = `${invoice.available ?? 0} item(s), ${money(Number.parseFloat(invoice.total || '0'))}`;
-            button.addEventListener('click', () => {
-                invoiceList.querySelectorAll('.return-choice-card').forEach((card) => card.classList.remove('active'));
-                button.classList.add('active');
-                loadItems(invoice);
-            });
-            invoiceList.appendChild(button);
-        });
-    };
-
-    const loadInvoices = (customer) => {
-        if (!lookupUrl || !customer?.id) {
-            return;
-        }
-
-        const token = ++invoiceToken;
-        clearSelectedItems();
-        setListMessage(invoiceList, 'Loading invoices...');
-        setListMessage(itemList, 'Select an invoice to view items.');
-
-        if (customerLabel) {
-            customerLabel.textContent = customer.label || 'Selected customer';
-        }
-
-        fetch(`${lookupUrl}?type=invoices&customer_id=${encodeURIComponent(customer.id)}`, {
-            headers: { Accept: 'application/json' },
-        })
-            .then((response) => response.ok ? response.json() : { invoices: [] })
-            .then((data) => {
-                if (token !== invoiceToken) {
-                    return;
-                }
-
-                renderInvoices(Array.isArray(data.invoices) ? data.invoices : []);
-            })
-            .catch(() => {
-                if (token === invoiceToken) {
-                    setListMessage(invoiceList, 'Could not load invoices.');
+                    setItemMessage('Could not load invoice items.');
                 }
             });
     };
@@ -2085,22 +2200,10 @@ if (serviceForm) {
         closeSuggestions();
 
         if (searchInput) {
-            searchInput.value = match.type === 'invoice'
-                ? `${match.invoice_no || match.label} / ${match.customer || 'Walk-in Customer'}`
-                : match.label || '';
+            searchInput.value = '';
         }
 
-        if (match.type === 'invoice') {
-            if (customerLabel) {
-                customerLabel.textContent = match.customer || 'Selected invoice';
-            }
-
-            renderInvoices([match]);
-            loadItems(match);
-            return;
-        }
-
-        loadInvoices(match);
+        loadItems(match);
     };
 
     const renderSearchMatches = (matches) => {
@@ -2118,21 +2221,45 @@ if (serviceForm) {
         matches.forEach((match) => {
             const button = document.createElement('button');
             button.type = 'button';
-            button.className = 'product-suggestion-item';
+            button.className = 'product-suggestion-item service-invoice-result';
             button.innerHTML = `
-                <strong></strong>
-                <span></span>
+                <span><strong></strong><small></small></span>
+                <b></b>
             `;
-            button.querySelector('strong').textContent = match.type === 'invoice'
-                ? `Invoice ${match.invoice_no || match.label}`
-                : match.label || '';
-            button.querySelector('span').textContent = `${match.type === 'invoice' ? 'Invoice' : 'Customer'} / ${match.meta || ''}`;
+            button.querySelector('strong').textContent = match.invoice_no || match.label || '';
+            button.querySelector('small').textContent = `${match.customer || 'Walk-in Customer'} / ${match.date || ''}`;
+            button.querySelector('b').textContent = currency(match.total);
             button.addEventListener('mousedown', (event) => event.preventDefault());
             button.addEventListener('click', () => selectSearchMatch(match));
             suggestions.appendChild(button);
         });
 
         suggestions.hidden = false;
+    };
+
+    const resetInvoiceSelection = () => {
+        itemToken++;
+        clearSelectedItems();
+        closeSuggestions();
+
+        if (selectedInvoice) {
+            selectedInvoice.hidden = true;
+        }
+
+        if (itemsWrap) {
+            itemsWrap.hidden = true;
+        }
+
+        if (searchField) {
+            searchField.hidden = false;
+        }
+
+        if (searchInput) {
+            searchInput.value = '';
+            searchInput.focus();
+        }
+
+        setItemMessage('Select an invoice to view items.');
     };
 
     const runSearch = () => {
@@ -2168,6 +2295,90 @@ if (serviceForm) {
             });
     };
 
+    const selectExchangeProduct = (product) => {
+        exchangeProduct = product;
+        closeExchangeSuggestions();
+
+        if (exchangeSearchInput) {
+            exchangeSearchInput.value = product.label || '';
+        }
+
+        if (exchangeProductIdInput) {
+            exchangeProductIdInput.value = String(product.id || '');
+        }
+
+        if (exchangePriceInput) {
+            exchangePriceInput.value = money(Number.parseFloat(product.price || '0'));
+        }
+
+        renderExchangeSettlement();
+    };
+
+    const renderExchangeProducts = (products) => {
+        if (!exchangeSuggestions) {
+            return;
+        }
+
+        const selectedProductId = String(Array.from(selectedItems.values())[0]?.product_id || '');
+        const availableProducts = products.filter((product) => String(product.id || '') !== selectedProductId);
+        exchangeSuggestions.innerHTML = '';
+
+        if (!availableProducts.length) {
+            showExchangeSuggestionMessage('No different in-stock products found');
+            return;
+        }
+
+        availableProducts.forEach((product) => {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'product-suggestion-item service-exchange-result';
+            button.innerHTML = `
+                <strong></strong>
+                <span></span>
+            `;
+            button.querySelector('strong').textContent = product.label || '';
+            button.querySelector('span').textContent = `${product.unlimited ? 'Unlimited stock' : `${product.stock ?? 0} in stock`} / ${currency(product.price)}`;
+            button.addEventListener('mousedown', (event) => event.preventDefault());
+            button.addEventListener('click', () => selectExchangeProduct(product));
+            exchangeSuggestions.appendChild(button);
+        });
+
+        exchangeSuggestions.hidden = false;
+    };
+
+    const runExchangeSearch = () => {
+        if (!exchangeSearchInput || !lookupUrl) {
+            return;
+        }
+
+        const query = exchangeSearchInput.value.trim();
+
+        if (query.length < 2) {
+            closeExchangeSuggestions();
+            return;
+        }
+
+        const token = ++exchangeSearchToken;
+        showExchangeSuggestionMessage('Searching...');
+
+        fetch(`${lookupUrl}?type=products&q=${encodeURIComponent(query)}`, {
+            headers: { Accept: 'application/json' },
+        })
+            .then((response) => response.ok ? response.json() : { products: [] })
+            .then((data) => {
+                if (token !== exchangeSearchToken) {
+                    return;
+                }
+
+                renderExchangeProducts(Array.isArray(data.products) ? data.products : []);
+            })
+            .catch(() => {
+                if (token === exchangeSearchToken) {
+                    showExchangeSuggestionMessage('Product search failed');
+                }
+            });
+    };
+
     serviceForm.querySelectorAll('[data-service-path]').forEach((input) => {
         input.addEventListener('change', () => showOutcomeStep(input.value));
     });
@@ -2176,9 +2387,11 @@ if (serviceForm) {
         input.addEventListener('change', () => showDetailsStep(input.value));
     });
 
-    [quantityInput, refundInput].forEach((input) => {
+    [quantityInput, refundInput, exchangePriceInput].forEach((input) => {
         input?.addEventListener('input', renderServicePreview);
     });
+
+    changeInvoiceButton?.addEventListener('click', resetInvoiceSelection);
 
     searchInput?.addEventListener('input', () => {
         window.clearTimeout(searchTimer);
@@ -2207,12 +2420,49 @@ if (serviceForm) {
         closeSuggestionListAfterFocusLeave(searchInput, suggestions, closeSuggestions);
     });
 
+    exchangeSearchInput?.addEventListener('input', () => {
+        if (exchangeProduct && exchangeSearchInput.value !== exchangeProduct.label) {
+            clearExchangeSelection(false);
+        }
+
+        window.clearTimeout(exchangeSearchTimer);
+        exchangeSearchTimer = window.setTimeout(runExchangeSearch, 180);
+    });
+
+    exchangeSearchInput?.addEventListener('focus', () => {
+        if (!exchangeProduct && exchangeSearchInput.value.trim().length >= 2) {
+            runExchangeSearch();
+        }
+    });
+
+    exchangeSearchInput?.addEventListener('keydown', (event) => {
+        handleSuggestionInputKeydown(event, exchangeSuggestions, closeExchangeSuggestions);
+    });
+
+    exchangeSearchInput?.addEventListener('blur', () => {
+        closeSuggestionListAfterFocusLeave(exchangeSearchInput, exchangeSuggestions, closeExchangeSuggestions);
+    });
+
+    exchangeSuggestions?.addEventListener('keydown', (event) => {
+        handleSuggestionListKeydown(event, exchangeSearchInput, exchangeSuggestions, closeExchangeSuggestions);
+    });
+
+    exchangeSuggestions?.addEventListener('focusout', () => {
+        closeSuggestionListAfterFocusLeave(exchangeSearchInput, exchangeSuggestions, closeExchangeSuggestions);
+    });
+
     serviceForm.addEventListener('submit', (event) => {
-        if (selectedItems.size === 0 || !outcomeHidden?.value) {
+        const outcome = outcomeHidden?.value || '';
+        const exchangeIsIncomplete = exchangeOutcomes.includes(outcome)
+            && (!exchangeProductIdInput?.value || Number.parseFloat(exchangePriceInput?.value || '0') <= 0);
+
+        if (selectedItems.size === 0 || !outcome || exchangeIsIncomplete) {
             event.preventDefault();
 
             if (preview) {
-                preview.textContent = 'Choose invoice item(s) and handling action before saving.';
+                preview.textContent = exchangeIsIncomplete
+                    ? 'Select a new item and enter its price before saving the exchange.'
+                    : 'Choose invoice item(s) and handling action before saving.';
             }
         }
     });
@@ -2240,9 +2490,14 @@ if (warrantyClaimModal) {
     const refundToggleInput = warrantyClaimModal.querySelector('[data-warranty-refund-toggle-input]');
     const refundFields = Array.from(warrantyClaimModal.querySelectorAll('[data-warranty-refund-field]'));
     const stockActions = warrantyClaimModal.querySelector('[data-warranty-stock-actions]');
+    const currentState = warrantyClaimModal.querySelector('[data-warranty-current-state]');
+    const currentStatus = warrantyClaimModal.querySelector('[data-warranty-current-status]');
+    const currentCustomer = warrantyClaimModal.querySelector('[data-warranty-current-customer]');
+    const currentSupplier = warrantyClaimModal.querySelector('[data-warranty-current-supplier]');
     const sendToSupplierOption = supplierDecisionSelect?.querySelector('option[value="send_to_supplier"]');
     const noSupplierWarrantyOption = supplierDecisionSelect?.querySelector('option[value="no_supplier_warranty"]');
     let activeClaimStatus = 'received';
+    let activeReplacementMode = 'wait_supplier';
     let activeCustomerReplacementStatus = 'pending';
     let activeSupplierReplacementStatus = 'pending';
 
@@ -2251,13 +2506,33 @@ if (warrantyClaimModal) {
         document.body.classList.remove('modal-open');
     };
 
-    const replacementText = (customerStatus, supplierStatus) => {
+    const replacementText = (customerStatus, supplierStatus, replacementMode, claimStatus) => {
+        if (replacementMode === 'exchange') {
+            const supplierText = supplierStatus === 'received'
+                ? 'Supplier replacement received.'
+                : supplierStatus === 'refunded'
+                    ? 'Supplier refund received.'
+                    : supplierStatus === 'none'
+                        ? 'No supplier warranty; shop loss.'
+                        : claimStatus === 'sent_to_supplier'
+                            ? 'Faulty item sent; supplier result pending.'
+                            : 'Supplier decision pending.';
+
+            return `Customer exchange completed. ${supplierText}`;
+        }
+
         if (customerStatus === 'issued' && supplierStatus === 'received') {
             return 'Replacement complete.';
         }
 
         if (customerStatus === 'refunded') {
-            const supplierText = supplierStatus === 'received' ? 'supplier recovery received.' : 'supplier recovery pending.';
+            const supplierText = supplierStatus === 'received'
+                ? 'supplier replacement received.'
+                : supplierStatus === 'refunded'
+                    ? 'supplier refund received.'
+                    : supplierStatus === 'none'
+                        ? 'no supplier warranty; shop loss.'
+                        : 'supplier recovery pending.';
             return `Customer already refunded; ${supplierText}`;
         }
 
@@ -2268,9 +2543,50 @@ if (warrantyClaimModal) {
         }
 
         const customerText = customerStatus === 'issued' ? 'Customer already received replacement.' : 'Customer is waiting for replacement.';
-        const supplierText = supplierStatus === 'received' ? 'Supplier replacement received.' : 'Supplier replacement pending.';
+        const supplierText = supplierStatus === 'received'
+            ? 'Supplier replacement received.'
+            : supplierStatus === 'refunded'
+                ? 'Supplier refund received.'
+                : claimStatus === 'sent_to_supplier'
+                    ? 'Sent to supplier; result pending.'
+                    : 'Supplier decision pending.';
 
         return `${customerText} ${supplierText}`;
+    };
+
+    const renderCurrentWarrantyState = () => {
+        const statusLabels = {
+            received: 'Received',
+            sent_to_supplier: 'Sent to supplier',
+            ready_for_pickup: 'Ready for pickup',
+            resolved: 'Resolved',
+            rejected: 'Rejected',
+        };
+        const customerLabels = {
+            pending: 'Waiting',
+            issued: activeReplacementMode === 'exchange' ? 'Exchange completed' : 'Replacement issued',
+            refunded: 'Refunded',
+        };
+        const supplierLabels = {
+            received: 'Replacement received',
+            refunded: 'Refund received',
+            none: 'No warranty / shop loss',
+            pending: activeClaimStatus === 'sent_to_supplier' ? 'Result pending' : 'Decision pending',
+        };
+
+        if (currentStatus) {
+            currentStatus.textContent = statusLabels[activeClaimStatus] || activeClaimStatus;
+        }
+
+        if (currentCustomer) {
+            currentCustomer.textContent = customerLabels[activeCustomerReplacementStatus] || activeCustomerReplacementStatus;
+        }
+
+        if (currentSupplier) {
+            currentSupplier.textContent = supplierLabels[activeSupplierReplacementStatus] || activeSupplierReplacementStatus;
+        }
+
+        setElementHidden(currentState, false);
     };
 
     const setElementHidden = (element, hidden) => {
@@ -2300,7 +2616,7 @@ if (warrantyClaimModal) {
             return;
         }
 
-        const supplierFinal = ['received', 'none'].includes(activeSupplierReplacementStatus);
+        const supplierFinal = ['received', 'refunded', 'none'].includes(activeSupplierReplacementStatus);
         supplierDecisionSelect.disabled = supplierFinal;
 
         if (sendToSupplierOption) {
@@ -2308,7 +2624,7 @@ if (warrantyClaimModal) {
         }
 
         if (noSupplierWarrantyOption) {
-            noSupplierWarrantyOption.disabled = activeSupplierReplacementStatus === 'received';
+            noSupplierWarrantyOption.disabled = ['received', 'refunded'].includes(activeSupplierReplacementStatus);
         }
     };
 
@@ -2318,7 +2634,7 @@ if (warrantyClaimModal) {
         const hasSupplierRefund = Math.max(0, Number.parseFloat(supplierRefundInput?.value || '0')) > 0;
         const showRefundFields = !!refundToggleInput?.checked || hasSupplierRefund;
         const noSupplierCover = decision === 'no_supplier_warranty' || activeSupplierReplacementStatus === 'none';
-        const supplierFinal = ['received', 'none'].includes(activeSupplierReplacementStatus);
+        const supplierFinal = ['received', 'refunded', 'none'].includes(activeSupplierReplacementStatus);
         const customerFinal = ['issued', 'refunded'].includes(activeCustomerReplacementStatus);
         const showSupplierAction = !noSupplierCover && (!supplierFinal || !!supplierReplacementInput?.checked);
         const showCustomerAction = !noSupplierCover
@@ -2330,8 +2646,10 @@ if (warrantyClaimModal) {
 
         if (refundToggleInput) {
             refundToggleInput.checked = showRefundFields;
+            refundToggleInput.disabled = supplierFinal;
         }
 
+        setElementHidden(refundToggle, supplierFinal && activeSupplierReplacementStatus !== 'refunded');
         refundFields.forEach((field) => setElementHidden(field, !showRefundFields));
         configureStockAction(supplierReplacementInput, supplierReplacementAction, supplierFinal || noSupplierCover, showSupplierAction);
         configureStockAction(customerReplacementInput, customerReplacementAction, customerFinal, showCustomerAction);
@@ -2348,16 +2666,14 @@ if (warrantyClaimModal) {
             return;
         }
 
-        const supplierDone = ['received', 'none'].includes(activeSupplierReplacementStatus) || !!supplierReplacementInput?.checked;
+        const supplierDone = ['received', 'refunded', 'none'].includes(activeSupplierReplacementStatus) || !!supplierReplacementInput?.checked;
         const supplierReceived = activeSupplierReplacementStatus === 'received' || !!supplierReplacementInput?.checked;
         const customerDone = ['issued', 'refunded'].includes(activeCustomerReplacementStatus) || !!customerReplacementInput?.checked;
 
         if (supplierDone && customerDone) {
             statusSelect.value = 'resolved';
-        } else if (supplierReceived) {
+        } else if (supplierReceived || activeSupplierReplacementStatus === 'refunded') {
             statusSelect.value = 'ready_for_pickup';
-        } else if (customerDone && statusSelect.value === 'received') {
-            statusSelect.value = 'sent_to_supplier';
         }
     };
 
@@ -2370,6 +2686,7 @@ if (warrantyClaimModal) {
         const refundAmount = row.dataset.claimRefundAmount || '0.00';
         const refundDate = row.dataset.claimRefundDate || new Date().toISOString().slice(0, 10);
         activeClaimStatus = status;
+        activeReplacementMode = row.dataset.claimReplacementMode || 'wait_supplier';
         activeCustomerReplacementStatus = row.dataset.customerReplacementStatus || 'pending';
         activeSupplierReplacementStatus = row.dataset.supplierReplacementStatus || 'pending';
 
@@ -2394,13 +2711,20 @@ if (warrantyClaimModal) {
         }
 
         if (replacementSummary) {
-            replacementSummary.textContent = replacementText(activeCustomerReplacementStatus, activeSupplierReplacementStatus);
+            replacementSummary.textContent = replacementText(
+                activeCustomerReplacementStatus,
+                activeSupplierReplacementStatus,
+                activeReplacementMode,
+                activeClaimStatus
+            );
         }
+
+        renderCurrentWarrantyState();
 
         configureStockAction(
             supplierReplacementInput,
             supplierReplacementAction,
-            ['received', 'none'].includes(activeSupplierReplacementStatus),
+            ['received', 'refunded', 'none'].includes(activeSupplierReplacementStatus),
             true,
             true
         );
@@ -2429,8 +2753,18 @@ if (warrantyClaimModal) {
     };
 
     document.querySelectorAll('[data-warranty-claim-row]').forEach((row) => {
-        row.addEventListener('click', () => openWarrantyModal(row));
+        row.addEventListener('click', (event) => {
+            if (event.target.closest('a, button, input, select, textarea')) {
+                return;
+            }
+
+            openWarrantyModal(row);
+        });
         row.addEventListener('keydown', (event) => {
+            if (event.target !== row) {
+                return;
+            }
+
             if (event.key === 'Enter' || event.key === ' ') {
                 event.preventDefault();
                 openWarrantyModal(row);
@@ -2439,6 +2773,14 @@ if (warrantyClaimModal) {
     });
 
     supplierReplacementInput?.addEventListener('change', () => {
+        if (supplierReplacementInput.checked && refundToggleInput?.checked && !refundToggleInput.disabled) {
+            refundToggleInput.checked = false;
+
+            if (supplierRefundInput) {
+                supplierRefundInput.value = money(0);
+            }
+        }
+
         syncWarrantyStatusFromActions();
         refreshWarrantyModalFields();
     });
@@ -2462,6 +2804,14 @@ if (warrantyClaimModal) {
             statusSelect.value = activeClaimStatus;
         }
 
+        if (supplierDecisionSelect.value !== '' && refundToggleInput?.checked && !refundToggleInput.disabled) {
+            refundToggleInput.checked = false;
+
+            if (supplierRefundInput) {
+                supplierRefundInput.value = money(0);
+            }
+        }
+
         refreshWarrantyModalFields();
     });
     refundToggleInput?.addEventListener('change', () => {
@@ -2471,7 +2821,12 @@ if (warrantyClaimModal) {
             supplierRefundInput.value = money(0);
         }
 
-        refundFields.forEach((field) => setElementHidden(field, !enabled));
+        if (enabled && supplierReplacementInput) {
+            supplierReplacementInput.checked = false;
+        }
+
+        syncWarrantyStatusFromActions();
+        refreshWarrantyModalFields();
     });
 
     closeButton?.addEventListener('click', closeWarrantyModal);

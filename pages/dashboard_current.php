@@ -15,6 +15,7 @@ if ($canViewProductCost) {
 }
 $currentYear = (int) date('Y');
 $trendMode = (string) ($_GET['trend'] ?? 'monthly');
+$trendMetric = (string) ($_GET['metric'] ?? 'revenue');
 
 if ($trendMode === '30days') {
     $trendMode = 'monthly';
@@ -22,6 +23,10 @@ if ($trendMode === '30days') {
 
 if (! in_array($trendMode, ['monthly', 'yearly', 'weekly'], true)) {
     $trendMode = 'monthly';
+}
+
+if (! in_array($trendMetric, ['revenue', 'profit'], true) || ($trendMetric === 'profit' && ! $canViewProductCost)) {
+    $trendMetric = 'revenue';
 }
 
 $selectedWeekStart = dashboard_week_start((string) ($_GET['week'] ?? ''));
@@ -261,25 +266,32 @@ if ($dbReady && $pdo !== null) {
 
 }
 
-$maxRevenue = 0.0;
 $trendData = match ($trendMode) {
     'weekly' => $weeklyTrend,
     'yearly' => $yearlyTrend,
     default => $monthlyTrend,
 };
+$trendValueKey = $trendMetric === 'profit' ? 'net_profit' : 'revenue';
+$trendMetricLabel = $trendMetric === 'profit' ? 'Profit' : 'Revenue';
+$trendMinimum = 0.0;
+$trendMaximum = 0.0;
 $trendTotal = 0.0;
 
 foreach ($trendData as $point) {
-    $maxRevenue = max($maxRevenue, (float) $point['revenue']);
-    $trendTotal += (float) $point['revenue'];
+    $pointValue = (float) ($point[$trendValueKey] ?? 0);
+    $trendMinimum = min($trendMinimum, $pointValue);
+    $trendMaximum = max($trendMaximum, $pointValue);
+    $trendTotal += $pointValue;
 }
 
 $trendAverage = count($trendData) > 0 ? $trendTotal / count($trendData) : 0.0;
-$trendAveragePosition = $maxRevenue > 0 ? min(100.0, max(0.0, ($trendAverage / $maxRevenue) * 100)) : 0.0;
+$trendRange = $trendMaximum - $trendMinimum;
+$trendZeroPosition = $trendRange > 0 ? ((0 - $trendMinimum) / $trendRange) * 100 : 0.0;
+$trendAveragePosition = $trendRange > 0 ? (($trendAverage - $trendMinimum) / $trendRange) * 100 : 0.0;
 $trendTitle = match ($trendMode) {
-    'weekly' => 'Selected Week Revenue',
-    'yearly' => 'This Year Revenue',
-    default => 'This Month Revenue',
+    'weekly' => 'Selected Week ' . $trendMetricLabel,
+    'yearly' => 'This Year ' . $trendMetricLabel,
+    default => 'This Month ' . $trendMetricLabel,
 };
 $trendBadge = match ($trendMode) {
     'weekly' => format_money($trendTotal) . ' selected week',
@@ -315,47 +327,68 @@ $cashOutToday = $metrics['today_expenses'] + $metrics['today_customer_refunds'] 
                 <h2><?php echo e($trendTitle); ?></h2>
             </div>
             <div class="trend-toolbar">
-                <nav class="segmented trend-segmented" aria-label="Revenue view">
-                    <a class="<?php echo $trendMode === 'monthly' ? 'active' : ''; ?>" href="<?php echo e(app_url('?page=dashboard&trend=monthly')); ?>">Monthly</a>
-                    <a class="<?php echo $trendMode === 'yearly' ? 'active' : ''; ?>" href="<?php echo e(app_url('?page=dashboard&trend=yearly')); ?>">Yearly</a>
-                    <a class="<?php echo $trendMode === 'weekly' ? 'active' : ''; ?>" href="<?php echo e(app_url('?page=dashboard&trend=weekly&week=' . rawurlencode($selectedWeekInput))); ?>">Weekly</a>
+                <?php if ($canViewProductCost): ?>
+                    <form class="trend-metric-form" method="get">
+                        <input type="hidden" name="page" value="dashboard">
+                        <input type="hidden" name="trend" value="<?php echo e($trendMode); ?>">
+                        <?php if ($trendMode === 'weekly'): ?>
+                            <input type="hidden" name="week" value="<?php echo e($selectedWeekInput); ?>">
+                        <?php endif; ?>
+                        <select class="trend-metric-select" name="metric" aria-label="Chart metric" onchange="this.form.submit()">
+                            <option value="revenue" <?php echo $trendMetric === 'revenue' ? 'selected' : ''; ?>>Revenue</option>
+                            <option value="profit" <?php echo $trendMetric === 'profit' ? 'selected' : ''; ?>>Profit</option>
+                        </select>
+                        <i class="trend-metric-chevron" data-lucide="chevron-down" aria-hidden="true"></i>
+                    </form>
+                <?php endif; ?>
+                <nav class="segmented trend-segmented" aria-label="Chart period">
+                    <a class="<?php echo $trendMode === 'monthly' ? 'active' : ''; ?>" href="<?php echo e(app_url('?page=dashboard&trend=monthly&metric=' . rawurlencode($trendMetric))); ?>">Monthly</a>
+                    <a class="<?php echo $trendMode === 'yearly' ? 'active' : ''; ?>" href="<?php echo e(app_url('?page=dashboard&trend=yearly&metric=' . rawurlencode($trendMetric))); ?>">Yearly</a>
+                    <a class="<?php echo $trendMode === 'weekly' ? 'active' : ''; ?>" href="<?php echo e(app_url('?page=dashboard&trend=weekly&metric=' . rawurlencode($trendMetric) . '&week=' . rawurlencode($selectedWeekInput))); ?>">Weekly</a>
                 </nav>
                 <?php if ($trendMode === 'weekly'): ?>
                     <form class="trend-week-form" method="get">
                         <input type="hidden" name="page" value="dashboard">
                         <input type="hidden" name="trend" value="weekly">
-                        <input class="trend-week-input" type="week" name="week" value="<?php echo e($selectedWeekInput); ?>" aria-label="Select revenue week" onchange="this.form.submit()">
+                        <input type="hidden" name="metric" value="<?php echo e($trendMetric); ?>">
+                        <input class="trend-week-input" type="week" name="week" value="<?php echo e($selectedWeekInput); ?>" aria-label="Select chart week" onchange="this.form.submit()">
                     </form>
                 <?php endif; ?>
             </div>
         </div>
 
-        <div class="dashboard-chart" aria-label="<?php echo match ($trendMode) { 'weekly' => 'Weekly sales chart', 'yearly' => 'Yearly sales chart', default => 'Current month sales chart' }; ?>">
+        <div class="dashboard-chart" aria-label="<?php echo e($trendTitle . ' chart'); ?>">
             <div class="dashboard-chart-plot" style="--chart-count: <?php echo count($trendData); ?>;">
-                <?php if ($maxRevenue > 0): ?>
+                <?php if ($trendMinimum < 0): ?>
+                    <div class="dashboard-chart-zero-line" style="bottom: <?php echo e(number_format($trendZeroPosition, 2, '.', '')); ?>%" aria-hidden="true"></div>
+                <?php endif; ?>
+
+                <?php if ($trendRange > 0): ?>
                     <div
                         class="dashboard-chart-average-line"
                         style="bottom: <?php echo e(number_format($trendAveragePosition, 2, '.', '')); ?>%"
-                        data-chart-label="Average"
+                        data-chart-label="Average <?php echo e(strtolower($trendMetricLabel)); ?>"
                         data-chart-value="<?php echo e(format_money($trendAverage)); ?>"
                         tabindex="0"
-                        aria-label="<?php echo e('Average: ' . format_money($trendAverage)); ?>"
+                        aria-label="<?php echo e('Average ' . strtolower($trendMetricLabel) . ': ' . format_money($trendAverage)); ?>"
                     ></div>
                 <?php endif; ?>
 
                 <?php foreach ($trendData as $point): ?>
                     <?php
-                    $height = $maxRevenue > 0 ? max(4, ((float) $point['revenue'] / $maxRevenue) * 100) : 0;
+                    $pointValue = (float) ($point[$trendValueKey] ?? 0);
+                    $height = $trendRange > 0 ? (abs($pointValue) / $trendRange) * 100 : 0;
+                    $bottom = $pointValue >= 0 ? $trendZeroPosition : $trendZeroPosition - $height;
                     $tooltipDate = (string) ($point['tooltip_date'] ?? $point['label']);
                     ?>
                     <div
                         class="dashboard-chart-bar"
                         tabindex="0"
-                        aria-label="<?php echo e($tooltipDate . ': ' . format_money((float) $point['revenue'])); ?>"
+                        aria-label="<?php echo e($tooltipDate . ' ' . strtolower($trendMetricLabel) . ': ' . format_money($pointValue)); ?>"
                     >
                         <span
-                            class="dashboard-chart-fill"
-                            style="height: <?php echo e(number_format($height, 2, '.', '')); ?>%"
+                            class="dashboard-chart-fill <?php echo $pointValue < 0 ? 'is-negative' : ''; ?>"
+                            style="height: <?php echo e(number_format($height, 2, '.', '')); ?>%; bottom: <?php echo e(number_format($bottom, 2, '.', '')); ?>%"
                         >
                             <span class="dashboard-chart-tooltip" role="tooltip">
                                 <strong class="dashboard-chart-tooltip-date"><?php echo e($tooltipDate); ?></strong>
@@ -380,7 +413,7 @@ $cashOutToday = $metrics['today_expenses'] + $metrics['today_customer_refunds'] 
             <div class="dashboard-chart-footer">
                 <span class="dashboard-pill dashboard-chart-total"><?php echo e($trendBadge); ?></span>
                 <span class="dashboard-pill dashboard-average-value">
-                    Avg <?php echo e(format_money($trendAverage)); ?>
+                    Avg <?php echo e(strtolower($trendMetricLabel)); ?> <?php echo e(format_money($trendAverage)); ?>
                 </span>
             </div>
         </div>

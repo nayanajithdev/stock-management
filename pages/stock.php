@@ -239,7 +239,7 @@ function stock_movement_invoice_html(array $movement): string
         $invoiceNo = trim((string) ($movement['sale_invoice_no'] ?? ''));
 
         if ($invoiceNo !== '') {
-            return '<a class="table-title" href="' . e(app_url('?page=sale-view&id=' . $referenceId)) . '">' . e($invoiceNo) . '</a>';
+            return '<div class="table-actions"><span class="table-title">' . e($invoiceNo) . '</span><a class="icon-button" href="' . e(app_url('?page=sale-view&id=' . $referenceId)) . '" aria-label="View invoice"><i data-lucide="eye"></i></a></div>';
         }
     }
 
@@ -247,10 +247,10 @@ function stock_movement_invoice_html(array $movement): string
         $invoiceNo = trim((string) ($movement['purchase_invoice_no'] ?? ''));
 
         if ($invoiceNo !== '') {
-            return '<a class="table-title" href="' . e(app_url('?page=purchase-history&q=' . rawurlencode($invoiceNo))) . '">' . e($invoiceNo) . '</a>';
+            return '<div class="table-actions"><span class="table-title">' . e($invoiceNo) . '</span><a class="icon-button" href="' . e(app_url('?page=purchase-view&id=' . $referenceId)) . '" aria-label="View purchase invoice"><i data-lucide="eye"></i></a></div>';
         }
 
-        return '<a class="table-title" href="' . e(app_url('?page=purchase-history')) . '">Purchase #' . $referenceId . '</a>';
+        return '<div class="table-actions"><span class="table-title">Purchase #' . $referenceId . '</span><a class="icon-button" href="' . e(app_url('?page=purchase-view&id=' . $referenceId)) . '" aria-label="View purchase"><i data-lucide="eye"></i></a></div>';
     }
 
     return '<span class="table-subtitle">-</span>';

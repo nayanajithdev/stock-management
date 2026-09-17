@@ -502,7 +502,7 @@ function auth_permission_definitions(): array
         'purchases' => [
             'label' => 'Purchases',
             'description' => 'Receive supplier stock and view purchase history.',
-            'pages' => ['purchases', 'purchase-history'],
+            'pages' => ['purchases', 'purchase-history', 'purchase-view'],
         ],
         'supplier_credit' => [
             'label' => 'Supplier Credit',
@@ -542,7 +542,7 @@ function auth_permission_definitions(): array
         'warranty_returns' => [
             'label' => 'Warranty / Returns',
             'description' => 'Handle customer returns, refunds, warranty exchanges, and supplier recovery.',
-            'pages' => ['warranty-returns'],
+            'pages' => ['warranty-returns', 'recent-returns'],
         ],
         'reports' => [
             'label' => 'Reports',

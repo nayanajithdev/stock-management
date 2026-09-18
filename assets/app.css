@@ -3419,6 +3419,31 @@ select,
     grid-template-columns: minmax(180px, 280px) 170px 40px;
 }
 
+.stock-movement-cell {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    white-space: nowrap;
+}
+
+.stock-movement-change {
+    min-width: 28px;
+    text-align: right;
+    font-size: 13px;
+}
+
+.stock-invoice-link {
+    color: var(--accent-2);
+    font-weight: 650;
+    text-decoration: none;
+}
+
+.stock-invoice-link:hover,
+.stock-invoice-link:focus-visible {
+    color: var(--text);
+    text-decoration: underline;
+}
+
 .product-filter-row {
     grid-template-columns: 130px minmax(220px, 280px) 40px auto;
     align-items: center;

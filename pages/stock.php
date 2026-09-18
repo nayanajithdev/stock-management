@@ -7,10 +7,15 @@ $products = [];
 $movements = [];
 $stockSearch = trim((string) ($_GET['q'] ?? ''));
 $typeFilter = trim((string) ($_GET['movement_type'] ?? ''));
+$pageNumber = max(1, (int) ($_GET['p'] ?? 1));
+$perPage = 25;
+$offset = ($pageNumber - 1) * $perPage;
+$totalMovements = 0;
+$totalPages = 1;
 $movementLabels = stock_movement_labels();
 $filterMovementLabels = stock_movement_filter_labels();
 $canViewProductCost = $dbReady && $pdo instanceof PDO && auth_can_view_product_cost($pdo, $currentUser ?? null);
-$movementTableColspan = $canViewProductCost ? 8 : 7;
+$movementTableColspan = $canViewProductCost ? 7 : 6;
 $summary = [
     'stock_units' => 0,
     'stock_value' => 0.0,
@@ -66,13 +71,31 @@ if ($dbReady && $pdo !== null) {
         $params['movement_type'] = $typeFilter;
     }
 
-    if ($where !== []) {
-        $movementSql .= ' WHERE ' . implode(' AND ', $where);
+    $whereSql = $where === [] ? '' : ' WHERE ' . implode(' AND ', $where);
+    $countSql = 'SELECT COUNT(*)
+                 FROM stock_movements sm
+                 INNER JOIN products p ON p.id = sm.product_id
+                 LEFT JOIN sales sale_ref ON sm.reference_type = "sale" AND sale_ref.id = sm.reference_id
+                 LEFT JOIN purchases purchase_ref ON sm.reference_type = "purchase" AND purchase_ref.id = sm.reference_id
+                 LEFT JOIN users u ON u.id = sm.created_by' . $whereSql;
+    $countStatement = $pdo->prepare($countSql);
+    $countStatement->execute($params);
+    $totalMovements = (int) $countStatement->fetchColumn();
+    $totalPages = max(1, (int) ceil($totalMovements / $perPage));
+
+    if ($pageNumber > $totalPages) {
+        $pageNumber = $totalPages;
+        $offset = ($pageNumber - 1) * $perPage;
     }
 
-    $movementSql .= ' ORDER BY sm.created_at DESC, sm.id DESC LIMIT 100';
+    $movementSql .= $whereSql . ' ORDER BY sm.created_at DESC, sm.id DESC LIMIT :limit OFFSET :offset';
     $movementStatement = $pdo->prepare($movementSql);
-    $movementStatement->execute($params);
+    foreach ($params as $key => $value) {
+        $movementStatement->bindValue(':' . $key, $value, is_int($value) ? PDO::PARAM_INT : PDO::PARAM_STR);
+    }
+    $movementStatement->bindValue(':limit', $perPage, PDO::PARAM_INT);
+    $movementStatement->bindValue(':offset', $offset, PDO::PARAM_INT);
+    $movementStatement->execute();
     $movements = $movementStatement->fetchAll();
 }
 ?>
@@ -144,8 +167,7 @@ if ($dbReady && $pdo !== null) {
                     <tr>
                         <th>Date</th>
                         <th>Product</th>
-                        <th>Type</th>
-                        <th>Change</th>
+                        <th>Movement</th>
                         <th>Stock After</th>
                         <?php if ($canViewProductCost): ?>
                             <th>Unit Cost</th>
@@ -164,6 +186,7 @@ if ($dbReady && $pdo !== null) {
                     <?php foreach ($movements as $movement): ?>
                         <?php
                         $quantityChange = (int) $movement['quantity_change'];
+                        $reference = stock_movement_reference($movement);
                         ?>
                         <tr>
                             <td><?php echo e(date('Y-m-d H:i', strtotime((string) $movement['created_at']))); ?></td>
@@ -171,19 +194,55 @@ if ($dbReady && $pdo !== null) {
                                 <strong class="table-title"><?php echo e($movement['product_name']); ?></strong>
                                 <span class="table-subtitle"><?php echo e($movement['sku'] . (($movement['model'] ?? '') !== '' ? ' / ' . $movement['model'] : '')); ?></span>
                             </td>
-                            <td><span class="status <?php echo e(stock_movement_status_class((string) $movement['movement_type'])); ?>"><?php echo e($movementLabels[$movement['movement_type']] ?? ucfirst((string) $movement['movement_type'])); ?></span></td>
-                            <td class="<?php echo $quantityChange < 0 ? 'text-danger' : 'text-good'; ?>"><?php echo e(($quantityChange > 0 ? '+' : '') . $quantityChange); ?></td>
+                            <td>
+                                <div class="stock-movement-cell">
+                                    <span class="status <?php echo e(stock_movement_status_class((string) $movement['movement_type'])); ?>"><?php echo e($movementLabels[$movement['movement_type']] ?? ucfirst((string) $movement['movement_type'])); ?></span>
+                                    <strong class="stock-movement-change <?php echo $quantityChange < 0 ? 'text-danger' : 'text-good'; ?>"><?php echo e(($quantityChange > 0 ? '+' : '') . $quantityChange); ?></strong>
+                                </div>
+                            </td>
                             <td><?php echo (int) $movement['stock_after']; ?></td>
                             <?php if ($canViewProductCost): ?>
                                 <td><?php echo e(format_money($movement['display_unit_cost'])); ?></td>
                             <?php endif; ?>
                             <td><?php echo e($movement['created_by_name'] ?: '-'); ?></td>
-                            <td><?php echo stock_movement_invoice_html($movement); ?></td>
+                            <td>
+                                <?php if ($reference['label'] !== '' && $reference['url'] !== ''): ?>
+                                    <a class="table-title stock-invoice-link" href="<?php echo e($reference['url']); ?>" aria-label="<?php echo e($reference['aria_label']); ?>" title="<?php echo e($reference['aria_label']); ?>"><?php echo e($reference['label']); ?></a>
+                                <?php else: ?>
+                                    <span class="table-subtitle">-</span>
+                                <?php endif; ?>
+                            </td>
                         </tr>
                     <?php endforeach; ?>
                 </tbody>
             </table>
         </div>
+
+        <?php if ($totalPages > 1): ?>
+            <div class="pagination-row product-pagination" aria-label="Stock movement pages">
+                <?php if ($pageNumber <= 1): ?>
+                    <span class="product-page-button disabled">Previous</span>
+                <?php else: ?>
+                    <a class="product-page-button" href="<?php echo e(app_url('?' . stock_page_query($pageNumber - 1))); ?>">Previous</a>
+                <?php endif; ?>
+
+                <?php foreach (stock_pagination_pages($pageNumber, $totalPages) as $paginationPage): ?>
+                    <?php if ($paginationPage === 'ellipsis'): ?>
+                        <span class="product-page-ellipsis">...</span>
+                    <?php elseif ((int) $paginationPage === $pageNumber): ?>
+                        <span class="product-page-button active" aria-current="page"><?php echo (int) $paginationPage; ?></span>
+                    <?php else: ?>
+                        <a class="product-page-button" href="<?php echo e(app_url('?' . stock_page_query((int) $paginationPage))); ?>"><?php echo (int) $paginationPage; ?></a>
+                    <?php endif; ?>
+                <?php endforeach; ?>
+
+                <?php if ($pageNumber >= $totalPages): ?>
+                    <span class="product-page-button disabled">Next</span>
+                <?php else: ?>
+                    <a class="product-page-button" href="<?php echo e(app_url('?' . stock_page_query($pageNumber + 1))); ?>">Next</a>
+                <?php endif; ?>
+            </div>
+        <?php endif; ?>
     </article>
 </section>
 
@@ -230,7 +289,7 @@ function stock_movement_status_class(string $type): string
     };
 }
 
-function stock_movement_invoice_html(array $movement): string
+function stock_movement_reference(array $movement): array
 {
     $referenceType = (string) ($movement['reference_type'] ?? '');
     $referenceId = (int) ($movement['reference_id'] ?? 0);
@@ -239,7 +298,11 @@ function stock_movement_invoice_html(array $movement): string
         $invoiceNo = trim((string) ($movement['sale_invoice_no'] ?? ''));
 
         if ($invoiceNo !== '') {
-            return '<div class="table-actions"><span class="table-title">' . e($invoiceNo) . '</span><a class="icon-button" href="' . e(app_url('?page=sale-view&id=' . $referenceId)) . '" aria-label="View invoice"><i data-lucide="eye"></i></a></div>';
+            return [
+                'label' => $invoiceNo,
+                'url' => app_url('?page=sale-view&id=' . $referenceId),
+                'aria_label' => 'View invoice',
+            ];
         }
     }
 
@@ -247,11 +310,67 @@ function stock_movement_invoice_html(array $movement): string
         $invoiceNo = trim((string) ($movement['purchase_invoice_no'] ?? ''));
 
         if ($invoiceNo !== '') {
-            return '<div class="table-actions"><span class="table-title">' . e($invoiceNo) . '</span><a class="icon-button" href="' . e(app_url('?page=purchase-view&id=' . $referenceId)) . '" aria-label="View purchase invoice"><i data-lucide="eye"></i></a></div>';
+            return [
+                'label' => $invoiceNo,
+                'url' => app_url('?page=purchase-view&id=' . $referenceId),
+                'aria_label' => 'View purchase invoice',
+            ];
         }
 
-        return '<div class="table-actions"><span class="table-title">Purchase #' . $referenceId . '</span><a class="icon-button" href="' . e(app_url('?page=purchase-view&id=' . $referenceId)) . '" aria-label="View purchase"><i data-lucide="eye"></i></a></div>';
+        return [
+            'label' => 'Purchase #' . $referenceId,
+            'url' => app_url('?page=purchase-view&id=' . $referenceId),
+            'aria_label' => 'View purchase',
+        ];
     }
 
-    return '<span class="table-subtitle">-</span>';
+    return [
+        'label' => '',
+        'url' => '',
+        'aria_label' => '',
+    ];
+}
+
+function stock_page_query(int $pageNumber): string
+{
+    $query = $_GET;
+    $query['page'] = 'stock';
+    $query['p'] = max(1, $pageNumber);
+
+    return http_build_query($query);
+}
+
+function stock_pagination_pages(int $pageNumber, int $totalPages): array
+{
+    if ($totalPages <= 7) {
+        return range(1, $totalPages);
+    }
+
+    $pages = [1];
+    $start = max(2, $pageNumber - 1);
+    $end = min($totalPages - 1, $pageNumber + 1);
+
+    if ($pageNumber <= 3) {
+        $start = 2;
+        $end = 4;
+    } elseif ($pageNumber >= $totalPages - 2) {
+        $start = $totalPages - 3;
+        $end = $totalPages - 1;
+    }
+
+    if ($start > 2) {
+        $pages[] = 'ellipsis';
+    }
+
+    for ($page = $start; $page <= $end; $page++) {
+        $pages[] = $page;
+    }
+
+    if ($end < $totalPages - 1) {
+        $pages[] = 'ellipsis';
+    }
+
+    $pages[] = $totalPages;
+
+    return $pages;
 }

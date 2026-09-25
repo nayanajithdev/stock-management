@@ -27,6 +27,9 @@ $themeMode = isset($currentUser) && is_array($currentUser) && (string) ($current
     <?php endif; ?>
     <link rel="preconnect" href="https://unpkg.com">
     <link rel="stylesheet" href="<?php echo e(app_url('assets/app.css')); ?>">
+    <?php if (in_array($currentPage, ['sale-view', 'invoice-preview'], true)): ?>
+        <link rel="stylesheet" href="<?php echo e(app_url('prints/invoice.css')); ?>">
+    <?php endif; ?>
 </head>
 <body class="theme-<?php echo e($themeMode); ?>" data-theme="<?php echo e($themeMode); ?>">
     <?php if ($isAuthPage): ?>

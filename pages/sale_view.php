@@ -115,9 +115,9 @@ $balance = is_array($sale) ? sale_receivable_balance($sale['total'], $sale['paid
             <h1><?php echo e($sale['invoice_no']); ?></h1>
         </div>
         <div class="invoice-actions">
-            <a class="top-action" href="<?php echo e(app_url('?page=sales')); ?>">
+            <a class="top-action" href="<?php echo e(app_url('?page=sales-history')); ?>">
                 <i data-lucide="arrow-left"></i>
-                Sales
+                Sales History
             </a>
             <a class="top-action" href="<?php echo e(app_url('?page=sales&edit=' . (int) $sale['id'])); ?>">
                 <i data-lucide="pencil"></i>
@@ -131,139 +131,39 @@ $balance = is_array($sale) ? sale_receivable_balance($sale['total'], $sale['paid
     </div>
 
     <section class="invoice-layout">
-        <article class="panel invoice-paper" id="invoice-print-area">
-            <header class="invoice-header">
-                <div>
-                    <h2><?php echo e($config['shop_name'] ?? 'Shop'); ?></h2>
-                    <?php if ((string) ($config['shop_legal_name'] ?? '') !== ''): ?>
-                        <span><?php echo e($config['shop_legal_name']); ?></span>
-                    <?php endif; ?>
-                    <?php if ((string) ($config['shop_address'] ?? '') !== ''): ?>
-                        <span><?php echo nl2br(e($config['shop_address'])); ?></span>
-                    <?php endif; ?>
-                    <?php if ((string) ($config['shop_phone'] ?? '') !== '' || (string) ($config['shop_email'] ?? '') !== ''): ?>
-                        <span><?php echo e(trim((string) ($config['shop_phone'] ?? '') . ' ' . (string) ($config['shop_email'] ?? ''))); ?></span>
-                    <?php endif; ?>
-                </div>
-                <div class="invoice-meta">
-                    <strong>Invoice</strong>
-                    <span><?php echo e($sale['invoice_no']); ?></span>
-                    <small><?php echo e(date('Y-m-d H:i', strtotime((string) $sale['sale_date']))); ?></small>
-                </div>
-            </header>
-
-            <section class="invoice-parties">
-                <div>
-                    <span>Customer</span>
-                    <strong><?php echo e($sale['customer_name'] ?: 'Walk-in Customer'); ?></strong>
-                    <?php if ((string) ($sale['customer_phone'] ?? '') !== ''): ?>
-                        <small><?php echo e($sale['customer_phone']); ?></small>
-                    <?php endif; ?>
-                    <?php if ((string) ($sale['customer_email'] ?? '') !== ''): ?>
-                        <small><?php echo e($sale['customer_email']); ?></small>
-                    <?php endif; ?>
-                    <?php if ((string) ($sale['customer_address'] ?? '') !== ''): ?>
-                        <small><?php echo nl2br(e($sale['customer_address'])); ?></small>
-                    <?php endif; ?>
-                </div>
-                <div>
-                    <span>Payment</span>
-                    <strong><?php echo e(ucfirst((string) $sale['payment_method'])); ?></strong>
-                    <small>Status: <?php echo e(ucfirst((string) $sale['status'])); ?></small>
-                </div>
-            </section>
-
-            <div class="invoice-table">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Item</th>
-                            <?php if ($invoiceHasWarranty): ?>
-                                <th>Warranty</th>
-                            <?php endif; ?>
-                            <th>Qty</th>
-                            <th>Price</th>
-                            <th>Disc.</th>
-                            <th>Total</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php foreach ($items as $item): ?>
-                            <?php
-                            $itemName = trim((string) ($item['item_name'] ?? ''));
-                            $productLabel = $itemName !== ''
-                                ? $itemName
-                                : trim((string) ($item['sku'] ?? '') . ' - ' . (string) ($item['product_name'] ?? ''), ' -');
-                            ?>
-                            <tr>
-                                <td>
-                                    <strong class="table-title"><?php echo e($productLabel); ?></strong>
-                                    <span class="table-subtitle"><?php echo e($itemName !== '' ? 'Non-stock item' : (string) ($item['model'] ?? '')); ?></span>
-                                </td>
-                                <?php if ($invoiceHasWarranty): ?>
-                                    <td>
-                                        <?php if ((int) ($item['warranty_months'] ?? 0) > 0): ?>
-                                            <?php echo (int) $item['warranty_months']; ?> month warranty
-                                        <?php endif; ?>
-                                    </td>
-                                <?php endif; ?>
-                                <td><?php echo (int) $item['quantity']; ?></td>
-                                <td><?php echo e(format_money($item['unit_price'])); ?></td>
-                                <td><?php echo e(format_money($item['discount'])); ?></td>
-                                <td><?php echo e(format_money($item['total'])); ?></td>
-                            </tr>
-                        <?php endforeach; ?>
-                    </tbody>
-                </table>
-            </div>
-
-            <section class="invoice-summary">
-                <dl>
-                    <div>
-                        <dt>Subtotal</dt>
-                        <dd><?php echo e(format_money($sale['subtotal'])); ?></dd>
-                    </div>
-                    <div>
-                        <dt>Discount</dt>
-                        <dd><?php echo e(format_money($sale['discount'])); ?></dd>
-                    </div>
-                    <div>
-                        <dt>Tax</dt>
-                        <dd><?php echo e(format_money($sale['tax'])); ?></dd>
-                    </div>
-                    <div class="invoice-total-row">
-                        <dt>Total</dt>
-                        <dd><?php echo e(format_money($sale['total'])); ?></dd>
-                    </div>
-                    <div>
-                        <dt>Paid</dt>
-                        <dd><?php echo e(format_money($sale['paid'])); ?></dd>
-                    </div>
-                    <?php if ((float) ($sale['returned_total'] ?? 0) > 0): ?>
-                        <div>
-                            <dt>Returned</dt>
-                            <dd><?php echo e(format_money($sale['returned_total'])); ?></dd>
-                        </div>
-                    <?php endif; ?>
-                    <div>
-                        <dt>Balance</dt>
-                        <dd><?php echo e(format_money($balance)); ?></dd>
-                    </div>
-                </dl>
-            </section>
-
-            <footer class="invoice-footer">
-                <?php if ((string) ($config['invoice_footer'] ?? '') !== ''): ?>
-                    <p><?php echo e($config['invoice_footer']); ?></p>
-                <?php endif; ?>
-                <?php if ((string) ($config['return_policy'] ?? '') !== ''): ?>
-                    <small>Returns: <?php echo e($config['return_policy']); ?></small>
-                <?php endif; ?>
-                <?php if ((string) ($config['warranty_policy'] ?? '') !== ''): ?>
-                    <small>Warranty: <?php echo e($config['warranty_policy']); ?></small>
-                <?php endif; ?>
-            </footer>
-        </article>
+        <?php
+        $invoiceDocument = [
+            'id' => 'invoice-print-area',
+            'invoice_no' => (string) $sale['invoice_no'],
+            'date' => date('M j, Y', strtotime((string) $sale['sale_date'])),
+            'customer_name' => (string) ($sale['customer_name'] ?? ''),
+            'customer_phone' => (string) ($sale['customer_phone'] ?? ''),
+            'customer_email' => (string) ($sale['customer_email'] ?? ''),
+            'customer_address' => (string) ($sale['customer_address'] ?? ''),
+            'subtotal' => (float) $sale['subtotal'],
+            'discount' => (float) $sale['discount'],
+            'tax' => (float) $sale['tax'],
+            'total' => (float) $sale['total'],
+            'balance' => $balance,
+        ];
+        $invoiceDocumentItems = array_map(
+            static function (array $item): array {
+                $itemName = trim((string) ($item['item_name'] ?? ''));
+                return [
+                    'name' => $itemName !== ''
+                        ? $itemName
+                        : trim((string) ($item['product_name'] ?? '')),
+                    'model' => $itemName !== '' ? 'Non-stock item' : (string) ($item['model'] ?? ''),
+                    'warranty_months' => (int) ($item['warranty_months'] ?? 0),
+                    'quantity' => (int) ($item['quantity'] ?? 0),
+                    'unit_price' => (float) ($item['unit_price'] ?? 0),
+                    'total' => (float) ($item['total'] ?? 0),
+                ];
+            },
+            $items
+        );
+        include __DIR__ . '/../prints/invoice_body.php';
+        ?>
 
         <aside class="invoice-side no-print">
             <article class="panel">

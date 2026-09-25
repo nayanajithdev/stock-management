@@ -117,7 +117,8 @@ input[type="number"]::-webkit-inner-spin-button {
     scrollbar-width: none;
     border-right: 1px solid var(--line);
     background: rgba(34, 38, 43, .96);
-    padding: 22px 14px;
+    padding: 22px 16px;
+    gap: 18px;
 }
 
 .sidebar::-webkit-scrollbar {
@@ -130,22 +131,22 @@ input[type="number"]::-webkit-inner-spin-button {
 
 .brand-card {
     display: grid;
-    grid-template-columns: 46px minmax(0, 1fr);
+    grid-template-columns: 42px minmax(0, 1fr);
     align-items: center;
     gap: 12px;
-    min-height: 54px;
+    min-height: 42px;
     border: 0;
     border-radius: 0;
     background: transparent;
-    padding: 0 6px;
+    padding: 0 0 14px;
     box-shadow: none;
 }
 
 .brand-mark {
     display: grid;
     place-items: center;
-    width: 46px;
-    height: 46px;
+    width: 42px;
+    height: 42px;
     border-radius: 8px;
     background: var(--text);
     color: #181817;
@@ -185,7 +186,7 @@ input[type="number"]::-webkit-inner-spin-button {
     display: grid;
     align-content: start;
     gap: 18px;
-    padding-top: 30px;
+    padding-top: 0;
 }
 
 .sidebar-account {
@@ -194,13 +195,13 @@ input[type="number"]::-webkit-inner-spin-button {
 
 .nav-section {
     display: grid;
-    gap: 6px;
+    gap: 10px;
     padding-bottom: 18px;
     border-bottom: 1px solid rgba(255, 255, 255, .07);
 }
 
 .nav-section h2 {
-    margin: 0 0 8px;
+    margin: 0 0 10px;
     padding: 0 12px;
     color: var(--muted);
     font-size: 12px;
@@ -211,7 +212,7 @@ input[type="number"]::-webkit-inner-spin-button {
 }
 
 .nav-dropdown {
-    gap: 6px;
+    gap: 10px;
     padding-bottom: 18px;
 }
 
@@ -262,8 +263,8 @@ input[type="number"]::-webkit-inner-spin-button {
 
 .nav-dropdown-items {
     display: none;
-    gap: 5px;
-    padding: 2px 0 0;
+    gap: 10px;
+    padding: 0;
 }
 
 .nav-dropdown.open .nav-dropdown-items {
@@ -4536,11 +4537,15 @@ body.theme-light .modal-backdrop {
         background: rgba(13, 21, 28, .82);
         backdrop-filter: blur(16px);
         -webkit-backdrop-filter: blur(16px);
-        padding: 20px 14px max(14px, env(safe-area-inset-bottom));
+        padding: 0 16px max(22px, env(safe-area-inset-bottom));
     }
 
     .sidebar.open {
         transform: translateX(0);
+    }
+
+    .sidebar .brand-card {
+        padding: 14px 0;
     }
 
     body.sidebar-open {
@@ -4626,7 +4631,7 @@ body.theme-light .modal-backdrop {
         overflow-y: auto;
         overscroll-behavior: contain;
         -webkit-overflow-scrolling: touch;
-        padding: 4px 0 10px;
+        padding: 0 0 10px;
         scrollbar-width: none;
         touch-action: pan-y;
     }
@@ -4636,7 +4641,7 @@ body.theme-light .modal-backdrop {
     }
 
     .side-nav .nav-section {
-        gap: 8px;
+        gap: 10px;
         padding-bottom: 10px;
     }
 
@@ -4656,18 +4661,18 @@ body.theme-light .modal-backdrop {
     .side-nav .nav-link,
     .side-nav .nav-dropdown-toggle,
     .side-nav .nav-side-action {
-        min-height: 38px;
+        min-height: 42px;
     }
 
     .side-nav .nav-split-row {
-        grid-template-columns: minmax(0, 1fr) 38px;
-        gap: 6px;
+        grid-template-columns: minmax(0, 1fr) 42px;
+        gap: 8px;
     }
 
     .side-nav .nav-side-action {
-        width: 38px;
-        min-width: 38px;
-        height: 38px;
+        width: 42px;
+        min-width: 42px;
+        height: 42px;
     }
 
     .sidebar-account {
@@ -4675,7 +4680,7 @@ body.theme-light .modal-backdrop {
         flex: 0 0 auto;
         z-index: 2;
         display: grid;
-        margin: 0 -14px calc(-1 * max(14px, env(safe-area-inset-bottom)));
+        margin: 0 -16px calc(-1 * max(22px, env(safe-area-inset-bottom)));
         border-top: 1px solid rgba(255, 255, 255, .08);
         padding: 10px 0px max(10px, env(safe-area-inset-bottom));
     }

@@ -160,6 +160,17 @@ try {
         if (! is_array($customerCheck->fetch())) {
             throw new RuntimeException('Selected customer is not active.');
         }
+
+        $updateCustomerPhone = $pdo->prepare(
+            'UPDATE customers
+             SET phone = :phone,
+                 updated_at = CURRENT_TIMESTAMP
+             WHERE id = :id'
+        );
+        $updateCustomerPhone->execute([
+            'phone' => $customerPhone,
+            'id' => $customerId,
+        ]);
     }
 
     $linkedPaymentTotal = $postedSaleId > 0 ? sale_save_linked_payment_total($pdo, $postedSaleId) : 0.0;

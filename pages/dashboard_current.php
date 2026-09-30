@@ -68,9 +68,17 @@ $metrics = [
 if ($dbReady && $pdo !== null) {
     $todaySalesRow = dashboard_fetch_one($pdo,
         'SELECT COUNT(*) AS orders,
-                COALESCE(SUM(GREATEST(total - COALESCE(exchange_credit, 0), 0)), 0) AS total
-         FROM sales
-         WHERE DATE(sale_date) = CURRENT_DATE'
+                COALESCE(SUM(s.total - COALESCE(exchange_adjustment.original_return_value, s.exchange_credit, 0)), 0) AS total
+         FROM sales s
+         LEFT JOIN (
+            SELECT sr.exchange_sale_id, SUM(sri.quantity * original_item.unit_price) AS original_return_value
+            FROM sales_returns sr
+            INNER JOIN sales_return_items sri ON sri.return_id = sr.id
+            INNER JOIN sale_items original_item ON original_item.id = sri.sale_item_id
+            WHERE sr.exchange_sale_id IS NOT NULL
+            GROUP BY sr.exchange_sale_id
+         ) exchange_adjustment ON exchange_adjustment.exchange_sale_id = s.id
+         WHERE DATE(s.sale_date) = CURRENT_DATE'
     );
     $todayInitialPaid = (float) $pdo->query(
         'SELECT COALESCE(SUM(GREATEST(s.paid - COALESCE(cp.total_collected, 0), 0)), 0)
@@ -102,9 +110,17 @@ if ($dbReady && $pdo !== null) {
     )->fetchColumn();
     $monthSalesRow = dashboard_fetch_one($pdo,
         'SELECT COUNT(*) AS orders,
-                COALESCE(SUM(GREATEST(total - COALESCE(exchange_credit, 0), 0)), 0) AS total
-         FROM sales
-         WHERE sale_date >= DATE_FORMAT(CURRENT_DATE, "%Y-%m-01")'
+                COALESCE(SUM(s.total - COALESCE(exchange_adjustment.original_return_value, s.exchange_credit, 0)), 0) AS total
+         FROM sales s
+         LEFT JOIN (
+            SELECT sr.exchange_sale_id, SUM(sri.quantity * original_item.unit_price) AS original_return_value
+            FROM sales_returns sr
+            INNER JOIN sales_return_items sri ON sri.return_id = sr.id
+            INNER JOIN sale_items original_item ON original_item.id = sri.sale_item_id
+            WHERE sr.exchange_sale_id IS NOT NULL
+            GROUP BY sr.exchange_sale_id
+         ) exchange_adjustment ON exchange_adjustment.exchange_sale_id = s.id
+         WHERE s.sale_date >= DATE_FORMAT(CURRENT_DATE, "%Y-%m-01")'
     );
 
     $metrics['today_orders'] = (int) ($todaySalesRow['orders'] ?? 0);
@@ -124,19 +140,11 @@ if ($dbReady && $pdo !== null) {
     $metrics['month_expenses'] = (float) $pdo->query('SELECT COALESCE(SUM(amount), 0) FROM expenses WHERE status = "active" AND expense_date >= DATE_FORMAT(CURRENT_DATE, "%Y-%m-01")')->fetchColumn();
     $metrics['month_refunds'] = (float) $pdo->query('SELECT COALESCE(SUM(refund_amount), 0) FROM sales_returns WHERE return_date >= DATE_FORMAT(CURRENT_DATE, "%Y-%m-01")')->fetchColumn();
     $metrics['month_return_value'] = (float) $pdo->query(
-        'SELECT COALESCE(SUM(adjustment.amount), 0)
-         FROM (
-            SELECT COALESCE(SUM(sri.total), 0) AS amount
-            FROM sales_return_items sri
-            INNER JOIN sales_returns sr ON sr.id = sri.return_id
-            WHERE sr.return_date >= DATE_FORMAT(CURRENT_DATE, "%Y-%m-01")
-              AND sr.status <> "exchange"
-            UNION ALL
-            SELECT COALESCE(SUM(sr.refund_amount), 0) AS amount
-            FROM sales_returns sr
-            WHERE sr.return_date >= DATE_FORMAT(CURRENT_DATE, "%Y-%m-01")
-              AND sr.status = "exchange"
-         ) adjustment'
+        'SELECT COALESCE(SUM(sri.total), 0)
+         FROM sales_return_items sri
+         INNER JOIN sales_returns sr ON sr.id = sri.return_id
+         WHERE sr.return_date >= DATE_FORMAT(CURRENT_DATE, "%Y-%m-01")
+           AND sr.status <> "exchange"'
     )->fetchColumn();
     $metrics['receivable'] = dashboard_receivable_total($pdo);
     $metrics['low_stock'] = (int) $pdo->query('SELECT COUNT(*) FROM products WHERE status = "active" AND unlimited_stock = 0 AND reorder_level IS NOT NULL AND current_stock <= reorder_level')->fetchColumn();
@@ -145,13 +153,26 @@ if ($dbReady && $pdo !== null) {
 
     if ($canViewProductCost) {
         $monthProfitRow = dashboard_fetch_one($pdo,
-            'SELECT COALESCE(SUM(GREATEST(s.subtotal - s.discount - COALESCE(s.exchange_credit, 0), 0) - COALESCE(cost.total_cost, 0)), 0) AS profit
+            'SELECT COALESCE(SUM(
+                (s.subtotal - s.discount - COALESCE(exchange_adjustment.original_return_value, s.exchange_credit, 0))
+                - GREATEST(COALESCE(cost.total_cost, 0) - COALESCE(exchange_adjustment.recovered_cost, 0), 0)
+             ), 0) AS profit
              FROM sales s
              LEFT JOIN (
                 SELECT sale_id, COALESCE(SUM(quantity * unit_cost), 0) AS total_cost
                 FROM sale_items
                 GROUP BY sale_id
              ) cost ON cost.sale_id = s.id
+             LEFT JOIN (
+                SELECT sr.exchange_sale_id,
+                       SUM(sri.quantity * original_item.unit_price) AS original_return_value,
+                       SUM(CASE WHEN sri.restock = 1 THEN sri.quantity * sri.unit_cost ELSE 0 END) AS recovered_cost
+                FROM sales_returns sr
+                INNER JOIN sales_return_items sri ON sri.return_id = sr.id
+                INNER JOIN sale_items original_item ON original_item.id = sri.sale_item_id
+                WHERE sr.exchange_sale_id IS NOT NULL
+                GROUP BY sr.exchange_sale_id
+             ) exchange_adjustment ON exchange_adjustment.exchange_sale_id = s.id
              WHERE s.sale_date >= DATE_FORMAT(CURRENT_DATE, "%Y-%m-01")'
         );
 
@@ -208,6 +229,7 @@ if ($dbReady && $pdo !== null) {
              FROM sales_return_items sri
              INNER JOIN sales_returns sr ON sr.id = sri.return_id
              WHERE sri.restock = 1
+               AND sr.status <> "exchange"
                AND sr.return_date >= DATE_FORMAT(CURRENT_DATE, "%Y-%m-01")'
         )->fetchColumn();
         $metrics['month_supplier_refunds'] = (float) $pdo->query('SELECT COALESCE(SUM(supplier_refund_amount), 0) FROM warranty_claims WHERE supplier_refund_date >= DATE_FORMAT(CURRENT_DATE, "%Y-%m-01")')->fetchColumn();
@@ -249,8 +271,11 @@ if ($dbReady && $pdo !== null) {
     }
     $trendCostSelect = $canViewProductCost
         ? ',
-                COALESCE(SUM(COALESCE(cost.total_cost, 0)), 0) AS sold_cost,
-                COALESCE(SUM(GREATEST(s.subtotal - s.discount - COALESCE(s.exchange_credit, 0), 0) - COALESCE(cost.total_cost, 0)), 0) AS gross_profit'
+                COALESCE(SUM(GREATEST(COALESCE(cost.total_cost, 0) - COALESCE(exchange_adjustment.recovered_cost, 0), 0)), 0) AS sold_cost,
+                COALESCE(SUM(
+                    (s.subtotal - s.discount - COALESCE(exchange_adjustment.original_return_value, s.exchange_credit, 0))
+                    - GREATEST(COALESCE(cost.total_cost, 0) - COALESCE(exchange_adjustment.recovered_cost, 0), 0)
+                ), 0) AS gross_profit'
         : ',
                 0 AS sold_cost,
                 0 AS gross_profit';
@@ -261,12 +286,22 @@ if ($dbReady && $pdo !== null) {
             GROUP BY sale_id
          ) cost ON cost.sale_id = s.id'
         : '';
+    $trendExchangeJoin = ' LEFT JOIN (
+            SELECT sr.exchange_sale_id,
+                   SUM(sri.quantity * original_item.unit_price) AS original_return_value,
+                   SUM(CASE WHEN sri.restock = 1 THEN sri.quantity * sri.unit_cost ELSE 0 END) AS recovered_cost
+            FROM sales_returns sr
+            INNER JOIN sales_return_items sri ON sri.return_id = sr.id
+            INNER JOIN sale_items original_item ON original_item.id = sri.sale_item_id
+            WHERE sr.exchange_sale_id IS NOT NULL
+            GROUP BY sr.exchange_sale_id
+         ) exchange_adjustment ON exchange_adjustment.exchange_sale_id = s.id';
     $trendRows = [];
     $trendStatement = $pdo->query(
         'SELECT MONTH(s.sale_date) AS sale_month,
-                COALESCE(SUM(GREATEST(s.total - COALESCE(s.exchange_credit, 0), 0)), 0) AS revenue' . $trendCostSelect . '
+                COALESCE(SUM(s.total - COALESCE(exchange_adjustment.original_return_value, s.exchange_credit, 0)), 0) AS revenue' . $trendCostSelect . '
          FROM sales s
-         ' . $trendCostJoin . '
+         ' . $trendCostJoin . $trendExchangeJoin . '
          WHERE YEAR(s.sale_date) = YEAR(CURRENT_DATE)
          GROUP BY MONTH(s.sale_date)'
     );
@@ -284,9 +319,9 @@ if ($dbReady && $pdo !== null) {
     $weeklyRows = [];
     $weeklyStatement = $pdo->prepare(
         'SELECT DATE(s.sale_date) AS sale_day,
-                COALESCE(SUM(GREATEST(s.total - COALESCE(s.exchange_credit, 0), 0)), 0) AS revenue' . $trendCostSelect . '
+                COALESCE(SUM(s.total - COALESCE(exchange_adjustment.original_return_value, s.exchange_credit, 0)), 0) AS revenue' . $trendCostSelect . '
          FROM sales s
-         ' . $trendCostJoin . '
+         ' . $trendCostJoin . $trendExchangeJoin . '
          WHERE s.sale_date >= :week_start
            AND s.sale_date < :week_end
          GROUP BY DATE(s.sale_date)'
@@ -309,9 +344,9 @@ if ($dbReady && $pdo !== null) {
     $monthlyRows = [];
     $monthlyStatement = $pdo->prepare(
         'SELECT DATE(s.sale_date) AS sale_day,
-                COALESCE(SUM(GREATEST(s.total - COALESCE(s.exchange_credit, 0), 0)), 0) AS revenue' . $trendCostSelect . '
+                COALESCE(SUM(s.total - COALESCE(exchange_adjustment.original_return_value, s.exchange_credit, 0)), 0) AS revenue' . $trendCostSelect . '
          FROM sales s
-         ' . $trendCostJoin . '
+         ' . $trendCostJoin . $trendExchangeJoin . '
          WHERE s.sale_date >= :month_start
            AND s.sale_date < :month_end
          GROUP BY DATE(s.sale_date)'
@@ -688,7 +723,7 @@ function dashboard_apply_net_adjustments(PDO $pdo, array &$trend, string $mode, 
     $returnStatement = $pdo->prepare(
         'SELECT ' . $returnPeriod . ' AS period_key,
                 COALESCE(SUM(CASE WHEN sr.status <> "exchange" THEN sri.total ELSE 0 END), 0) AS return_value,
-                COALESCE(SUM(CASE WHEN sri.restock = 1 THEN sri.quantity * sri.unit_cost ELSE 0 END), 0) AS return_cost_recovered
+                COALESCE(SUM(CASE WHEN sr.status <> "exchange" AND sri.restock = 1 THEN sri.quantity * sri.unit_cost ELSE 0 END), 0) AS return_cost_recovered
          FROM sales_return_items sri
          INNER JOIN sales_returns sr ON sr.id = sri.return_id
          WHERE ' . $returnWhere . '
@@ -702,24 +737,6 @@ function dashboard_apply_net_adjustments(PDO $pdo, array &$trend, string $mode, 
         if (isset($indexByPeriod[$key])) {
             $trend[$indexByPeriod[$key]]['net_profit'] -= (float) $row['return_value'];
             $trend[$indexByPeriod[$key]]['net_profit'] += (float) $row['return_cost_recovered'];
-        }
-    }
-
-    $exchangeRefundStatement = $pdo->prepare(
-        'SELECT ' . $returnPeriod . ' AS period_key,
-                COALESCE(SUM(sr.refund_amount), 0) AS amount
-         FROM sales_returns sr
-         WHERE sr.status = "exchange"
-           AND ' . $returnWhere . '
-         GROUP BY ' . $returnPeriod
-    );
-    $exchangeRefundStatement->execute($params);
-
-    foreach ($exchangeRefundStatement->fetchAll() as $row) {
-        $key = $mode === 'monthly' ? (int) $row['period_key'] : (string) $row['period_key'];
-
-        if (isset($indexByPeriod[$key])) {
-            $trend[$indexByPeriod[$key]]['net_profit'] -= (float) $row['amount'];
         }
     }
 

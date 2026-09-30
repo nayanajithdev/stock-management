@@ -87,6 +87,12 @@ $hasWarranty = array_reduce(
                 <i data-lucide="arrow-left"></i>
                 Purchase History
             </a>
+            <?php if ($canViewProductCost): ?>
+                <a class="top-action" href="<?php echo e(app_url('?page=purchases&edit=' . $purchaseId . '#purchase-form')); ?>">
+                    <i data-lucide="pencil"></i>
+                    Edit
+                </a>
+            <?php endif; ?>
             <?php if ($canViewProductCost && $canPaySupplier && $balance > 0): ?>
                 <a class="top-action" href="<?php echo e(app_url('?page=supplier-credit&collect=' . $purchaseId . '#supplier-payment-form')); ?>">
                     <i data-lucide="hand-coins"></i>

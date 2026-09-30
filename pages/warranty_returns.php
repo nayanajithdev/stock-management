@@ -180,8 +180,8 @@ if ($dbReady && $pdo !== null) {
                             <label class="service-outcome-card" data-service-exchange-outcome>
                                 <input type="radio" name="service_outcome_choice" value="normal_exchange" data-service-outcome-choice>
                                 <span>
-                                    <strong>Exchange for another item</strong>
-                                    <small>Return this item to stock and choose a different product.</small>
+                                    <strong>Exchange for other item(s)</strong>
+                                    <small>Use the combined returned value toward one or more products.</small>
                                 </span>
                             </label>
                         </div>
@@ -211,8 +211,8 @@ if ($dbReady && $pdo !== null) {
                             <label class="service-outcome-card" data-service-needs-warranty data-service-exchange-outcome>
                                 <input type="radio" name="service_outcome_choice" value="warranty_exchange" data-service-outcome-choice>
                                 <span>
-                                    <strong>Exchange for another item</strong>
-                                    <small>Give a different product now and decide supplier handling later.</small>
+                                    <strong>Exchange for other item(s)</strong>
+                                    <small>Use the combined returned value toward one or more products.</small>
                                 </span>
                             </label>
                         </div>
@@ -238,19 +238,14 @@ if ($dbReady && $pdo !== null) {
                             </label>
 
                             <div class="service-exchange-fields span-2" data-service-exchange-fields hidden>
-                                <div class="service-exchange-grid">
-                                    <label class="field product-picker">
-                                        <span>New item</span>
-                                        <input type="search" placeholder="Search product, SKU, barcode, or model" autocomplete="off" data-service-exchange-search>
-                                        <input type="hidden" name="exchange_product_id" data-service-exchange-product-id>
-                                        <div class="product-suggestions" data-service-exchange-suggestions hidden></div>
-                                    </label>
-
-                                    <label class="field">
-                                        <span>New item unit price</span>
-                                        <input type="number" name="exchange_unit_price" min="0.01" step="0.01" data-service-exchange-price>
-                                    </label>
+                                <div class="service-exchange-rows" data-service-exchange-rows>
+                                    <?php render_service_exchange_row(); ?>
                                 </div>
+
+                                <button class="ghost-button service-exchange-add" type="button" data-add-service-exchange-row>
+                                    <i data-lucide="plus"></i>
+                                    Add another item
+                                </button>
 
                                 <div class="service-exchange-summary" data-service-exchange-summary hidden>
                                     <span data-service-exchange-product-summary></span>
@@ -299,6 +294,9 @@ if ($dbReady && $pdo !== null) {
                     </div>
                 </section>
             </form>
+            <template data-service-exchange-row-template>
+                <?php render_service_exchange_row(); ?>
+            </template>
         <?php endif; ?>
     </article>
 
@@ -489,10 +487,36 @@ if ($dbReady && $pdo !== null) {
                 </button>
             </div>
         </form>
+
     </div>
 </div>
 
 <?php
+function render_service_exchange_row(): void
+{
+    ?>
+    <div class="service-exchange-grid" data-service-exchange-row>
+        <label class="field product-picker">
+            <span>New item</span>
+            <input type="search" placeholder="Search product, SKU, barcode, or model" autocomplete="off" data-service-exchange-search>
+            <input type="hidden" name="exchange_product_id[]" data-service-exchange-product-id>
+            <div class="product-suggestions" data-service-exchange-suggestions hidden></div>
+        </label>
+        <label class="field">
+            <span>Quantity</span>
+            <input type="number" name="exchange_quantity[]" value="1" min="1" step="1" data-service-exchange-quantity>
+        </label>
+        <label class="field">
+            <span>Unit price</span>
+            <input type="number" name="exchange_unit_price[]" min="0.01" step="0.01" data-service-exchange-price>
+        </label>
+        <button class="icon-button danger-button" type="button" data-remove-service-exchange-row aria-label="Remove exchange item">
+            <i data-lucide="trash-2"></i>
+        </button>
+    </div>
+    <?php
+}
+
 function wr_warranty_status_label(string $status): string
 {
     return match ($status) {

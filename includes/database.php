@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+const APP_SCHEMA_VERSION = '2026.09.30.2';
+
 function app_pdo(?string &$error = null): ?PDO
 {
     $dbConfig = require __DIR__ . '/../config/database.php';
@@ -120,6 +122,42 @@ function app_database_ready(PDO $pdo): bool
         && app_column_exists($pdo, 'warranty_claims', 'replacement_mode');
 }
 
+function app_schema_upgrade_required(PDO $pdo): bool
+{
+    if (! app_tables_exist($pdo, ['settings'])) {
+        return true;
+    }
+
+    $statement = $pdo->prepare(
+        'SELECT setting_value
+         FROM settings
+         WHERE setting_key = :setting_key
+         LIMIT 1'
+    );
+    $statement->execute(['setting_key' => '_schema_version']);
+
+    return (string) ($statement->fetchColumn() ?: '') !== APP_SCHEMA_VERSION;
+}
+
+function app_mark_schema_current(PDO $pdo): void
+{
+    if (! app_tables_exist($pdo, ['settings'])) {
+        return;
+    }
+
+    $statement = $pdo->prepare(
+        'INSERT INTO settings (setting_key, setting_value, updated_at)
+         VALUES (:setting_key, :setting_value, CURRENT_TIMESTAMP)
+         ON DUPLICATE KEY UPDATE
+            setting_value = VALUES(setting_value),
+            updated_at = CURRENT_TIMESTAMP'
+    );
+    $statement->execute([
+        'setting_key' => '_schema_version',
+        'setting_value' => APP_SCHEMA_VERSION,
+    ]);
+}
+
 function app_apply_schema_upgrades(PDO $pdo): void
 {
     app_create_missing_tables($pdo);
@@ -128,6 +166,48 @@ function app_apply_schema_upgrades(PDO $pdo): void
     app_add_missing_indexes($pdo);
     app_seed_default_settings($pdo);
     app_migrate_legacy_permissions($pdo);
+    app_migrate_exchange_accounting($pdo);
+    app_mark_schema_current($pdo);
+}
+
+function app_migrate_exchange_accounting(PDO $pdo): void
+{
+    if (! app_tables_exist($pdo, ['sales', 'sales_returns', 'settings']) || ! app_column_exists($pdo, 'sales', 'exchange_credit')) {
+        return;
+    }
+
+    $marker = $pdo->prepare('SELECT setting_value FROM settings WHERE setting_key = "_exchange_accounting_migrated" LIMIT 1');
+    $marker->execute();
+    if ((string) ($marker->fetchColumn() ?: '') === '1') {
+        return;
+    }
+
+    app_schema_exec(
+        $pdo,
+        'UPDATE sales exchange_sale
+         INNER JOIN sales_returns sr
+            ON sr.status = "exchange"
+           AND sr.notes LIKE CONCAT("%Exchange invoice ", exchange_sale.invoice_no, ".%")
+         SET exchange_sale.exchange_credit = LEAST(sr.refund_amount, exchange_sale.total)
+         WHERE exchange_sale.exchange_credit = 0
+           AND sr.refund_amount > 0'
+    );
+    app_schema_exec(
+        $pdo,
+        'UPDATE sales_returns sr
+         INNER JOIN sales exchange_sale
+            ON sr.status = "exchange"
+           AND sr.notes LIKE CONCAT("%Exchange invoice ", exchange_sale.invoice_no, ".%")
+         SET sr.refund_amount = GREATEST(sr.refund_amount - exchange_sale.exchange_credit, 0)
+         WHERE exchange_sale.exchange_credit > 0
+           AND sr.refund_amount >= exchange_sale.exchange_credit'
+    );
+    app_schema_exec(
+        $pdo,
+        'INSERT INTO settings (setting_key, setting_value, updated_at)
+         VALUES ("_exchange_accounting_migrated", "1", CURRENT_TIMESTAMP)
+         ON DUPLICATE KEY UPDATE setting_value = "1", updated_at = CURRENT_TIMESTAMP'
+    );
 }
 
 function app_schema_exec(PDO $pdo, string $sql): void
@@ -461,6 +541,7 @@ CREATE TABLE IF NOT EXISTS sales (
     tax DECIMAL(12,2) NOT NULL DEFAULT 0.00,
     total DECIMAL(12,2) NOT NULL DEFAULT 0.00,
     paid DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+    exchange_credit DECIMAL(12,2) NOT NULL DEFAULT 0.00,
     payment_method VARCHAR(40) NOT NULL DEFAULT 'cash',
     status VARCHAR(30) NOT NULL DEFAULT 'paid',
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -768,6 +849,7 @@ function app_add_missing_columns(PDO $pdo): void
             'tax' => 'DECIMAL(12,2) NOT NULL DEFAULT 0.00',
             'total' => 'DECIMAL(12,2) NOT NULL DEFAULT 0.00',
             'paid' => 'DECIMAL(12,2) NOT NULL DEFAULT 0.00',
+            'exchange_credit' => 'DECIMAL(12,2) NOT NULL DEFAULT 0.00',
             'payment_method' => 'VARCHAR(40) NOT NULL DEFAULT \'cash\'',
             'status' => 'VARCHAR(30) NOT NULL DEFAULT \'paid\'',
             'created_at' => 'TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP',

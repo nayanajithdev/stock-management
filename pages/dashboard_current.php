@@ -73,7 +73,7 @@ if ($dbReady && $pdo !== null) {
          WHERE DATE(sale_date) = CURRENT_DATE'
     );
     $todayInitialPaid = (float) $pdo->query(
-        'SELECT COALESCE(SUM(GREATEST(s.paid - COALESCE(cp.total_collected, 0), 0)), 0)
+        'SELECT COALESCE(SUM(GREATEST(s.paid - COALESCE(s.exchange_credit, 0) - COALESCE(cp.total_collected, 0), 0)), 0)
          FROM sales s
          LEFT JOIN (
             SELECT sale_id, COALESCE(SUM(amount), 0) AS total_collected
@@ -93,7 +93,7 @@ if ($dbReady && $pdo !== null) {
     $metrics['today_sales'] = (float) ($todaySalesRow['total'] ?? 0);
     $metrics['today_paid'] = $todayInitialPaid;
     $metrics['today_collections'] = (float) $pdo->query('SELECT COALESCE(SUM(amount), 0) FROM customer_payments WHERE DATE(payment_date) = CURRENT_DATE')->fetchColumn();
-    $metrics['today_customer_refunds'] = (float) $pdo->query('SELECT COALESCE(SUM(refund_amount), 0) FROM sales_returns WHERE DATE(return_date) = CURRENT_DATE')->fetchColumn();
+    $metrics['today_customer_refunds'] = (float) $pdo->query('SELECT COALESCE(SUM(refund_amount), 0) FROM sales_returns WHERE DATE(return_date) = CURRENT_DATE AND refund_method NOT IN ("store_credit", "none")')->fetchColumn();
     $metrics['today_expenses'] = (float) $pdo->query('SELECT COALESCE(SUM(amount), 0) FROM expenses WHERE status = "active" AND expense_date = CURRENT_DATE')->fetchColumn();
     $metrics['month_orders'] = (int) ($monthSalesRow['orders'] ?? 0);
     $metrics['month_revenue'] = (float) ($monthSalesRow['total'] ?? 0);
@@ -125,10 +125,32 @@ if ($dbReady && $pdo !== null) {
         $metrics['today_supplier_paid'] = (float) $pdo->query('SELECT COALESCE(SUM(amount), 0) FROM supplier_payments WHERE DATE(payment_date) = CURRENT_DATE')->fetchColumn();
         $metrics['today_supplier_refunds'] = (float) $pdo->query('SELECT COALESCE(SUM(supplier_refund_amount), 0) FROM warranty_claims WHERE supplier_refund_date = CURRENT_DATE')->fetchColumn();
         $metrics['today_sold_cost'] = (float) $pdo->query(
-            'SELECT COALESCE(SUM(si.quantity * si.unit_cost), 0)
-             FROM sale_items si
-             INNER JOIN sales s ON s.id = si.sale_id
-             WHERE DATE(s.sale_date) = CURRENT_DATE'
+            'SELECT COALESCE(SUM(
+                cost.total_cost * LEAST(1, GREATEST(
+                    (CASE WHEN DATE(s.sale_date) = CURRENT_DATE
+                        THEN s.paid - COALESCE(s.exchange_credit, 0) - COALESCE(cp_all.amount, 0)
+                        ELSE 0 END)
+                    + COALESCE(cp_today.amount, 0),
+                    0
+                ) / NULLIF(s.total, 0))
+             ), 0)
+             FROM sales s
+             INNER JOIN (
+                SELECT sale_id, SUM(quantity * unit_cost) AS total_cost
+                FROM sale_items GROUP BY sale_id
+             ) cost ON cost.sale_id = s.id
+             LEFT JOIN (
+                SELECT sale_id, SUM(amount) AS amount
+                FROM customer_payments GROUP BY sale_id
+             ) cp_all ON cp_all.sale_id = s.id
+             LEFT JOIN (
+                SELECT sale_id, SUM(amount) AS amount
+                FROM customer_payments
+                WHERE DATE(payment_date) = CURRENT_DATE
+                GROUP BY sale_id
+             ) cp_today ON cp_today.sale_id = s.id
+             WHERE s.total > 0
+               AND (DATE(s.sale_date) = CURRENT_DATE OR cp_today.amount > 0)'
         )->fetchColumn();
         $metrics['month_profit'] = (float) ($monthProfitRow['profit'] ?? 0);
         $metrics['month_return_cost_recovered'] = (float) $pdo->query(
@@ -144,19 +166,20 @@ if ($dbReady && $pdo !== null) {
         $metrics['stock_value'] = app_stock_value_total($pdo);
     }
 
-    $cashInToday = $metrics['today_paid'] + $metrics['today_collections'] + ($canViewProductCost ? $metrics['today_supplier_refunds'] : 0.0);
+    $salesCashInToday = $metrics['today_paid'] + $metrics['today_collections'];
+    $cashInToday = $salesCashInToday + ($canViewProductCost ? $metrics['today_supplier_refunds'] : 0.0);
     $primaryStats = [
         [
             'label' => 'Today Sales',
-            'value' => format_money($metrics['today_sales']),
-            'meta' => $metrics['today_orders'] . ' invoice(s)',
+            'value' => format_money($salesCashInToday),
+            'meta' => $metrics['today_orders'] . ' new invoice(s) / Money received today',
             'icon' => 'badge-dollar-sign',
         ],
         [
-            'label' => $canViewProductCost ? 'Today Sold Cost' : 'Cash In Today',
-            'value' => format_money($canViewProductCost ? $metrics['today_sold_cost'] : $cashInToday),
-            'meta' => $canViewProductCost ? "Item cost from today's invoices" : 'Sales and collections',
-            'icon' => $canViewProductCost ? 'package-check' : 'wallet',
+            'label' => $canViewProductCost ? 'Today Sold Cost' : 'Credit Collected Today',
+            'value' => format_money($canViewProductCost ? $metrics['today_sold_cost'] : $metrics['today_collections']),
+            'meta' => $canViewProductCost ? "Item cost from today's invoices" : 'Payments for earlier invoices',
+            'icon' => $canViewProductCost ? 'package-check' : 'hand-coins',
         ],
         [
             'label' => 'Customer Due',
@@ -342,8 +365,8 @@ $cashOutToday = $metrics['today_expenses'] + $metrics['today_customer_refunds'] 
                     </form>
                 <?php endif; ?>
                 <nav class="segmented trend-segmented" aria-label="Chart period">
-                    <a class="<?php echo $trendMode === 'monthly' ? 'active' : ''; ?>" href="<?php echo e(app_url('?page=dashboard&trend=monthly&metric=' . rawurlencode($trendMetric))); ?>">Monthly</a>
-                    <a class="<?php echo $trendMode === 'yearly' ? 'active' : ''; ?>" href="<?php echo e(app_url('?page=dashboard&trend=yearly&metric=' . rawurlencode($trendMetric))); ?>">Yearly</a>
+                    <a class="<?php echo $trendMode === 'monthly' ? 'active' : ''; ?>" href="<?php echo e(app_url('?page=dashboard&trend=monthly&metric=' . rawurlencode($trendMetric))); ?>">Daily</a>
+                    <a class="<?php echo $trendMode === 'yearly' ? 'active' : ''; ?>" href="<?php echo e(app_url('?page=dashboard&trend=yearly&metric=' . rawurlencode($trendMetric))); ?>">Monthly</a>
                     <a class="<?php echo $trendMode === 'weekly' ? 'active' : ''; ?>" href="<?php echo e(app_url('?page=dashboard&trend=weekly&metric=' . rawurlencode($trendMetric) . '&week=' . rawurlencode($selectedWeekInput))); ?>">Weekly</a>
                 </nav>
                 <?php if ($trendMode === 'weekly'): ?>

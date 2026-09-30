@@ -5,7 +5,15 @@
 
 $hasProducts = false;
 $canViewProductCost = $dbReady && $pdo instanceof PDO && auth_can_view_product_cost($pdo, $currentUser ?? null);
+$purchaseEditId = max(0, (int) ($_GET['edit'] ?? 0));
 $purchaseOldInput = purchases_form_pull_old_input($dbReady && $pdo instanceof PDO ? $pdo : null);
+$isPurchaseEdit = false;
+
+if ($purchaseOldInput === [] && $purchaseEditId > 0 && $dbReady && $pdo instanceof PDO && $canViewProductCost) {
+    $purchaseOldInput = purchases_form_load_purchase($pdo, $purchaseEditId);
+}
+
+$isPurchaseEdit = (int) ($purchaseOldInput['purchase_id'] ?? 0) > 0;
 $purchaseRows = $purchaseOldInput['rows'] ?? [[]];
 $summary = [
     'month_total' => 0.0,
@@ -92,8 +100,8 @@ if ($dbReady && $pdo !== null) {
     <article class="panel" id="purchase-form">
         <div class="panel-header">
             <div>
-                <p class="panel-label">Purchase Entry</p>
-                <h2>Receive supplier stock</h2>
+                <p class="panel-label"><?php echo $isPurchaseEdit ? 'Edit Purchase' : 'Purchase Entry'; ?></p>
+                <h2><?php echo $isPurchaseEdit ? 'Update purchase invoice' : 'Receive supplier stock'; ?></h2>
             </div>
             <a class="muted-link" href="<?php echo e(app_url('?page=inventory-setup&section=suppliers')); ?>">Manage suppliers</a>
         </div>
@@ -105,8 +113,10 @@ if ($dbReady && $pdo !== null) {
         <?php elseif (! $hasProducts): ?>
             <p class="empty-state">Add products first, then return here to receive stock.</p>
         <?php else: ?>
-            <form class="purchase-form" method="post" action="<?php echo e(app_url('actions/purchase_save.php')); ?>" data-purchase-form data-product-search-url="<?php echo e(app_url('actions/product_search.php')); ?>" data-supplier-search-url="<?php echo e(app_url('actions/supplier_search.php')); ?>">
+            <form class="purchase-form" method="post" action="<?php echo e(app_url('actions/purchase_save.php')); ?>" data-purchase-form data-recorded-payments="<?php echo e($purchaseOldInput['recorded_payments'] ?? '0.00'); ?>" data-product-search-url="<?php echo e(app_url('actions/product_search.php')); ?>" data-supplier-search-url="<?php echo e(app_url('actions/supplier_search.php')); ?>">
                 <?php echo csrf_field(); ?>
+                <input type="hidden" name="purchase_id" value="<?php echo (int) ($purchaseOldInput['purchase_id'] ?? 0); ?>">
+                <input type="hidden" name="recorded_payments" value="<?php echo e($purchaseOldInput['recorded_payments'] ?? '0.00'); ?>">
 
                 <div class="purchase-meta">
                     <label class="field product-picker supplier-picker" data-supplier-picker>
@@ -149,7 +159,9 @@ if ($dbReady && $pdo !== null) {
                 <div class="purchase-footer">
                     <div class="purchase-note">
                         <i data-lucide="info"></i>
-                        <span>Saving this purchase increases stock and writes stock movement records for every item.</span>
+                        <span><?php echo $isPurchaseEdit
+                            ? 'Updating this purchase adjusts stock by the difference between the old and new quantities.'
+                            : 'Saving this purchase increases stock and writes stock movement records for every item.'; ?></span>
                     </div>
 
                     <div class="purchase-totals">
@@ -166,7 +178,7 @@ if ($dbReady && $pdo !== null) {
                             <input type="text" value="0.00" data-purchase-total readonly>
                         </label>
                         <label>
-                            <span>Paid</span>
+                            <span><?php echo $isPurchaseEdit ? 'Initial Paid' : 'Paid'; ?></span>
                             <input type="number" name="paid" value="<?php echo e($purchaseOldInput['paid'] ?? '0.00'); ?>" min="0" step="0.01" data-purchase-paid>
                         </label>
                         <label>
@@ -179,7 +191,7 @@ if ($dbReady && $pdo !== null) {
                 <div class="form-actions">
                     <button class="top-action" type="submit">
                         <i data-lucide="save"></i>
-                        Save Purchase
+                        <?php echo $isPurchaseEdit ? 'Update Purchase' : 'Save Purchase'; ?>
                     </button>
                 </div>
             </form>
@@ -223,14 +235,78 @@ function purchases_form_normalize_old_input(array $oldInput, ?PDO $pdo): array
     $rows = purchases_form_normalize_old_rows($oldInput, $pdo);
 
     return [
+        'purchase_id' => max(0, (int) ($oldInput['purchase_id'] ?? 0)),
         'supplier_id' => $supplierId,
         'supplier_search' => $supplierSearch,
         'invoice_no' => trim((string) ($oldInput['invoice_no'] ?? '')),
         'purchase_date' => purchases_form_date_value((string) ($oldInput['purchase_date'] ?? '')),
         'discount' => purchases_form_money_value($oldInput['discount'] ?? '0.00'),
         'paid' => purchases_form_money_value($oldInput['paid'] ?? '0.00'),
+        'recorded_payments' => purchases_form_money_value($oldInput['recorded_payments'] ?? '0.00'),
         'rows' => $rows === [] ? [[]] : $rows,
     ];
+}
+
+function purchases_form_load_purchase(PDO $pdo, int $purchaseId): array
+{
+    $statement = $pdo->prepare(
+        'SELECT p.*, s.name AS supplier_name,
+                COALESCE((SELECT SUM(sp.amount) FROM supplier_payments sp WHERE sp.purchase_id = p.id), 0) AS recorded_payments
+         FROM purchases p
+         LEFT JOIN suppliers s ON s.id = p.supplier_id
+         WHERE p.id = :id
+         LIMIT 1'
+    );
+    $statement->execute(['id' => $purchaseId]);
+    $purchase = $statement->fetch();
+
+    if (! is_array($purchase)) {
+        return [];
+    }
+
+    $itemStatement = $pdo->prepare(
+        'SELECT pi.product_id, pi.warranty_months, pi.quantity, pi.unit_cost,
+                p.sku, p.name, p.model, p.selling_price
+         FROM purchase_items pi
+         INNER JOIN products p ON p.id = pi.product_id
+         WHERE pi.purchase_id = :purchase_id
+         ORDER BY pi.id ASC'
+    );
+    $itemStatement->execute(['purchase_id' => $purchaseId]);
+    $rows = [];
+
+    foreach ($itemStatement->fetchAll() as $item) {
+        $model = trim((string) ($item['model'] ?? ''));
+        $label = (string) $item['sku'] . ' - ' . (string) $item['name'];
+        if ($model !== '') {
+            $label .= ' (' . $model . ')';
+        }
+        $rows[] = [
+            'product_id' => (string) $item['product_id'],
+            'product_search' => $label,
+            'warranty_months' => (int) $item['warranty_months'],
+            'quantity' => (int) $item['quantity'],
+            'unit_cost' => $item['unit_cost'],
+            'selling_price' => $item['selling_price'],
+        ];
+    }
+
+    return purchases_form_normalize_old_input([
+        'purchase_id' => $purchaseId,
+        'supplier_id' => $purchase['supplier_id'] ?? '',
+        'supplier_search' => $purchase['supplier_name'] ?? '',
+        'invoice_no' => $purchase['invoice_no'] ?? '',
+        'purchase_date' => $purchase['purchase_date'] ?? '',
+        'discount' => $purchase['discount'] ?? 0,
+        'paid' => max(0.0, (float) ($purchase['paid'] ?? 0) - (float) ($purchase['recorded_payments'] ?? 0)),
+        'recorded_payments' => $purchase['recorded_payments'] ?? 0,
+        'product_id' => array_column($rows, 'product_id'),
+        'product_search' => array_column($rows, 'product_search'),
+        'warranty_months' => array_column($rows, 'warranty_months'),
+        'quantity' => array_column($rows, 'quantity'),
+        'unit_cost' => array_column($rows, 'unit_cost'),
+        'selling_price' => array_column($rows, 'selling_price'),
+    ], $pdo);
 }
 
 function purchases_form_normalize_old_rows(array $oldInput, ?PDO $pdo): array

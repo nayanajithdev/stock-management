@@ -346,6 +346,7 @@ if (purchaseForm) {
     const totalInput = purchaseForm.querySelector('[data-purchase-total]');
     const paidInput = purchaseForm.querySelector('[data-purchase-paid]');
     const balanceInput = purchaseForm.querySelector('[data-purchase-balance]');
+    const recordedPayments = Math.max(0, Number.parseFloat(purchaseForm.dataset.recordedPayments || '0'));
     const productSearchUrl = purchaseForm.dataset.productSearchUrl || '';
     const supplierSearchUrl = purchaseForm.dataset.supplierSearchUrl || '';
     const supplierInput = purchaseForm.querySelector('[data-supplier-search]');
@@ -375,7 +376,7 @@ if (purchaseForm) {
         });
 
         const discount = Math.max(0, Number.parseFloat(discountInput?.value || '0'));
-        const paid = Math.max(0, Number.parseFloat(paidInput?.value || '0'));
+        const paid = Math.max(0, Number.parseFloat(paidInput?.value || '0')) + recordedPayments;
         const total = Math.max(0, subtotal - discount);
         const balance = Math.max(0, total - paid);
 
@@ -991,10 +992,6 @@ if (saleForm) {
         }
 
         const query = customerInput.value.trim();
-
-        if (customerHidden) {
-            customerHidden.value = '';
-        }
 
         if (query.length < 2) {
             closeCustomerSuggestions();
@@ -1612,6 +1609,15 @@ if (saleForm) {
 
     rowsContainer.querySelectorAll('[data-sale-row]').forEach(hydrateSaleRow);
 
+    const lastSaleRow = rowsContainer.querySelector('[data-sale-row]:last-child');
+    const lastProductId = lastSaleRow?.querySelector('[data-sale-product]')?.value.trim() || '';
+    const lastCustomItemName = lastSaleRow?.querySelector('[data-sale-custom-name]')?.value.trim() || '';
+    const lastProductSearch = lastSaleRow?.querySelector('[data-sale-product-search]')?.value.trim() || '';
+
+    if (lastSaleRow && (lastProductId !== '' || lastCustomItemName !== '' || lastProductSearch !== '')) {
+        createSaleRow();
+    }
+
     if (addButton) {
         addButton.addEventListener('click', createSaleRow);
     }
@@ -1717,10 +1723,9 @@ if (serviceForm) {
     const refundAmountField = serviceForm.querySelector('[data-service-refund-amount-field]');
     const methodLabel = serviceForm.querySelector('[data-service-method-label]');
     const exchangeFields = serviceForm.querySelector('[data-service-exchange-fields]');
-    const exchangeSearchInput = serviceForm.querySelector('[data-service-exchange-search]');
-    const exchangeSuggestions = serviceForm.querySelector('[data-service-exchange-suggestions]');
-    const exchangeProductIdInput = serviceForm.querySelector('[data-service-exchange-product-id]');
-    const exchangePriceInput = serviceForm.querySelector('[data-service-exchange-price]');
+    const exchangeRows = serviceForm.querySelector('[data-service-exchange-rows]');
+    const exchangeRowTemplate = document.querySelector('[data-service-exchange-row-template]');
+    const addExchangeRowButton = serviceForm.querySelector('[data-add-service-exchange-row]');
     const exchangeSummary = serviceForm.querySelector('[data-service-exchange-summary]');
     const exchangeProductSummary = serviceForm.querySelector('[data-service-exchange-product-summary]');
     const exchangeSettlement = serviceForm.querySelector('[data-service-exchange-settlement]');
@@ -1731,7 +1736,7 @@ if (serviceForm) {
     let searchToken = 0;
     let exchangeSearchToken = 0;
     let itemToken = 0;
-    let exchangeProduct = null;
+    let activeExchangeRow = exchangeRows?.querySelector('[data-service-exchange-row]') || null;
 
     const money = (value) => Number.isFinite(value) ? value.toFixed(2) : '0.00';
     const currency = (value) => `Rs. ${money(Number.parseFloat(value || '0'))}`;
@@ -1764,7 +1769,8 @@ if (serviceForm) {
         suggestions.hidden = false;
     };
 
-    const closeExchangeSuggestions = () => {
+    const closeExchangeSuggestions = (row = activeExchangeRow) => {
+        const exchangeSuggestions = row?.querySelector('[data-service-exchange-suggestions]');
         if (!exchangeSuggestions) {
             return;
         }
@@ -1773,7 +1779,8 @@ if (serviceForm) {
         exchangeSuggestions.innerHTML = '';
     };
 
-    const showExchangeSuggestionMessage = (message) => {
+    const showExchangeSuggestionMessage = (message, row = activeExchangeRow) => {
+        const exchangeSuggestions = row?.querySelector('[data-service-exchange-suggestions]');
         if (!exchangeSuggestions) {
             return;
         }
@@ -1782,26 +1789,23 @@ if (serviceForm) {
         exchangeSuggestions.hidden = false;
     };
 
-    const clearExchangeSelection = (clearSearch = true) => {
-        exchangeProduct = null;
-
-        if (exchangeProductIdInput) {
-            exchangeProductIdInput.value = '';
-        }
-
-        if (exchangePriceInput) {
-            exchangePriceInput.value = '';
-        }
-
-        if (clearSearch && exchangeSearchInput) {
-            exchangeSearchInput.value = '';
-        }
-
-        if (exchangeSummary) {
-            exchangeSummary.hidden = true;
-        }
-
+    const clearExchangeSelection = (row, clearSearch = true) => {
+        if (!row) return;
+        row.dataset.exchangeProduct = '';
+        const productIdInput = row.querySelector('[data-service-exchange-product-id]');
+        const priceInput = row.querySelector('[data-service-exchange-price]');
+        const searchInput = row.querySelector('[data-service-exchange-search]');
+        if (productIdInput) productIdInput.value = '';
+        if (priceInput) priceInput.value = '';
+        if (clearSearch && searchInput) searchInput.value = '';
         closeExchangeSuggestions();
+        renderExchangeSettlement();
+    };
+
+    const resetExchangeRows = () => {
+        const rows = Array.from(exchangeRows?.querySelectorAll('[data-service-exchange-row]') || []);
+        rows.slice(1).forEach((row) => row.remove());
+        if (rows[0]) clearExchangeSelection(rows[0]);
     };
 
     const renderExchangeSettlement = () => {
@@ -1811,7 +1815,15 @@ if (serviceForm) {
 
         const selected = Array.from(selectedItems.values());
 
-        if (!exchangeProduct || selected.length !== 1) {
+        const rows = Array.from(exchangeRows?.querySelectorAll('[data-service-exchange-row]') || []);
+        const exchangeItems = rows.map((row) => ({
+            row,
+            product: row.dataset.exchangeProduct ? JSON.parse(row.dataset.exchangeProduct) : null,
+            quantity: Math.max(1, Number.parseInt(row.querySelector('[data-service-exchange-quantity]')?.value || '1', 10) || 1),
+            price: Math.max(0, Number.parseFloat(row.querySelector('[data-service-exchange-price]')?.value || '0')),
+        })).filter((item) => item.product && item.price > 0);
+
+        if (exchangeItems.length === 0 || selected.length === 0) {
             if (exchangeSummary) {
                 exchangeSummary.hidden = true;
             }
@@ -1824,8 +1836,10 @@ if (serviceForm) {
         }
 
         const quantity = Math.max(1, Number.parseInt(quantityInput?.value || '1', 10) || 1);
-        const oldCredit = quantity * Number.parseFloat(selected[0].price || '0');
-        const newTotal = quantity * Number.parseFloat(exchangePriceInput?.value || '0');
+        const oldCredit = selected.length === 1
+            ? quantity * Number.parseFloat(selected[0].price || '0')
+            : selected.reduce((total, item) => total + Number.parseFloat(item.price || '0'), 0);
+        const newTotal = exchangeItems.reduce((sum, item) => sum + (item.quantity * item.price), 0);
         const difference = newTotal - oldCredit;
         let settlementText = 'Even exchange. No payment or refund.';
 
@@ -1840,8 +1854,8 @@ if (serviceForm) {
         }
 
         if (exchangeProductSummary) {
-            const stockText = exchangeProduct.unlimited ? 'Unlimited stock' : `${exchangeProduct.stock} in stock`;
-            exchangeProductSummary.textContent = `${exchangeProduct.label} / ${quantity} unit(s) / ${stockText} / Old credit ${currency(oldCredit)} / New total ${currency(newTotal)}`;
+            const itemCount = exchangeItems.reduce((sum, item) => sum + item.quantity, 0);
+            exchangeProductSummary.textContent = `${exchangeItems.length} product(s), ${itemCount} unit(s) / Old credit ${currency(oldCredit)} / New total ${currency(newTotal)}`;
         }
 
         if (exchangeSettlement) {
@@ -1892,7 +1906,7 @@ if (serviceForm) {
             exchangeFields.hidden = true;
         }
 
-        clearExchangeSelection();
+        resetExchangeRows();
     };
 
     const updateOutcomeAvailability = () => {
@@ -1924,7 +1938,7 @@ if (serviceForm) {
 
         serviceForm.querySelectorAll('[data-service-exchange-outcome]').forEach((card) => {
             const input = card.querySelector('input');
-            const disabled = selected.length !== 1;
+            const disabled = selected.length === 0;
             card.classList.toggle('is-disabled', disabled);
 
             if (input) {
@@ -2022,7 +2036,7 @@ if (serviceForm) {
         }
 
         if (!isExchange) {
-            clearExchangeSelection();
+            resetExchangeRows();
         }
 
         if (quantityInput) {
@@ -2295,36 +2309,36 @@ if (serviceForm) {
             });
     };
 
-    const selectExchangeProduct = (product) => {
-        exchangeProduct = product;
-        closeExchangeSuggestions();
+    const selectExchangeProduct = (product, row = activeExchangeRow) => {
+        if (!row) return;
+        row.dataset.exchangeProduct = JSON.stringify(product);
+        closeExchangeSuggestions(row);
 
-        if (exchangeSearchInput) {
-            exchangeSearchInput.value = product.label || '';
-        }
-
-        if (exchangeProductIdInput) {
-            exchangeProductIdInput.value = String(product.id || '');
-        }
-
-        if (exchangePriceInput) {
-            exchangePriceInput.value = money(Number.parseFloat(product.price || '0'));
-        }
+        const searchInput = row.querySelector('[data-service-exchange-search]');
+        const productIdInput = row.querySelector('[data-service-exchange-product-id]');
+        const priceInput = row.querySelector('[data-service-exchange-price]');
+        if (searchInput) searchInput.value = product.label || '';
+        if (productIdInput) productIdInput.value = String(product.id || '');
+        if (priceInput) priceInput.value = money(Number.parseFloat(product.price || '0'));
 
         renderExchangeSettlement();
     };
 
-    const renderExchangeProducts = (products) => {
+    const renderExchangeProducts = (products, row = activeExchangeRow) => {
+        const exchangeSuggestions = row?.querySelector('[data-service-exchange-suggestions]');
         if (!exchangeSuggestions) {
             return;
         }
 
-        const selectedProductId = String(Array.from(selectedItems.values())[0]?.product_id || '');
-        const availableProducts = products.filter((product) => String(product.id || '') !== selectedProductId);
+        const chosenIds = new Set(Array.from(exchangeRows?.querySelectorAll('[data-service-exchange-product-id]') || [])
+            .filter((input) => input !== row?.querySelector('[data-service-exchange-product-id]'))
+            .map((input) => input.value)
+            .filter(Boolean));
+        const availableProducts = products.filter((product) => !chosenIds.has(String(product.id || '')));
         exchangeSuggestions.innerHTML = '';
 
         if (!availableProducts.length) {
-            showExchangeSuggestionMessage('No different in-stock products found');
+            showExchangeSuggestionMessage('No additional in-stock products found', row);
             return;
         }
 
@@ -2339,14 +2353,15 @@ if (serviceForm) {
             button.querySelector('strong').textContent = product.label || '';
             button.querySelector('span').textContent = `${product.unlimited ? 'Unlimited stock' : `${product.stock ?? 0} in stock`} / ${currency(product.price)}`;
             button.addEventListener('mousedown', (event) => event.preventDefault());
-            button.addEventListener('click', () => selectExchangeProduct(product));
+            button.addEventListener('click', () => selectExchangeProduct(product, row));
             exchangeSuggestions.appendChild(button);
         });
 
         exchangeSuggestions.hidden = false;
     };
 
-    const runExchangeSearch = () => {
+    const runExchangeSearch = (row = activeExchangeRow) => {
+        const exchangeSearchInput = row?.querySelector('[data-service-exchange-search]');
         if (!exchangeSearchInput || !lookupUrl) {
             return;
         }
@@ -2354,12 +2369,12 @@ if (serviceForm) {
         const query = exchangeSearchInput.value.trim();
 
         if (query.length < 2) {
-            closeExchangeSuggestions();
+            closeExchangeSuggestions(row);
             return;
         }
 
         const token = ++exchangeSearchToken;
-        showExchangeSuggestionMessage('Searching...');
+        showExchangeSuggestionMessage('Searching...', row);
 
         fetch(`${lookupUrl}?type=products&q=${encodeURIComponent(query)}`, {
             headers: { Accept: 'application/json' },
@@ -2370,11 +2385,12 @@ if (serviceForm) {
                     return;
                 }
 
-                renderExchangeProducts(Array.isArray(data.products) ? data.products : []);
+                if (!row?.isConnected || exchangeSearchInput.value.trim() !== query) return;
+                renderExchangeProducts(Array.isArray(data.products) ? data.products : [], row);
             })
             .catch(() => {
                 if (token === exchangeSearchToken) {
-                    showExchangeSuggestionMessage('Product search failed');
+                    showExchangeSuggestionMessage('Product search failed', row);
                 }
             });
     };
@@ -2387,7 +2403,7 @@ if (serviceForm) {
         input.addEventListener('change', () => showDetailsStep(input.value));
     });
 
-    [quantityInput, refundInput, exchangePriceInput].forEach((input) => {
+    [quantityInput, refundInput].forEach((input) => {
         input?.addEventListener('input', renderServicePreview);
     });
 
@@ -2420,48 +2436,87 @@ if (serviceForm) {
         closeSuggestionListAfterFocusLeave(searchInput, suggestions, closeSuggestions);
     });
 
-    exchangeSearchInput?.addEventListener('input', () => {
-        if (exchangeProduct && exchangeSearchInput.value !== exchangeProduct.label) {
-            clearExchangeSelection(false);
+    exchangeRows?.addEventListener('input', (event) => {
+        const row = event.target.closest('[data-service-exchange-row]');
+        if (!row) return;
+        activeExchangeRow = row;
+
+        if (event.target.matches('[data-service-exchange-search]')) {
+            const product = row.dataset.exchangeProduct ? JSON.parse(row.dataset.exchangeProduct) : null;
+            if (product && event.target.value !== product.label) clearExchangeSelection(row, false);
+            window.clearTimeout(exchangeSearchTimer);
+            exchangeSearchTimer = window.setTimeout(() => runExchangeSearch(row), 180);
         }
-
-        window.clearTimeout(exchangeSearchTimer);
-        exchangeSearchTimer = window.setTimeout(runExchangeSearch, 180);
+        renderExchangeSettlement();
     });
 
-    exchangeSearchInput?.addEventListener('focus', () => {
-        if (!exchangeProduct && exchangeSearchInput.value.trim().length >= 2) {
-            runExchangeSearch();
+    exchangeRows?.addEventListener('focusin', (event) => {
+        const row = event.target.closest('[data-service-exchange-row]');
+        if (!row) return;
+        activeExchangeRow = row;
+        if (event.target.matches('[data-service-exchange-search]') && event.target.value.trim().length >= 2 && !row.dataset.exchangeProduct) {
+            runExchangeSearch(row);
         }
     });
 
-    exchangeSearchInput?.addEventListener('keydown', (event) => {
-        handleSuggestionInputKeydown(event, exchangeSuggestions, closeExchangeSuggestions);
+    exchangeRows?.addEventListener('focusout', (event) => {
+        const row = event.target.closest('[data-service-exchange-row]');
+        if (!row) return;
+        const searchInput = row.querySelector('[data-service-exchange-search]');
+        const suggestionsBox = row.querySelector('[data-service-exchange-suggestions]');
+        closeSuggestionListAfterFocusLeave(searchInput, suggestionsBox, () => closeExchangeSuggestions(row));
     });
 
-    exchangeSearchInput?.addEventListener('blur', () => {
-        closeSuggestionListAfterFocusLeave(exchangeSearchInput, exchangeSuggestions, closeExchangeSuggestions);
+    exchangeRows?.addEventListener('keydown', (event) => {
+        const row = event.target.closest('[data-service-exchange-row]');
+        if (!row) return;
+        activeExchangeRow = row;
+        const searchInput = row.querySelector('[data-service-exchange-search]');
+        const suggestionsBox = row.querySelector('[data-service-exchange-suggestions]');
+        if (event.target === searchInput) handleSuggestionInputKeydown(event, suggestionsBox, closeExchangeSuggestions);
+        if (suggestionsBox?.contains(event.target)) handleSuggestionListKeydown(event, searchInput, suggestionsBox, closeExchangeSuggestions);
     });
 
-    exchangeSuggestions?.addEventListener('keydown', (event) => {
-        handleSuggestionListKeydown(event, exchangeSearchInput, exchangeSuggestions, closeExchangeSuggestions);
+    exchangeRows?.addEventListener('click', (event) => {
+        const removeButton = event.target.closest('[data-remove-service-exchange-row]');
+        if (!removeButton) return;
+        const rows = exchangeRows.querySelectorAll('[data-service-exchange-row]');
+        if (rows.length > 1) removeButton.closest('[data-service-exchange-row]')?.remove();
+        else clearExchangeSelection(rows[0]);
+        renderExchangeSettlement();
     });
 
-    exchangeSuggestions?.addEventListener('focusout', () => {
-        closeSuggestionListAfterFocusLeave(exchangeSearchInput, exchangeSuggestions, closeExchangeSuggestions);
+    addExchangeRowButton?.addEventListener('click', () => {
+        if ((exchangeRows?.querySelectorAll('[data-service-exchange-row]').length || 0) >= 25) {
+            if (preview) preview.textContent = 'An exchange can contain up to 25 replacement products.';
+            return;
+        }
+        const fragment = exchangeRowTemplate?.content.cloneNode(true);
+        if (!fragment || !exchangeRows) return;
+        exchangeRows.appendChild(fragment);
+        activeExchangeRow = exchangeRows.lastElementChild;
+        window.lucide?.createIcons();
+        activeExchangeRow?.querySelector('[data-service-exchange-search]')?.focus();
+        renderExchangeSettlement();
     });
 
     serviceForm.addEventListener('submit', (event) => {
         const outcome = outcomeHidden?.value || '';
-        const exchangeIsIncomplete = exchangeOutcomes.includes(outcome)
-            && (!exchangeProductIdInput?.value || Number.parseFloat(exchangePriceInput?.value || '0') <= 0);
+        const exchangeRowList = Array.from(exchangeRows?.querySelectorAll('[data-service-exchange-row]') || []);
+        const exchangeIsIncomplete = exchangeOutcomes.includes(outcome) && (
+            exchangeRowList.length === 0 || exchangeRowList.some((row) => (
+                !row.querySelector('[data-service-exchange-product-id]')?.value
+                || Number.parseInt(row.querySelector('[data-service-exchange-quantity]')?.value || '0', 10) <= 0
+                || Number.parseFloat(row.querySelector('[data-service-exchange-price]')?.value || '0') <= 0
+            ))
+        );
 
         if (selectedItems.size === 0 || !outcome || exchangeIsIncomplete) {
             event.preventDefault();
 
             if (preview) {
                 preview.textContent = exchangeIsIncomplete
-                    ? 'Select a new item and enter its price before saving the exchange.'
+                    ? 'Complete every replacement item, quantity, and price before saving the exchange.'
                     : 'Choose invoice item(s) and handling action before saving.';
             }
         }

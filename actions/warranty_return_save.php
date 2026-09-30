@@ -20,8 +20,9 @@ $outcome = (string) ($_POST['outcome'] ?? '');
 $quantity = max(1, input_int('quantity'));
 $refundAmount = max(0.0, input_decimal('refund_amount'));
 $refundMethod = (string) ($_POST['refund_method'] ?? 'cash');
-$exchangeProductId = max(0, input_int('exchange_product_id'));
-$exchangeUnitPrice = max(0.0, input_decimal('exchange_unit_price'));
+$exchangeProductIds = is_array($_POST['exchange_product_id'] ?? null) ? $_POST['exchange_product_id'] : [];
+$exchangeQuantities = is_array($_POST['exchange_quantity'] ?? null) ? $_POST['exchange_quantity'] : [];
+$exchangeUnitPrices = is_array($_POST['exchange_unit_price'] ?? null) ? $_POST['exchange_unit_price'] : [];
 $returnDate = trim((string) ($_POST['return_date'] ?? date('Y-m-d\TH:i')));
 $issueDescription = trim((string) ($_POST['issue_description'] ?? ''));
 $notes = nullable_string((string) ($_POST['notes'] ?? ''));
@@ -71,10 +72,6 @@ try {
     $itemContexts = [];
     $maxRefund = 0.0;
 
-    if ($isExchangeOutcome && count($saleItems) !== 1) {
-        throw new RuntimeException('Exchange one invoice item at a time.');
-    }
-
     foreach ($saleItems as $saleItem) {
         if ((int) $saleItem['sale_id'] !== $saleId) {
             throw new RuntimeException('Select items from one invoice only.');
@@ -108,18 +105,51 @@ try {
     $exchangeDifference = 0.0;
 
     if ($isExchangeOutcome) {
-        if ($exchangeProductId <= 0 || $exchangeUnitPrice <= 0) {
-            throw new RuntimeException('Select the new exchange item and enter its price.');
+        $exchangeItems = [];
+        $seenExchangeProducts = [];
+        if (count($exchangeProductIds) > 25) {
+            throw new RuntimeException('An exchange can contain up to 25 replacement products.');
+        }
+        foreach ($exchangeProductIds as $index => $rawProductId) {
+            $exchangeProductId = max(0, (int) $rawProductId);
+            $exchangeQuantity = max(0, (int) ($exchangeQuantities[$index] ?? 0));
+            $rawUnitPrice = str_replace(',', '', trim((string) ($exchangeUnitPrices[$index] ?? '0')));
+            $exchangeUnitPrice = is_numeric($rawUnitPrice) ? max(0.0, (float) $rawUnitPrice) : 0.0;
+
+            if ($exchangeProductId <= 0 && $exchangeQuantity <= 0 && $exchangeUnitPrice <= 0) {
+                continue;
+            }
+            if ($exchangeProductId <= 0 || $exchangeQuantity <= 0 || $exchangeUnitPrice <= 0) {
+                throw new RuntimeException('Every exchange row needs a product, quantity, and unit price.');
+            }
+            if (isset($seenExchangeProducts[$exchangeProductId])) {
+                throw new RuntimeException('Each replacement product can appear only once. Combine duplicate quantities into one row.');
+            }
+
+            $seenExchangeProducts[$exchangeProductId] = true;
+            $exchangeItems[] = [
+                'product_id' => $exchangeProductId,
+                'quantity' => $exchangeQuantity,
+                'unit_price' => $exchangeUnitPrice,
+            ];
         }
 
-        if ($exchangeProductId === (int) $firstSaleItem['product_id']) {
-            throw new RuntimeException('Choose a different product for an exchange. Use same-item replacement when the product is unchanged.');
+        if ($exchangeItems === []) {
+            throw new RuntimeException('Add at least one replacement item for the exchange.');
         }
 
-        $exchangeProduct = wr_fetch_exchange_product($pdo, $exchangeProductId);
-        $exchangeQuantity = (int) $itemContexts[0]['quantity'];
-        $exchangeTotal = round($exchangeQuantity * $exchangeUnitPrice, 2);
+        usort($exchangeItems, static fn (array $left, array $right): int => $left['product_id'] <=> $right['product_id']);
+        foreach ($exchangeItems as $index => $exchangeItem) {
+            $exchangeItems[$index]['product'] = wr_fetch_exchange_product($pdo, (int) $exchangeItem['product_id']);
+        }
+
+        $exchangeTotal = 0.0;
+        foreach ($exchangeItems as $exchangeItem) {
+            $exchangeTotal += $exchangeItem['quantity'] * $exchangeItem['unit_price'];
+        }
+        $exchangeTotal = round($exchangeTotal, 2);
         $exchangeDifference = round($exchangeTotal - $maxRefund, 2);
+        $exchangeCredit = round(min($maxRefund, $exchangeTotal), 2);
 
         if (abs($exchangeDifference) > 0.005 && $refundMethod === 'none') {
             throw new RuntimeException('Choose a settlement method because this exchange has a payment or refund difference.');
@@ -128,14 +158,13 @@ try {
         $exchangeSale = wr_create_exchange_sale(
             $pdo,
             $firstSaleItem,
-            $exchangeProduct,
-            $exchangeQuantity,
-            $exchangeUnitPrice,
+            $exchangeItems,
+            $exchangeCredit,
             $refundMethod,
             $returnDate,
             (int) ($currentUser['id'] ?? 0) ?: null
         );
-        $refundAmount = $maxRefund;
+        $refundAmount = max(0.0, round(-$exchangeDifference, 2));
     } elseif (! in_array($outcome, ['normal_restock', 'warranty_refund_now'], true)) {
         $refundAmount = 0.0;
     }
@@ -376,14 +405,20 @@ function wr_fetch_exchange_product(PDO $pdo, int $productId): array
     return $product;
 }
 
-function wr_create_exchange_sale(PDO $pdo, array $originalSaleItem, array $product, int $quantity, float $unitPrice, string $settlementMethod, string $saleDate, ?int $userId): array
+function wr_create_exchange_sale(PDO $pdo, array $originalSaleItem, array $exchangeItems, float $exchangeCredit, string $settlementMethod, string $saleDate, ?int $userId): array
 {
-    if ((int) $product['unlimited_stock'] !== 1 && $quantity > (int) $product['current_stock']) {
-        throw new RuntimeException($product['name'] . ' has only ' . (int) $product['current_stock'] . ' in stock.');
+    $saleTotal = 0.0;
+    foreach ($exchangeItems as $exchangeItem) {
+        $product = $exchangeItem['product'];
+        $quantity = (int) $exchangeItem['quantity'];
+        if ((int) $product['unlimited_stock'] !== 1 && $quantity > (int) $product['current_stock']) {
+            throw new RuntimeException($product['name'] . ' has only ' . (int) $product['current_stock'] . ' in stock.');
+        }
+        $saleTotal += $quantity * (float) $exchangeItem['unit_price'];
     }
 
     $invoiceNo = wr_next_sale_invoice_no($pdo);
-    $saleTotal = round($quantity * $unitPrice, 2);
+    $saleTotal = round($saleTotal, 2);
     $paymentMethod = match ($settlementMethod) {
         'store_credit' => 'credit',
         'none' => 'exchange',
@@ -392,9 +427,9 @@ function wr_create_exchange_sale(PDO $pdo, array $originalSaleItem, array $produ
     $storedSaleDate = str_replace('T', ' ', $saleDate) . ':00';
     $saleStatement = $pdo->prepare(
         'INSERT INTO sales
-            (customer_id, invoice_no, sale_date, subtotal, discount, tax, total, paid, payment_method, status)
+            (customer_id, invoice_no, sale_date, subtotal, discount, tax, total, paid, exchange_credit, payment_method, status)
          VALUES
-            (:customer_id, :invoice_no, :sale_date, :subtotal, 0.00, 0.00, :total, :paid, :payment_method, "paid")'
+            (:customer_id, :invoice_no, :sale_date, :subtotal, 0.00, 0.00, :total, :paid, :exchange_credit, :payment_method, "paid")'
     );
     $saleStatement->execute([
         'customer_id' => $originalSaleItem['customer_id'],
@@ -403,40 +438,47 @@ function wr_create_exchange_sale(PDO $pdo, array $originalSaleItem, array $produ
         'subtotal' => $saleTotal,
         'total' => $saleTotal,
         'paid' => $saleTotal,
+        'exchange_credit' => $exchangeCredit,
         'payment_method' => $paymentMethod,
     ]);
     $saleId = (int) $pdo->lastInsertId();
-    $unitCost = wr_fifo_unit_cost($pdo, (int) $product['id'], $quantity, (float) $product['cost_price']);
     $itemStatement = $pdo->prepare(
         'INSERT INTO sale_items
             (sale_id, product_id, item_name, quantity, unit_price, unit_cost, warranty_months, discount, total)
          VALUES
             (:sale_id, :product_id, NULL, :quantity, :unit_price, :unit_cost, :warranty_months, 0.00, :total)'
     );
-    $itemStatement->execute([
-        'sale_id' => $saleId,
-        'product_id' => (int) $product['id'],
-        'quantity' => $quantity,
-        'unit_price' => $unitPrice,
-        'unit_cost' => $unitCost,
-        'warranty_months' => (int) $product['warranty_months'],
-        'total' => $saleTotal,
-    ]);
+    foreach ($exchangeItems as $exchangeItem) {
+        $product = $exchangeItem['product'];
+        $quantity = (int) $exchangeItem['quantity'];
+        $unitPrice = (float) $exchangeItem['unit_price'];
+        $lineTotal = round($quantity * $unitPrice, 2);
+        $unitCost = wr_fifo_unit_cost($pdo, (int) $product['id'], $quantity, (float) $product['cost_price']);
+        $itemStatement->execute([
+            'sale_id' => $saleId,
+            'product_id' => (int) $product['id'],
+            'quantity' => $quantity,
+            'unit_price' => $unitPrice,
+            'unit_cost' => $unitCost,
+            'warranty_months' => (int) $product['warranty_months'],
+            'total' => $lineTotal,
+        ]);
 
-    if ((int) $product['unlimited_stock'] !== 1) {
-        $newStock = wr_adjust_product_stock($pdo, (int) $product['id'], -$quantity, 'Not enough stock for the selected exchange item.');
-        wr_insert_stock_movement(
-            $pdo,
-            (int) $product['id'],
-            'sale',
-            -$quantity,
-            $newStock,
-            $unitCost,
-            'sale',
-            $saleId,
-            'Issued on exchange invoice ' . $invoiceNo . ' for original invoice ' . $originalSaleItem['invoice_no'],
-            $userId
-        );
+        if ((int) $product['unlimited_stock'] !== 1) {
+            $newStock = wr_adjust_product_stock($pdo, (int) $product['id'], -$quantity, 'Not enough stock for ' . $product['name'] . '.');
+            wr_insert_stock_movement(
+                $pdo,
+                (int) $product['id'],
+                'sale',
+                -$quantity,
+                $newStock,
+                $unitCost,
+                'sale',
+                $saleId,
+                'Issued on exchange invoice ' . $invoiceNo . ' for original invoice ' . $originalSaleItem['invoice_no'],
+                $userId
+            );
+        }
     }
 
     return [

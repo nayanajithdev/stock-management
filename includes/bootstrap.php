@@ -47,7 +47,7 @@ if (! headers_sent()) {
 $dbError = null;
 $pdo = app_pdo($dbError);
 
-if ($pdo !== null) {
+if ($pdo !== null && app_schema_upgrade_required($pdo)) {
     app_apply_schema_upgrades($pdo);
 }
 

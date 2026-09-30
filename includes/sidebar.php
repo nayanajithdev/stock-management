@@ -123,7 +123,10 @@ $shopInitial = strtoupper(substr($shopName !== '' ? $shopName : 'S', 0, 1));
 
                 <div class="user-menu-dropdown" role="menu">
                     <a href="<?php echo e(app_url('?page=profile')); ?>" role="menuitem">Account</a>
-                    <a class="user-menu-logout" href="<?php echo e(app_url('actions/logout.php')); ?>" role="menuitem">Logout</a>
+                    <form class="user-menu-logout-form" method="post" action="<?php echo e(app_url('actions/logout.php')); ?>">
+                        <?php echo csrf_field(); ?>
+                        <button class="user-menu-logout" type="submit" role="menuitem">Logout</button>
+                    </form>
                 </div>
             </div>
         </div>

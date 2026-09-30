@@ -58,9 +58,16 @@ body.theme-light {
     box-sizing: border-box;
 }
 
+html {
+    max-width: 100%;
+    overflow-x: hidden;
+}
+
 body {
     margin: 0;
     min-height: 100vh;
+    max-width: 100%;
+    overflow-x: hidden;
     background: #15171a;
     color: var(--text);
     font-family: Manrope, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -104,15 +111,22 @@ input[type="number"]::-webkit-inner-spin-button {
 .app-shell {
     display: grid;
     grid-template-columns: 268px minmax(0, 1fr);
+    width: 100%;
+    min-width: 0;
     min-height: 100vh;
 }
 
 .sidebar {
-    position: sticky;
+    position: fixed;
     display: flex;
     flex-direction: column;
     top: 0;
+    left: 0;
+    bottom: 0;
+    z-index: 10;
+    width: 268px;
     height: 100vh;
+    height: 100dvh;
     overflow-y: auto;
     scrollbar-width: none;
     border-right: 1px solid var(--line);
@@ -349,6 +363,7 @@ input[type="number"]::-webkit-inner-spin-button {
 }
 
 .workspace {
+    grid-column: 2;
     min-width: 0;
 }
 
@@ -586,20 +601,33 @@ body.theme-light .theme-toggle-moon {
     display: grid;
 }
 
-.user-menu-dropdown a {
+.user-menu-dropdown a,
+.user-menu-dropdown button {
     display: flex;
     align-items: center;
+    width: 100%;
     min-height: 44px;
     border: 1px solid rgba(255, 255, 255, .06);
     border-radius: 8px;
+    background: transparent;
     color: var(--text);
+    font: inherit;
     padding: 0 14px;
     text-decoration: none;
 }
 
-.user-menu-dropdown a:hover {
+.user-menu-dropdown a:hover,
+.user-menu-dropdown button:hover {
     border-color: rgba(14, 165, 233, .45);
     color: var(--accent-2);
+}
+
+.user-menu-logout-form {
+    margin: 0;
+}
+
+.user-menu-logout-form button {
+    cursor: pointer;
 }
 
 .user-menu-dropdown .user-menu-logout {
@@ -2339,8 +2367,18 @@ input[readonly][aria-readonly="true"] {
 
 .service-exchange-grid {
     display: grid;
-    grid-template-columns: minmax(0, 1.5fr) minmax(180px, .5fr);
+    grid-template-columns: minmax(0, 1fr) 110px 180px 42px;
+    align-items: end;
     gap: 14px;
+}
+
+.service-exchange-rows {
+    display: grid;
+    gap: 12px;
+}
+
+.service-exchange-add {
+    justify-self: start;
 }
 
 .service-exchange-summary {
@@ -4115,7 +4153,8 @@ body.theme-light .user-menu-dropdown {
     background: #ffffff;
 }
 
-body.theme-light .user-menu-dropdown a {
+body.theme-light .user-menu-dropdown a,
+body.theme-light .user-menu-dropdown button {
     border-color: rgba(15, 23, 42, .08);
 }
 
@@ -4499,6 +4538,19 @@ body.theme-light .modal-backdrop {
 @media (max-width: 880px) {
     .app-shell {
         grid-template-columns: 1fr;
+        overflow-x: hidden;
+    }
+
+    .workspace,
+    .topbar,
+    .content {
+        width: 100%;
+        min-width: 0;
+        max-width: 100%;
+    }
+
+    .workspace {
+        grid-column: 1;
     }
 
     .service-step-body {
@@ -4521,6 +4573,7 @@ body.theme-light .modal-backdrop {
     .sidebar {
         position: fixed;
         top: 0;
+        left: 0;
         bottom: 0;
         z-index: 20;
         display: flex;

@@ -58,6 +58,11 @@ $invoiceBalance = max(0, (float) ($invoiceDocument['balance'] ?? 0));
                     <?php
                     $invoiceItemName = trim((string) ($item['name'] ?? $item['item_name'] ?? 'Item'));
                     $invoiceItemWarranty = (int) ($item['warranty_months'] ?? 0);
+                    $invoiceItemQuantity = max(0, (int) ($item['quantity'] ?? 0));
+                    $invoiceItemTotal = (float) ($item['total'] ?? 0);
+                    $invoiceItemUnitPrice = $invoiceItemQuantity > 0
+                        ? $invoiceItemTotal / $invoiceItemQuantity
+                        : (float) ($item['unit_price'] ?? 0);
                     ?>
                     <tr>
                         <td>
@@ -66,9 +71,9 @@ $invoiceBalance = max(0, (float) ($invoiceDocument['balance'] ?? 0));
                                 <small>(<?php echo $invoiceItemWarranty; ?>m warranty)</small>
                             <?php endif; ?>
                         </td>
-                        <td><?php echo e(format_money($item['unit_price'] ?? 0)); ?></td>
-                        <td><?php echo (int) ($item['quantity'] ?? 0); ?></td>
-                        <td><?php echo e(format_money($item['total'] ?? 0)); ?></td>
+                        <td><?php echo e(format_money($invoiceItemUnitPrice)); ?></td>
+                        <td><?php echo $invoiceItemQuantity; ?></td>
+                        <td><?php echo e(format_money($invoiceItemTotal)); ?></td>
                     </tr>
                 <?php endforeach; ?>
             </tbody>

@@ -85,15 +85,17 @@ if ($dbReady && $pdo !== null) {
     )->fetchColumn();
     $todayExchangeRevenue = (float) $pdo->query(
         'SELECT COALESCE(SUM(
-            GREATEST(s.total - COALESCE(s.exchange_credit, 0), 0)
-            - COALESCE(exchange_adjustment.exchange_refund, 0)
+            s.total - COALESCE(exchange_adjustment.original_return_value, s.exchange_credit, 0)
          ), 0)
          FROM sales s
          LEFT JOIN (
-            SELECT exchange_sale_id, SUM(refund_amount) AS exchange_refund
-            FROM sales_returns
-            WHERE exchange_sale_id IS NOT NULL
-            GROUP BY exchange_sale_id
+            SELECT sr.exchange_sale_id,
+                   SUM(sri.quantity * original_item.unit_price) AS original_return_value
+            FROM sales_returns sr
+            INNER JOIN sales_return_items sri ON sri.return_id = sr.id
+            INNER JOIN sale_items original_item ON original_item.id = sri.sale_item_id
+            WHERE sr.exchange_sale_id IS NOT NULL
+            GROUP BY sr.exchange_sale_id
          ) exchange_adjustment ON exchange_adjustment.exchange_sale_id = s.id
          WHERE DATE(s.sale_date) = CURRENT_DATE
            AND COALESCE(s.exchange_credit, 0) > 0'

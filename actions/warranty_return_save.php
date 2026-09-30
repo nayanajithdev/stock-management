@@ -85,12 +85,14 @@ try {
             throw new RuntimeException('Only ' . $available . ' unit(s) are available for ' . $saleItem['product_name'] . '.');
         }
 
-        $netUnitPrice = sale_discounted_unit_price(
-            $saleItem['total'],
-            $saleItem['sale_subtotal'],
-            $saleItem['sale_discount'],
-            (int) $saleItem['quantity']
-        );
+        $netUnitPrice = $isExchangeOutcome
+            ? round((float) $saleItem['unit_price'], 2)
+            : sale_discounted_unit_price(
+                $saleItem['total'],
+                $saleItem['sale_subtotal'],
+                $saleItem['sale_discount'],
+                (int) $saleItem['quantity']
+            );
         $lineMaxRefund = $itemQuantity * $netUnitPrice;
         $maxRefund += $lineMaxRefund;
         $itemContexts[] = [

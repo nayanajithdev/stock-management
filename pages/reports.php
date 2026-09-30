@@ -55,30 +55,29 @@ if ($dbReady && $pdo !== null) {
     if ($canViewProductCost) {
         if (in_array($reportTab, ['daily-sales', 'monthly-sales'], true)) {
             $lineShareSql = 'CASE WHEN s.subtotal > 0 THEN si.total / s.subtotal ELSE 0 END';
-            $baseLineRevenueSql = 'GREATEST(
-                0,
-                si.total - CASE
-                    WHEN s.subtotal > 0 THEN LEAST(si.total, (s.discount + COALESCE(s.exchange_credit, 0)) * (si.total / s.subtotal))
-                    ELSE 0
-                END
-            )';
+            $baseLineRevenueSql = 'si.total - CASE
+                WHEN s.subtotal > 0 THEN (
+                    s.discount + COALESCE(exchange_adjustment.original_return_value, s.exchange_credit, 0)
+                ) * (si.total / s.subtotal)
+                ELSE 0
+            END';
             $lineRecoveredCostSql = 'COALESCE(exchange_adjustment.recovered_cost, 0) * (' . $lineShareSql . ')';
-            $lineExchangeRefundSql = 'COALESCE(exchange_adjustment.exchange_refund, 0) * (' . $lineShareSql . ')';
-            $lineRevenueSql = '(' . $baseLineRevenueSql . ' - ' . $lineExchangeRefundSql . ')';
+            $lineRevenueSql = '(' . $baseLineRevenueSql . ')';
             $lineCostSql = '((si.quantity * si.unit_cost) - ' . $lineRecoveredCostSql . ')';
             $exchangeAdjustmentJoin = ' LEFT JOIN (
                                     SELECT linked.exchange_sale_id,
                                            COALESCE(SUM(linked.recovered_cost), 0) AS recovered_cost,
-                                           COALESCE(SUM(linked.refund_amount), 0) AS exchange_refund
+                                           COALESCE(SUM(linked.original_return_value), 0) AS original_return_value
                                     FROM (
                                         SELECT sr.id,
                                                sr.exchange_sale_id,
-                                               sr.refund_amount,
+                                               COALESCE(SUM(sri.quantity * original_item.unit_price), 0) AS original_return_value,
                                                COALESCE(SUM(CASE WHEN sri.restock = 1 THEN sri.quantity * sri.unit_cost ELSE 0 END), 0) AS recovered_cost
                                         FROM sales_returns sr
                                         LEFT JOIN sales_return_items sri ON sri.return_id = sr.id
+                                        LEFT JOIN sale_items original_item ON original_item.id = sri.sale_item_id
                                         WHERE sr.exchange_sale_id IS NOT NULL
-                                        GROUP BY sr.id, sr.exchange_sale_id, sr.refund_amount
+                                        GROUP BY sr.id, sr.exchange_sale_id
                                     ) linked
                                     GROUP BY linked.exchange_sale_id
                                 ) exchange_adjustment ON exchange_adjustment.exchange_sale_id = s.id';

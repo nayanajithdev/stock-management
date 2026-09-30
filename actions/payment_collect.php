@@ -46,6 +46,7 @@ try {
                 s.invoice_no,
                 s.total,
                 s.paid,
+                s.exchange_credit,
                 COALESCE(ret.returned_total, 0) AS returned_total,
                 COALESCE(ret.refund_total, 0) AS refund_total
          FROM sales s
@@ -71,7 +72,8 @@ try {
         throw new RuntimeException('Selected invoice was not found.');
     }
 
-    $balance = sale_receivable_balance($sale['total'], $sale['paid'], $sale['returned_total'], $sale['refund_total']);
+    $effectivePaid = max((float) $sale['paid'], (float) $sale['exchange_credit']);
+    $balance = sale_receivable_balance($sale['total'], $effectivePaid, $sale['returned_total'], $sale['refund_total']);
 
     if ($balance <= 0.0) {
         throw new RuntimeException('This invoice is already fully paid.');
@@ -81,7 +83,7 @@ try {
         throw new RuntimeException('Payment cannot be higher than the invoice balance.');
     }
 
-    $newPaid = (float) $sale['paid'] + $amount;
+    $newPaid = $effectivePaid + $amount;
     $newBalance = sale_receivable_balance($sale['total'], $newPaid, $sale['returned_total'], $sale['refund_total']);
     $newStatus = $newBalance <= 0.0 ? 'paid' : 'partial';
 

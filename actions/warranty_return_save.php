@@ -198,7 +198,8 @@ try {
             $refundMethod,
             $returnDate,
             $returnNotes,
-            is_array($exchangeSale) ? 'exchange' : 'completed'
+            is_array($exchangeSale) ? 'exchange' : 'completed',
+            is_array($exchangeSale) ? (int) $exchangeSale['sale_id'] : null
         );
 
         foreach ($itemContexts as $context) {
@@ -488,18 +489,19 @@ function wr_create_exchange_sale(PDO $pdo, array $originalSaleItem, array $excha
     ];
 }
 
-function wr_create_sales_return(PDO $pdo, array $saleItem, float $refundAmount, string $refundMethod, string $returnDate, string $notes, string $status = 'completed'): int
+function wr_create_sales_return(PDO $pdo, array $saleItem, float $refundAmount, string $refundMethod, string $returnDate, string $notes, string $status = 'completed', ?int $exchangeSaleId = null): int
 {
     $returnNo = wr_next_sales_return_no($pdo);
     $returnStatement = $pdo->prepare(
         'INSERT INTO sales_returns
-            (sale_id, customer_id, return_no, return_date, refund_amount, refund_method, notes, status)
+            (sale_id, customer_id, exchange_sale_id, return_no, return_date, refund_amount, refund_method, notes, status)
          VALUES
-            (:sale_id, :customer_id, :return_no, :return_date, :refund_amount, :refund_method, :notes, :status)'
+            (:sale_id, :customer_id, :exchange_sale_id, :return_no, :return_date, :refund_amount, :refund_method, :notes, :status)'
     );
     $returnStatement->execute([
         'sale_id' => (int) $saleItem['sale_id'],
         'customer_id' => $saleItem['customer_id'],
+        'exchange_sale_id' => $exchangeSaleId,
         'return_no' => $returnNo,
         'return_date' => str_replace('T', ' ', $returnDate) . ':00',
         'refund_amount' => $refundAmount,

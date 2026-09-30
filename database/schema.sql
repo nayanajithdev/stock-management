@@ -282,6 +282,7 @@ CREATE TABLE IF NOT EXISTS sales_returns (
     id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     sale_id BIGINT UNSIGNED NOT NULL,
     customer_id INT UNSIGNED NULL,
+    exchange_sale_id BIGINT UNSIGNED NULL,
     return_no VARCHAR(80) NOT NULL UNIQUE,
     return_date DATETIME NOT NULL,
     refund_amount DECIMAL(12,2) NOT NULL DEFAULT 0.00,
@@ -292,7 +293,8 @@ CREATE TABLE IF NOT EXISTS sales_returns (
     updated_at TIMESTAMP NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
     CONSTRAINT fk_sales_returns_sale FOREIGN KEY (sale_id) REFERENCES sales(id) ON DELETE CASCADE,
     CONSTRAINT fk_sales_returns_customer FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE SET NULL,
-    INDEX idx_sales_returns_date (return_date)
+    INDEX idx_sales_returns_date (return_date),
+    INDEX idx_sales_returns_exchange_sale (exchange_sale_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS sales_return_items (

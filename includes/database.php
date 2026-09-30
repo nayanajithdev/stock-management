@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-const APP_SCHEMA_VERSION = '2026.09.30.2';
+const APP_SCHEMA_VERSION = '2026.09.30.3';
 
 function app_pdo(?string &$error = null): ?PDO
 {
@@ -167,7 +167,25 @@ function app_apply_schema_upgrades(PDO $pdo): void
     app_seed_default_settings($pdo);
     app_migrate_legacy_permissions($pdo);
     app_migrate_exchange_accounting($pdo);
+    app_link_exchange_returns($pdo);
     app_mark_schema_current($pdo);
+}
+
+function app_link_exchange_returns(PDO $pdo): void
+{
+    if (! app_tables_exist($pdo, ['sales', 'sales_returns']) || ! app_column_exists($pdo, 'sales_returns', 'exchange_sale_id')) {
+        return;
+    }
+
+    app_schema_exec(
+        $pdo,
+        'UPDATE sales_returns sr
+         INNER JOIN sales exchange_sale
+            ON sr.status = "exchange"
+           AND sr.notes LIKE CONCAT("%Exchange invoice ", exchange_sale.invoice_no, ".%")
+         SET sr.exchange_sale_id = exchange_sale.id
+         WHERE sr.exchange_sale_id IS NULL'
+    );
 }
 
 function app_migrate_exchange_accounting(PDO $pdo): void
@@ -587,6 +605,7 @@ CREATE TABLE IF NOT EXISTS sales_returns (
     id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     sale_id BIGINT UNSIGNED NOT NULL,
     customer_id INT UNSIGNED NULL,
+    exchange_sale_id BIGINT UNSIGNED NULL,
     return_no VARCHAR(80) NOT NULL UNIQUE,
     return_date DATETIME NOT NULL,
     refund_amount DECIMAL(12,2) NOT NULL DEFAULT 0.00,
@@ -597,7 +616,8 @@ CREATE TABLE IF NOT EXISTS sales_returns (
     updated_at TIMESTAMP NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
     CONSTRAINT fk_sales_returns_sale FOREIGN KEY (sale_id) REFERENCES sales(id) ON DELETE CASCADE,
     CONSTRAINT fk_sales_returns_customer FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE SET NULL,
-    INDEX idx_sales_returns_date (return_date)
+    INDEX idx_sales_returns_date (return_date),
+    INDEX idx_sales_returns_exchange_sale (exchange_sale_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
 SQL,
         'sales_return_items' => <<<'SQL'
@@ -878,6 +898,7 @@ function app_add_missing_columns(PDO $pdo): void
         'sales_returns' => [
             'sale_id' => 'BIGINT UNSIGNED NULL',
             'customer_id' => 'INT UNSIGNED NULL',
+            'exchange_sale_id' => 'BIGINT UNSIGNED NULL',
             'return_no' => 'VARCHAR(80) NULL',
             'return_date' => 'DATETIME NULL',
             'refund_amount' => 'DECIMAL(12,2) NOT NULL DEFAULT 0.00',
@@ -968,6 +989,7 @@ function app_add_missing_indexes(PDO $pdo): void
         ['customer_payments', 'idx_customer_payments_date', 'ALTER TABLE customer_payments ADD INDEX idx_customer_payments_date (payment_date)'],
         ['customer_payments', 'idx_customer_payments_customer', 'ALTER TABLE customer_payments ADD INDEX idx_customer_payments_customer (customer_id)'],
         ['sales_returns', 'idx_sales_returns_date', 'ALTER TABLE sales_returns ADD INDEX idx_sales_returns_date (return_date)'],
+        ['sales_returns', 'idx_sales_returns_exchange_sale', 'ALTER TABLE sales_returns ADD INDEX idx_sales_returns_exchange_sale (exchange_sale_id)'],
         ['sales_return_items', 'idx_sales_return_items_sale_item', 'ALTER TABLE sales_return_items ADD INDEX idx_sales_return_items_sale_item (sale_item_id)'],
         ['sales_return_items', 'idx_sales_return_items_product', 'ALTER TABLE sales_return_items ADD INDEX idx_sales_return_items_product (product_id)'],
         ['warranty_claims', 'idx_warranty_claims_status', 'ALTER TABLE warranty_claims ADD INDEX idx_warranty_claims_status (status)'],

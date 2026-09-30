@@ -54,21 +54,42 @@ $salesItems = [];
 if ($dbReady && $pdo !== null) {
     if ($canViewProductCost) {
         if (in_array($reportTab, ['daily-sales', 'monthly-sales'], true)) {
-            $lineRevenueSql = 'GREATEST(
+            $lineShareSql = 'CASE WHEN s.subtotal > 0 THEN si.total / s.subtotal ELSE 0 END';
+            $baseLineRevenueSql = 'GREATEST(
                 0,
                 si.total - CASE
-                    WHEN s.subtotal > 0 THEN LEAST(si.total, s.discount * (si.total / s.subtotal))
+                    WHEN s.subtotal > 0 THEN LEAST(si.total, (s.discount + COALESCE(s.exchange_credit, 0)) * (si.total / s.subtotal))
                     ELSE 0
                 END
             )';
+            $lineRecoveredCostSql = 'COALESCE(exchange_adjustment.recovered_cost, 0) * (' . $lineShareSql . ')';
+            $lineExchangeRefundSql = 'COALESCE(exchange_adjustment.exchange_refund, 0) * (' . $lineShareSql . ')';
+            $lineRevenueSql = '(' . $baseLineRevenueSql . ' - ' . $lineExchangeRefundSql . ')';
+            $lineCostSql = '((si.quantity * si.unit_cost) - ' . $lineRecoveredCostSql . ')';
+            $exchangeAdjustmentJoin = ' LEFT JOIN (
+                                    SELECT linked.exchange_sale_id,
+                                           COALESCE(SUM(linked.recovered_cost), 0) AS recovered_cost,
+                                           COALESCE(SUM(linked.refund_amount), 0) AS exchange_refund
+                                    FROM (
+                                        SELECT sr.id,
+                                               sr.exchange_sale_id,
+                                               sr.refund_amount,
+                                               COALESCE(SUM(CASE WHEN sri.restock = 1 THEN sri.quantity * sri.unit_cost ELSE 0 END), 0) AS recovered_cost
+                                        FROM sales_returns sr
+                                        LEFT JOIN sales_return_items sri ON sri.return_id = sr.id
+                                        WHERE sr.exchange_sale_id IS NOT NULL
+                                        GROUP BY sr.id, sr.exchange_sale_id, sr.refund_amount
+                                    ) linked
+                                    GROUP BY linked.exchange_sale_id
+                                ) exchange_adjustment ON exchange_adjustment.exchange_sale_id = s.id';
             $salesSummarySql = 'SELECT COUNT(DISTINCT s.id) AS invoices,
                                        COALESCE(SUM(si.quantity), 0) AS units_sold,
                                        COALESCE(SUM(' . $lineRevenueSql . '), 0) AS revenue,
-                                       COALESCE(SUM(si.quantity * si.unit_cost), 0) AS sold_cost,
-                                       COALESCE(SUM(' . $lineRevenueSql . ' - (si.quantity * si.unit_cost)), 0) AS gross_profit
+                                       COALESCE(SUM(' . $lineCostSql . '), 0) AS sold_cost,
+                                       COALESCE(SUM(' . $lineRevenueSql . ' - ' . $lineCostSql . '), 0) AS gross_profit
                                 FROM sale_items si
                                 INNER JOIN sales s ON s.id = si.sale_id
-                                LEFT JOIN products p ON p.id = si.product_id
+                                LEFT JOIN products p ON p.id = si.product_id' . $exchangeAdjustmentJoin . '
                 WHERE s.sale_date BETWEEN :day_start AND :day_end';
             $salesSummaryParams = [
                 'day_start' => $activeStartDateTime,
@@ -86,11 +107,11 @@ if ($dbReady && $pdo !== null) {
                                      si.unit_cost,
                                      si.discount,
                                      ' . $lineRevenueSql . ' AS line_total,
-                                     (si.quantity * si.unit_cost) AS total_cost,
-                                     (' . $lineRevenueSql . ' - (si.quantity * si.unit_cost)) AS profit
+                                     ' . $lineCostSql . ' AS total_cost,
+                                     (' . $lineRevenueSql . ' - ' . $lineCostSql . ') AS profit
                               FROM sale_items si
                               INNER JOIN sales s ON s.id = si.sale_id
-                              LEFT JOIN products p ON p.id = si.product_id
+                              LEFT JOIN products p ON p.id = si.product_id' . $exchangeAdjustmentJoin . '
                               WHERE s.sale_date BETWEEN :day_start AND :day_end';
             $salesParams = [
                 'day_start' => $activeStartDateTime,
@@ -119,7 +140,7 @@ if ($dbReady && $pdo !== null) {
             $salesSortSql = [
                 'qty' => 'si.quantity',
                 'sell_price' => 'si.unit_price',
-                'profit' => '(' . $lineRevenueSql . ' - (si.quantity * si.unit_cost))',
+                'profit' => '(' . $lineRevenueSql . ' - ' . $lineCostSql . ')',
             ];
 
             $salesSummaryStatement = $pdo->prepare($salesSummarySql);
@@ -141,7 +162,8 @@ if ($dbReady && $pdo !== null) {
                 'SELECT COALESCE(SUM(sri.total), 0)
                  FROM sales_return_items sri
                  INNER JOIN sales_returns sr ON sr.id = sri.return_id
-                 WHERE sr.return_date BETWEEN :day_start AND :day_end'
+                 WHERE sr.return_date BETWEEN :day_start AND :day_end
+                   AND sr.status <> "exchange"'
             );
             $returnValueSummary->execute([
                 'day_start' => $activeStartDateTime,
@@ -153,6 +175,7 @@ if ($dbReady && $pdo !== null) {
                  FROM sales_return_items sri
                  INNER JOIN sales_returns sr ON sr.id = sri.return_id
                  WHERE sri.restock = 1
+                   AND sr.status <> "exchange"
                    AND sr.return_date BETWEEN :day_start AND :day_end'
             );
             $returnCostSummary->execute([

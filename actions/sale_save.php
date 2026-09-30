@@ -128,6 +128,10 @@ try {
         throw new RuntimeException('Invoice was not found.');
     }
 
+    if (is_array($existingSale) && (float) ($existingSale['exchange_credit'] ?? 0) > 0.0) {
+        throw new RuntimeException('Exchange invoices cannot be edited because their values are linked to a completed return.');
+    }
+
     if ($customerId === null && ($customerName !== '' || $customerPhone !== null)) {
         if ($customerName === '') {
             $customerName = 'Walk-in Customer';

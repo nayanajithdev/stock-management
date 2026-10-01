@@ -1711,6 +1711,8 @@ if (serviceForm) {
     const itemsWrap = serviceForm.querySelector('[data-service-items-wrap]');
     const itemList = serviceForm.querySelector('[data-service-items]');
     const selectedItemsContainer = serviceForm.querySelector('[data-service-selected-items]');
+    const handlingItems = serviceForm.querySelector('[data-service-handling-items]');
+    const creditTotal = serviceForm.querySelector('[data-service-credit-total]');
     const outcomeHidden = serviceForm.querySelector('[data-service-outcome]');
     const pathStep = serviceForm.querySelector('[data-service-path-step]');
     const outcomeStep = serviceForm.querySelector('[data-service-outcome-step]');
@@ -1743,7 +1745,7 @@ if (serviceForm) {
     const warrantyOutcomes = ['warranty_wait_supplier', 'warranty_refund_now', 'warranty_replace_now', 'warranty_exchange'];
     const replacementOutcomes = ['warranty_replace_now'];
     const refundOutcomes = ['normal_restock', 'warranty_refund_now'];
-    const exchangeOutcomes = ['normal_exchange', 'warranty_exchange'];
+    const exchangeOutcomes = ['normal_exchange', 'warranty_exchange', 'mixed_return'];
 
     const setItemMessage = (message) => {
         if (itemList) {
@@ -1823,22 +1825,11 @@ if (serviceForm) {
             price: Math.max(0, Number.parseFloat(row.querySelector('[data-service-exchange-price]')?.value || '0')),
         })).filter((item) => item.product && item.price > 0);
 
-        if (exchangeItems.length === 0 || selected.length === 0) {
-            if (exchangeSummary) {
-                exchangeSummary.hidden = true;
-            }
+        if (selected.length === 0) return;
 
-            if (preview) {
-                preview.textContent = 'Select the new item for this exchange.';
-            }
-
-            return;
-        }
-
-        const quantity = Math.max(1, Number.parseInt(quantityInput?.value || '1', 10) || 1);
-        const oldCredit = selected.length === 1
-            ? quantity * Number.parseFloat(selected[0].price || '0')
-            : selected.reduce((total, item) => total + Number.parseFloat(item.price || '0'), 0);
+        const oldCredit = selected.reduce((total, item) => (
+            total + ((item.return_quantity || 1) * Number.parseFloat(item.price || '0'))
+        ), 0);
         const newTotal = exchangeItems.reduce((sum, item) => sum + (item.quantity * item.price), 0);
         const difference = newTotal - oldCredit;
         let settlementText = 'Even exchange. No payment or refund.';
@@ -1849,13 +1840,15 @@ if (serviceForm) {
             settlementText = `Refund customer ${currency(Math.abs(difference))}.`;
         }
 
-        if (exchangeSummary) {
-            exchangeSummary.hidden = false;
-        }
+        if (refundInput) refundInput.value = money(Math.max(-difference, 0));
+
+        if (exchangeSummary) exchangeSummary.hidden = false;
 
         if (exchangeProductSummary) {
             const itemCount = exchangeItems.reduce((sum, item) => sum + item.quantity, 0);
-            exchangeProductSummary.textContent = `${exchangeItems.length} product(s), ${itemCount} unit(s) / Old credit ${currency(oldCredit)} / New total ${currency(newTotal)}`;
+            exchangeProductSummary.textContent = exchangeItems.length > 0
+                ? `${exchangeItems.length} product(s), ${itemCount} unit(s) / Return credit ${currency(oldCredit)} / New total ${currency(newTotal)}`
+                : `Return credit ${currency(oldCredit)} / No replacement products selected`;
         }
 
         if (exchangeSettlement) {
@@ -1863,23 +1856,13 @@ if (serviceForm) {
         }
 
         if (preview) {
-            const supplierText = outcomeHidden?.value === 'warranty_exchange'
-                ? ' The damaged item will be held for a supplier decision.'
-                : ' The returned item will go back into sellable stock.';
-            preview.textContent = settlementText + supplierText;
+            preview.textContent = settlementText;
         }
     };
 
     const resetAfterItem = () => {
-        serviceForm.querySelectorAll('[data-service-path]').forEach((input) => {
-            input.checked = false;
-        });
-        serviceForm.querySelectorAll('[data-service-outcome-choice]').forEach((input) => {
-            input.checked = false;
-        });
-
         if (outcomeHidden) {
-            outcomeHidden.value = '';
+            outcomeHidden.value = selectedItems.size > 0 ? 'mixed_return' : '';
         }
 
         if (pathStep) {
@@ -1890,9 +1873,7 @@ if (serviceForm) {
             outcomeStep.hidden = true;
         }
 
-        if (detailsStep) {
-            detailsStep.hidden = true;
-        }
+        if (detailsStep) detailsStep.hidden = selectedItems.size === 0;
 
         if (normalOutcomes) {
             normalOutcomes.hidden = true;
@@ -1903,10 +1884,12 @@ if (serviceForm) {
         }
 
         if (exchangeFields) {
-            exchangeFields.hidden = true;
+            exchangeFields.hidden = selectedItems.size === 0
+                || !Array.from(selectedItems.values()).some((item) => item.action === 'exchange');
         }
 
         resetExchangeRows();
+        renderExchangeSettlement();
     };
 
     const updateOutcomeAvailability = () => {
@@ -2068,12 +2051,82 @@ if (serviceForm) {
         });
     };
 
+    const renderHandlingItems = () => {
+        if (!handlingItems) return;
+        handlingItems.innerHTML = '';
+
+        selectedItems.forEach((item, itemId) => {
+            const row = document.createElement('div');
+            row.className = 'service-handling-row';
+            row.innerHTML = `
+                <div class="service-handling-product">
+                    <strong></strong>
+                    <small></small>
+                </div>
+                <label class="field">
+                    <span>Quantity</span>
+                    <input type="number" min="1" step="1">
+                </label>
+                <label class="field">
+                    <span>Condition</span>
+                    <select required>
+                        <option value="">Choose condition</option>
+                        <option value="good">Good / sellable</option>
+                        <option value="faulty">Faulty / damaged</option>
+                    </select>
+                </label>
+                <label class="field">
+                    <span>Action</span>
+                    <select required data-service-item-action></select>
+                </label>
+                <strong class="service-handling-credit"></strong>
+            `;
+            row.querySelector('.service-handling-product strong').textContent = item.label || '';
+            row.querySelector('.service-handling-product small').textContent = `Paid price ${currency(item.price)}`;
+            const quantity = row.querySelector('input');
+            const condition = row.querySelector('select');
+            const action = row.querySelector('[data-service-item-action]');
+            quantity.name = `item_quantity[${itemId}]`;
+            quantity.max = String(item.available || 1);
+            quantity.value = String(item.return_quantity || 1);
+            condition.name = `item_condition[${itemId}]`;
+            condition.value = item.condition || '';
+            action.name = `item_action[${itemId}]`;
+            const actionOptions = item.condition === 'faulty'
+                ? [
+                    ['', 'Choose action'],
+                    ['wait_supplier', 'Return to supplier'],
+                    ['refund', 'Refund now'],
+                    ['replace_same', 'Replace same item'],
+                    ['exchange', 'Exchange / choose new item(s)'],
+                ]
+                : item.condition === 'good' ? [
+                    ['', 'Choose action'],
+                    ['refund', 'Refund and return to stock'],
+                    ['exchange', 'Exchange / choose new item(s)'],
+                ] : [['', 'Choose condition first']];
+            actionOptions.forEach(([value, label]) => action.add(new Option(label, value)));
+            if (!actionOptions.some(([value]) => value === item.action)) item.action = actionOptions[0][0];
+            action.value = item.action;
+            const hasCredit = ['refund', 'exchange'].includes(item.action);
+            row.querySelector('.service-handling-credit').textContent = hasCredit
+                ? currency((item.return_quantity || 1) * Number.parseFloat(item.price || '0'))
+                : 'No immediate credit';
+            handlingItems.appendChild(row);
+        });
+
+        if (creditTotal) creditTotal.textContent = currency(selectedRefundTotal());
+    };
+
     const selectedRefundTotal = () => Array.from(selectedItems.values())
-        .reduce((total, item) => total + Number.parseFloat(item.price || '0'), 0);
+        .reduce((total, item) => ['refund', 'exchange'].includes(item.action)
+            ? total + ((item.return_quantity || 1) * Number.parseFloat(item.price || '0'))
+            : total, 0);
 
     const clearSelectedItems = () => {
         selectedItems.clear();
         syncSelectedItemInputs();
+        renderHandlingItems();
 
         resetAfterItem();
 
@@ -2090,6 +2143,9 @@ if (serviceForm) {
         }
 
         if (selected) {
+            item.condition = item.condition || '';
+            item.action = item.action || '';
+            item.return_quantity = item.return_quantity || 1;
             selectedItems.set(itemId, item);
         } else {
             selectedItems.delete(itemId);
@@ -2102,6 +2158,7 @@ if (serviceForm) {
         }
 
         syncSelectedItemInputs();
+        renderHandlingItems();
 
         if (quantityInput) {
             quantityInput.value = '1';
@@ -2403,6 +2460,43 @@ if (serviceForm) {
         input.addEventListener('change', () => showDetailsStep(input.value));
     });
 
+    handlingItems?.addEventListener('input', (event) => {
+        const control = event.target;
+        const match = control.name?.match(/^(item_quantity|item_condition|item_action)\[(\d+)\]$/);
+        if (!match) return;
+        const item = selectedItems.get(match[2]);
+        if (!item) return;
+
+        if (match[1] === 'item_quantity') {
+            item.return_quantity = Math.max(1, Math.min(item.available || 1, Number.parseInt(control.value || '1', 10) || 1));
+            control.value = String(item.return_quantity);
+            const credit = control.closest('.service-handling-row')?.querySelector('.service-handling-credit');
+            if (credit) credit.textContent = ['refund', 'exchange'].includes(item.action)
+                ? currency(item.return_quantity * Number.parseFloat(item.price || '0'))
+                : 'No immediate credit';
+        } else if (match[1] === 'item_condition') {
+            item.condition = control.value;
+            item.action = '';
+            renderHandlingItems();
+        } else {
+            item.action = control.value;
+            renderHandlingItems();
+        }
+
+        if (creditTotal) creditTotal.textContent = currency(selectedRefundTotal());
+        if (refundInput) refundInput.value = money(Math.max(selectedRefundTotal(), 0));
+        if (exchangeFields) {
+            const hasExchange = Array.from(selectedItems.values()).some((selectedItem) => selectedItem.action === 'exchange');
+            exchangeFields.hidden = !hasExchange;
+            if (!hasExchange) resetExchangeRows();
+        }
+        renderExchangeSettlement();
+    });
+
+    handlingItems?.addEventListener('change', (event) => {
+        event.target.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+
     [quantityInput, refundInput].forEach((input) => {
         input?.addEventListener('input', renderServicePreview);
     });
@@ -2503,21 +2597,34 @@ if (serviceForm) {
     serviceForm.addEventListener('submit', (event) => {
         const outcome = outcomeHidden?.value || '';
         const exchangeRowList = Array.from(exchangeRows?.querySelectorAll('[data-service-exchange-row]') || []);
-        const exchangeIsIncomplete = exchangeOutcomes.includes(outcome) && (
-            exchangeRowList.length === 0 || exchangeRowList.some((row) => (
-                !row.querySelector('[data-service-exchange-product-id]')?.value
+        const hasExchangeAction = Array.from(selectedItems.values()).some((item) => item.action === 'exchange');
+        const completeExchangeRows = exchangeRowList.filter((row) => (
+            Boolean(row.querySelector('[data-service-exchange-product-id]')?.value)
+            && Number.parseInt(row.querySelector('[data-service-exchange-quantity]')?.value || '0', 10) > 0
+            && Number.parseFloat(row.querySelector('[data-service-exchange-price]')?.value || '0') > 0
+        ));
+        const exchangeIsIncomplete = (hasExchangeAction && completeExchangeRows.length === 0) || exchangeRowList.some((row) => {
+            const productId = row.querySelector('[data-service-exchange-product-id]')?.value || '';
+            const search = row.querySelector('[data-service-exchange-search]')?.value.trim() || '';
+            const price = Number.parseFloat(row.querySelector('[data-service-exchange-price]')?.value || '0');
+            const hasAnyValue = Boolean(productId || search || price > 0);
+            return hasAnyValue && (!productId
                 || Number.parseInt(row.querySelector('[data-service-exchange-quantity]')?.value || '0', 10) <= 0
-                || Number.parseFloat(row.querySelector('[data-service-exchange-price]')?.value || '0') <= 0
-            ))
-        );
+                || price <= 0);
+        });
+        const handlingIsIncomplete = selectedItems.size === 0
+            || handlingItems?.querySelectorAll('select[name^="item_condition"]').length !== selectedItems.size
+            || handlingItems?.querySelectorAll('select[name^="item_action"]').length !== selectedItems.size
+            || Array.from(handlingItems?.querySelectorAll('select[name^="item_condition"], select[name^="item_action"]') || [])
+                .some((select) => !select.value);
 
-        if (selectedItems.size === 0 || !outcome || exchangeIsIncomplete) {
+        if (selectedItems.size === 0 || !outcome || exchangeIsIncomplete || handlingIsIncomplete) {
             event.preventDefault();
 
             if (preview) {
                 preview.textContent = exchangeIsIncomplete
-                    ? 'Complete every replacement item, quantity, and price before saving the exchange.'
-                    : 'Choose invoice item(s) and handling action before saving.';
+                    ? 'Add and complete at least one new product when Exchange is selected.'
+                    : 'Choose a condition for every selected item before saving.';
             }
         }
     });

@@ -57,7 +57,7 @@ if ($dbReady && $pdo !== null) {
             $lineShareSql = 'CASE WHEN s.subtotal > 0 THEN si.total / s.subtotal ELSE 0 END';
             $baseLineRevenueSql = 'si.total - CASE
                 WHEN s.subtotal > 0 THEN (
-                    s.discount + COALESCE(exchange_adjustment.original_return_value, s.exchange_credit, 0)
+                    s.discount + COALESCE(exchange_adjustment.returned_value, s.exchange_credit, 0)
                 ) * (si.total / s.subtotal)
                 ELSE 0
             END';
@@ -67,15 +67,14 @@ if ($dbReady && $pdo !== null) {
             $exchangeAdjustmentJoin = ' LEFT JOIN (
                                     SELECT linked.exchange_sale_id,
                                            COALESCE(SUM(linked.recovered_cost), 0) AS recovered_cost,
-                                           COALESCE(SUM(linked.original_return_value), 0) AS original_return_value
+                                           COALESCE(SUM(linked.returned_value), 0) AS returned_value
                                     FROM (
                                         SELECT sr.id,
                                                sr.exchange_sale_id,
-                                               COALESCE(SUM(sri.quantity * original_item.unit_price), 0) AS original_return_value,
+                                               COALESCE(SUM(sri.total), 0) AS returned_value,
                                                COALESCE(SUM(CASE WHEN sri.restock = 1 THEN sri.quantity * sri.unit_cost ELSE 0 END), 0) AS recovered_cost
                                         FROM sales_returns sr
                                         LEFT JOIN sales_return_items sri ON sri.return_id = sr.id
-                                        LEFT JOIN sale_items original_item ON original_item.id = sri.sale_item_id
                                         WHERE sr.exchange_sale_id IS NOT NULL
                                         GROUP BY sr.id, sr.exchange_sale_id
                                     ) linked

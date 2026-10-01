@@ -2338,6 +2338,61 @@ input[readonly][aria-readonly="true"] {
     text-align: center !important;
 }
 
+.service-handling-list {
+    display: grid;
+    gap: 10px;
+}
+
+.service-handling-row {
+    display: grid;
+    grid-template-columns: minmax(220px, 1fr) 100px minmax(170px, 210px) minmax(180px, 230px) 120px;
+    align-items: end;
+    gap: 14px;
+    border: 1px solid rgba(255, 255, 255, .08);
+    border-radius: 8px;
+    background: rgba(17, 24, 32, .45);
+    padding: 12px;
+}
+
+.service-handling-product {
+    align-self: center;
+    display: grid;
+    gap: 4px;
+}
+
+.service-handling-product small,
+.service-exchange-heading small {
+    color: var(--muted);
+}
+
+.service-handling-credit {
+    align-self: center;
+    color: var(--accent-2);
+    text-align: right;
+}
+
+.service-credit-summary {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    margin-top: 12px;
+    border-top: 1px solid rgba(255, 255, 255, .08);
+    padding-top: 12px;
+}
+
+.service-credit-summary span {
+    color: var(--muted);
+}
+
+.service-credit-summary strong {
+    color: var(--accent-2);
+}
+
+.service-exchange-heading {
+    display: grid;
+    gap: 4px;
+}
+
 .service-outcome-group {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -4326,6 +4381,7 @@ body.theme-light .replacement-option,
 body.theme-light .claim-stock-action,
 body.theme-light .claim-stock-actions,
 body.theme-light .service-outcome-card,
+body.theme-light .service-handling-row,
 body.theme-light .service-items-table-wrap,
 body.theme-light .security-note,
 body.theme-light .backup-info-box,
@@ -4563,6 +4619,14 @@ body.theme-light .modal-backdrop {
 
     .service-exchange-grid {
         grid-template-columns: 1fr;
+    }
+
+    .service-handling-row {
+        grid-template-columns: 1fr;
+    }
+
+    .service-handling-credit {
+        text-align: left;
     }
 
     .service-exchange-summary {

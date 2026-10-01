@@ -13,6 +13,7 @@ $faviconUrl = $faviconPath !== '' ? app_url($faviconPath) : '';
 $themeMode = isset($currentUser) && is_array($currentUser) && (string) ($currentUser['theme_mode'] ?? '') === 'light'
     ? 'light'
     : 'dark';
+$appCssVersion = (string) (filemtime(__DIR__ . '/../assets/app.css') ?: 1);
 ?>
 <!doctype html>
 <html lang="en">
@@ -26,7 +27,7 @@ $themeMode = isset($currentUser) && is_array($currentUser) && (string) ($current
         <link rel="apple-touch-icon" href="<?php echo e($faviconUrl); ?>">
     <?php endif; ?>
     <link rel="preconnect" href="https://unpkg.com">
-    <link rel="stylesheet" href="<?php echo e(app_url('assets/app.css')); ?>">
+    <link rel="stylesheet" href="<?php echo e(app_url('assets/app.css?v=' . $appCssVersion)); ?>">
     <?php if (in_array($currentPage, ['sale-view', 'invoice-preview'], true)): ?>
         <link rel="stylesheet" href="<?php echo e(app_url('prints/invoice.css')); ?>">
     <?php endif; ?>

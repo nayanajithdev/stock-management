@@ -134,110 +134,41 @@ if ($dbReady && $pdo !== null) {
                 </section>
 
                 <div data-service-selected-items></div>
-                <input type="hidden" name="outcome" data-service-outcome>
+                <input type="hidden" name="outcome" value="mixed_return" data-service-outcome>
 
                 <section class="service-step" data-service-path-step hidden>
                     <div class="service-step-title">
                         <span>2</span>
-                        <strong>Item condition</strong>
+                        <strong>Handle each selected item</strong>
                     </div>
 
                     <div class="service-step-body">
-                        <div class="replacement-options">
-                            <label class="replacement-option">
-                                <input type="radio" name="service_path" value="good_item" data-service-path>
-                                <span>
-                                    <strong>Good / sellable</strong>
-                                    <small>The returned item can go back into stock.</small>
-                                </span>
-                            </label>
-                            <label class="replacement-option">
-                                <input type="radio" name="service_path" value="damaged_item" data-service-path>
-                                <span>
-                                    <strong>Faulty / damaged</strong>
-                                    <small>Keep it out of sellable stock and handle supplier recovery.</small>
-                                </span>
-                            </label>
-                        </div>
-                    </div>
-                </section>
-
-                <section class="service-step" data-service-outcome-step hidden>
-                    <div class="service-step-title">
-                        <span>3</span>
-                        <strong>Choose action</strong>
-                    </div>
-
-                    <div class="service-step-body">
-                        <div class="service-outcome-group" data-service-normal-outcomes hidden>
-                            <label class="service-outcome-card">
-                                <input type="radio" name="service_outcome_choice" value="normal_restock" data-service-outcome-choice>
-                                <span>
-                                    <strong>Refund and return to stock</strong>
-                                    <small>Item is sellable. Stock + returned quantity.</small>
-                                </span>
-                            </label>
-                            <label class="service-outcome-card" data-service-exchange-outcome>
-                                <input type="radio" name="service_outcome_choice" value="normal_exchange" data-service-outcome-choice>
-                                <span>
-                                    <strong>Exchange for other item(s)</strong>
-                                    <small>Use the combined returned value toward one or more products.</small>
-                                </span>
-                            </label>
-                        </div>
-
-                        <div class="service-outcome-group" data-service-damaged-outcomes hidden>
-                            <label class="service-outcome-card" data-service-needs-warranty>
-                                <input type="radio" name="service_outcome_choice" value="warranty_wait_supplier" data-service-outcome-choice>
-                                <span>
-                                    <strong>Return to supplier</strong>
-                                    <small>Customer waits until supplier result.</small>
-                                </span>
-                            </label>
-                            <label class="service-outcome-card" data-service-needs-warranty>
-                                <input type="radio" name="service_outcome_choice" value="warranty_refund_now" data-service-outcome-choice>
-                                <span>
-                                    <strong>Refund Now</strong>
-                                    <small>Customer is refunded now. Supplier decision comes later.</small>
-                                </span>
-                            </label>
-                            <label class="service-outcome-card" data-service-needs-warranty>
-                                <input type="radio" name="service_outcome_choice" value="warranty_replace_now" data-service-outcome-choice>
-                                <span>
-                                    <strong>Replace with same item</strong>
-                                    <small>Give the customer the same product now.</small>
-                                </span>
-                            </label>
-                            <label class="service-outcome-card" data-service-needs-warranty data-service-exchange-outcome>
-                                <input type="radio" name="service_outcome_choice" value="warranty_exchange" data-service-outcome-choice>
-                                <span>
-                                    <strong>Exchange for other item(s)</strong>
-                                    <small>Use the combined returned value toward one or more products.</small>
-                                </span>
-                            </label>
+                        <div class="service-handling-list" data-service-handling-items></div>
+                        <div class="service-credit-summary">
+                            <span>Customer return credit (discounted price paid)</span>
+                            <strong data-service-credit-total>Rs. 0.00</strong>
                         </div>
                     </div>
                 </section>
 
                 <section class="service-step" data-service-details-step hidden>
                     <div class="service-step-title">
-                        <span>4</span>
-                        <strong>Details</strong>
+                        <span>3</span>
+                        <strong>Refund or use credit for a new purchase</strong>
                     </div>
 
                     <div class="service-step-body">
                         <div class="warranty-form service-details-form">
                             <label class="field">
-                                <span>Quantity</span>
-                                <input type="number" name="quantity" value="1" min="1" step="1" data-service-quantity>
-                            </label>
-
-                            <label class="field">
                                 <span>Date</span>
                                 <input type="datetime-local" name="return_date" value="<?php echo e(date('Y-m-d\TH:i')); ?>" required>
                             </label>
 
-                            <div class="service-exchange-fields span-2" data-service-exchange-fields hidden>
+                            <div class="service-exchange-fields span-2" data-service-exchange-fields>
+                                <div class="service-exchange-heading">
+                                    <strong>Add the new product(s) selected by the customer</strong>
+                                    <small>The combined return credit is applied to this new purchase.</small>
+                                </div>
                                 <div class="service-exchange-rows" data-service-exchange-rows>
                                     <?php render_service_exchange_row(); ?>
                                 </div>
@@ -247,14 +178,14 @@ if ($dbReady && $pdo !== null) {
                                     Add another item
                                 </button>
 
-                                <div class="service-exchange-summary" data-service-exchange-summary hidden>
+                                <div class="service-exchange-summary" data-service-exchange-summary>
                                     <span data-service-exchange-product-summary></span>
-                                    <strong data-service-exchange-settlement>Select a new item.</strong>
+                                    <strong data-service-exchange-settlement>The full return credit will be refunded.</strong>
                                 </div>
                             </div>
 
-                            <div class="field" data-service-refund-fields data-service-refund-method-field>
-                                <span data-service-method-label>Refund Method</span>
+                            <div class="field" data-service-refund-method-field>
+                                <span data-service-method-label>Settlement Method</span>
                                 <select name="refund_method">
                                     <option value="cash">Cash</option>
                                     <option value="card">Card</option>
@@ -264,10 +195,7 @@ if ($dbReady && $pdo !== null) {
                                 </select>
                             </div>
 
-                            <label class="field" data-service-refund-fields data-service-refund-amount-field>
-                                <span>Refund Amount</span>
-                                <input type="number" name="refund_amount" value="0.00" min="0" step="0.01" data-service-refund>
-                            </label>
+                            <input type="hidden" name="refund_amount" value="0.00" data-service-refund>
 
                             <label class="field span-2">
                                 <span>Customer Issue / Reason</span>

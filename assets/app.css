@@ -123,14 +123,14 @@ input[type="number"]::-webkit-inner-spin-button {
     top: 0;
     left: 0;
     bottom: 0;
-    z-index: 10;
+    z-index: 20;
     width: 268px;
     height: 100vh;
     height: 100dvh;
     overflow-y: auto;
     scrollbar-width: none;
     border-right: 1px solid var(--line);
-    background: rgba(34, 38, 43, .96);
+    background: var(--surface);
     padding: 22px 16px;
     gap: 18px;
 }
@@ -1483,6 +1483,24 @@ h2 {
 .dashboard-chart-bar:focus-visible .dashboard-chart-tooltip {
     opacity: 1;
     transform: translateX(-50%) translateY(0);
+}
+
+.dashboard-chart-bar.is-edge-start .dashboard-chart-tooltip {
+    left: 0;
+    transform: translateY(2px);
+}
+
+.dashboard-chart-bar.is-edge-end .dashboard-chart-tooltip {
+    right: 0;
+    left: auto;
+    transform: translateY(2px);
+}
+
+.dashboard-chart-bar.is-edge-start:hover .dashboard-chart-tooltip,
+.dashboard-chart-bar.is-edge-start:focus-visible .dashboard-chart-tooltip,
+.dashboard-chart-bar.is-edge-end:hover .dashboard-chart-tooltip,
+.dashboard-chart-bar.is-edge-end:focus-visible .dashboard-chart-tooltip {
+    transform: translateY(0);
 }
 
 .dashboard-chart-axis {
@@ -4142,7 +4160,7 @@ td {
 }
 
 body.theme-light .sidebar {
-    background: rgba(255, 255, 255, .96);
+    background: var(--surface);
 }
 
 body.theme-light .nav-link:not(.active),

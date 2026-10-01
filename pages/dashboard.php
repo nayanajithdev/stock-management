@@ -445,13 +445,13 @@ $cashOutToday = $metrics['today_expenses'] + $metrics['today_customer_refunds'] 
                     ></div>
                 <?php endif; ?>
 
-                <?php foreach ($trendData as $point): ?>
+                <?php foreach ($trendData as $pointIndex => $point): ?>
                     <?php
                     $height = $maxRevenue > 0 ? max(4, ((float) $point['revenue'] / $maxRevenue) * 100) : 0;
                     $tooltipDate = (string) ($point['tooltip_date'] ?? $point['label']);
                     ?>
                     <div
-                        class="dashboard-chart-bar"
+                        class="dashboard-chart-bar <?php echo $pointIndex === 0 ? 'is-edge-start' : ($pointIndex === count($trendData) - 1 ? 'is-edge-end' : ''); ?>"
                         tabindex="0"
                         aria-label="<?php echo e($tooltipDate . ': ' . format_money((float) $point['revenue'])); ?>"
                     >

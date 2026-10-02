@@ -15,7 +15,7 @@ if (! $dbReady || $pdo === null) {
     redirect('?page=expenses');
 }
 
-$expenseDate = trim((string) ($_POST['expense_date'] ?? date('Y-m-d')));
+$expenseDate = trim((string) ($_POST['expense_date'] ?? app_today()));
 $category = trim((string) ($_POST['category'] ?? ''));
 $vendor = nullable_string((string) ($_POST['vendor'] ?? ''));
 $amount = max(0.0, input_decimal('amount'));

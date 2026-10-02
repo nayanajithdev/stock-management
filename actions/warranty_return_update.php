@@ -18,10 +18,10 @@ if (! $dbReady || $pdo === null) {
 $canManageProductCost = auth_can_view_product_cost($pdo, $currentUser ?? null);
 $claimId = (int) ($_POST['claim_id'] ?? 0);
 $status = (string) ($_POST['status'] ?? 'received');
-$resolvedDate = trim((string) ($_POST['resolved_date'] ?? date('Y-m-d')));
+$resolvedDate = trim((string) ($_POST['resolved_date'] ?? app_today()));
 $supplierNotes = nullable_string((string) ($_POST['supplier_notes'] ?? ''));
 $supplierRefundAmount = max(0.0, input_decimal('supplier_refund_amount'));
-$supplierRefundDate = trim((string) ($_POST['supplier_refund_date'] ?? date('Y-m-d')));
+$supplierRefundDate = trim((string) ($_POST['supplier_refund_date'] ?? app_today()));
 $supplierDecision = (string) ($_POST['supplier_decision'] ?? '');
 $markSupplierReplacementReceived = isset($_POST['supplier_replacement_received']);
 $issueCustomerReplacement = isset($_POST['customer_replacement_issued']);
@@ -88,7 +88,7 @@ try {
 
     if (! $canManageProductCost) {
         $supplierRefundAmount = (float) ($claim['supplier_refund_amount'] ?? 0);
-        $supplierRefundDate = (string) ($claim['supplier_refund_date'] ?? date('Y-m-d'));
+        $supplierRefundDate = (string) ($claim['supplier_refund_date'] ?? app_today());
     }
 
     if ($supplierDecision === 'send_to_supplier') {

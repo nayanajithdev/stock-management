@@ -273,7 +273,7 @@ if ($dbReady && $pdo !== null) {
                             data-claim-customer="<?php echo e($claim['customer_name'] ?: 'Walk-in Customer'); ?>"
                             data-claim-product="<?php echo e($claim['sku'] . ' - ' . $claim['product_name']); ?>"
                             data-claim-refund-amount="<?php echo $canViewProductCost ? e(number_format($supplierRefundAmount, 2, '.', '')) : '0.00'; ?>"
-                            data-claim-refund-date="<?php echo $canViewProductCost ? e($claim['supplier_refund_date'] ?? date('Y-m-d')) : e(date('Y-m-d')); ?>"
+                            data-claim-refund-date="<?php echo $canViewProductCost ? e($claim['supplier_refund_date'] ?? app_today()) : e(app_today()); ?>"
                             data-claim-replacement-mode="<?php echo e($claim['replacement_mode'] ?? 'wait_supplier'); ?>"
                             data-customer-replacement-status="<?php echo e($claim['customer_replacement_status'] ?? 'pending'); ?>"
                             data-supplier-replacement-status="<?php echo e($claim['supplier_replacement_status'] ?? 'pending'); ?>"
@@ -361,7 +361,7 @@ if ($dbReady && $pdo !== null) {
 
             <label class="field" data-warranty-resolved-field hidden>
                 <span>Resolved Date</span>
-                <input type="date" name="resolved_date" value="<?php echo e(date('Y-m-d')); ?>" data-warranty-resolved-date>
+                <input type="date" name="resolved_date" value="<?php echo e(app_today()); ?>" data-warranty-resolved-date>
             </label>
 
             <?php if ($canViewProductCost): ?>
@@ -378,7 +378,7 @@ if ($dbReady && $pdo !== null) {
 
                 <label class="field" data-warranty-refund-field hidden>
                     <span>Refund Date</span>
-                    <input type="date" name="supplier_refund_date" value="<?php echo e(date('Y-m-d')); ?>" data-warranty-supplier-refund-date>
+                    <input type="date" name="supplier_refund_date" value="<?php echo e(app_today()); ?>" data-warranty-supplier-refund-date>
                 </label>
             <?php endif; ?>
 
@@ -516,7 +516,7 @@ function wr_replacement_summary(array $claim): string
 function wr_age_days(string $receivedDate): int
 {
     $received = new DateTimeImmutable($receivedDate);
-    $today = new DateTimeImmutable(date('Y-m-d'));
+    $today = new DateTimeImmutable(app_today());
 
     return (int) $received->diff($today)->format('%a');
 }

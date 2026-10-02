@@ -803,7 +803,7 @@ function wr_create_warranty_claim(PDO $pdo, array $saleItem, ?int $saleItemId, s
         'issue_description' => $issueDescription,
         'status' => $status,
         'received_date' => substr(str_replace('T', ' ', $receivedDate), 0, 10),
-        'resolved_date' => in_array($status, ['resolved', 'rejected'], true) ? date('Y-m-d') : null,
+        'resolved_date' => in_array($status, ['resolved', 'rejected'], true) ? app_today() : null,
         'supplier_notes' => $supplierNotes,
         'supplier_refund_amount' => $supplierRefundAmount,
         'supplier_refund_date' => $supplierRefundAmount > 0 ? $supplierRefundDate : null,

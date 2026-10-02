@@ -16,10 +16,27 @@ function app_pdo(?string &$error = null): ?PDO
             $dbConfig['database']
         );
 
-        return new PDO($dsn, (string) $dbConfig['username'], (string) $dbConfig['password'], [
+        $pdo = new PDO($dsn, (string) $dbConfig['username'], (string) $dbConfig['password'], [
             PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
             PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
         ]);
+
+        // Mirror the optional local fake date in MySQL so CURRENT_DATE, NOW(),
+        // and timestamp defaults follow the same testing clock as PHP.
+        $fakeToday = defined('LOCAL_APP_CONFIG') && is_array(LOCAL_APP_CONFIG)
+            ? trim((string) (LOCAL_APP_CONFIG['fake_today'] ?? ''))
+            : '';
+        $parsedFakeToday = DateTimeImmutable::createFromFormat('!Y-m-d', $fakeToday);
+        if ($parsedFakeToday instanceof DateTimeImmutable && $parsedFakeToday->format('Y-m-d') === $fakeToday) {
+            $fakeDateTime = $fakeToday . ' 12:00:00';
+            try {
+                $pdo->exec('SET timestamp = UNIX_TIMESTAMP(' . $pdo->quote($fakeDateTime) . ')');
+            } catch (Throwable) {
+                // The PHP date override remains available if this host disallows it.
+            }
+        }
+
+        return $pdo;
     } catch (PDOException $exception) {
         $error = $exception->getMessage();
 

@@ -133,7 +133,7 @@ if ($dbReady && $pdo !== null) {
 
                     <label class="field">
                         <span>Purchase Date</span>
-                        <input type="date" name="purchase_date" value="<?php echo e($purchaseOldInput['purchase_date'] ?? date('Y-m-d')); ?>" required>
+                        <input type="date" name="purchase_date" value="<?php echo e($purchaseOldInput['purchase_date'] ?? app_today()); ?>" required>
                     </label>
                 </div>
 
@@ -393,7 +393,7 @@ function purchases_form_product_details(array $productIds, ?PDO $pdo): array
 
 function purchases_form_date_value(string $value): string
 {
-    return preg_match('/^\d{4}-\d{2}-\d{2}$/', $value) === 1 ? $value : date('Y-m-d');
+    return preg_match('/^\d{4}-\d{2}-\d{2}$/', $value) === 1 ? $value : app_today();
 }
 
 function purchases_form_money_value(mixed $value): string

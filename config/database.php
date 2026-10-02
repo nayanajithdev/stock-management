@@ -20,4 +20,10 @@ if (is_file($localConfig)) {
     }
 }
 
+// Keep local development-only options available to the application without
+// putting them in the tracked configuration file.
+if (! defined('LOCAL_APP_CONFIG')) {
+    define('LOCAL_APP_CONFIG', $config);
+}
+
 return $config;

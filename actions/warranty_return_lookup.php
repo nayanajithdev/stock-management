@@ -186,7 +186,7 @@ function warranty_return_lookup_items(PDO $pdo, int $saleId): array
 
     foreach ($statement->fetchAll() as $item) {
         $warrantyUntil = (string) ($item['warranty_until'] ?? '');
-        $inWarranty = $warrantyUntil !== '' && $warrantyUntil >= date('Y-m-d');
+        $inWarranty = $warrantyUntil !== '' && $warrantyUntil >= app_today();
 
         $items[] = [
             'sale_item_id' => (int) $item['sale_item_id'],

@@ -13,7 +13,7 @@ $primaryStats = [
 if ($canViewProductCost) {
     $primaryStats[] = ['label' => 'Supplier Due', 'value' => format_money(0), 'meta' => 'Open payables', 'icon' => 'hand-coins'];
 }
-$currentYear = (int) date('Y');
+$currentYear = (int) substr(app_today(), 0, 4);
 $trendMode = (string) ($_GET['trend'] ?? 'monthly');
 $trendMetric = (string) ($_GET['metric'] ?? 'revenue');
 
@@ -33,7 +33,7 @@ $selectedWeekStart = dashboard_week_start((string) ($_GET['week'] ?? ''));
 $selectedWeekEnd = $selectedWeekStart->modify('+7 days');
 $selectedWeekInput = $selectedWeekStart->format('o-\WW');
 $selectedWeekRange = dashboard_week_range_label($selectedWeekStart, $selectedWeekEnd->modify('-1 day'));
-$currentMonthStart = (new DateTimeImmutable('first day of this month'))->setTime(0, 0);
+$currentMonthStart = (new DateTimeImmutable(app_today()))->modify('first day of this month')->setTime(0, 0);
 $currentMonthEnd = $currentMonthStart->modify('first day of next month');
 $monthlyTrend = dashboard_empty_current_month_trend($currentMonthStart, $currentMonthEnd);
 $yearlyTrend = dashboard_empty_year_trend();
@@ -599,11 +599,11 @@ function dashboard_week_start(string $weekValue): DateTimeImmutable
         $week = (int) $matches[2];
 
         if ($week >= 1 && $week <= 53) {
-            return (new DateTimeImmutable('now'))->setISODate((int) $matches[1], $week)->setTime(0, 0);
+            return (new DateTimeImmutable(app_today()))->setISODate((int) $matches[1], $week)->setTime(0, 0);
         }
     }
 
-    return (new DateTimeImmutable('monday this week'))->setTime(0, 0);
+    return (new DateTimeImmutable(app_today()))->modify('monday this week')->setTime(0, 0);
 }
 
 function dashboard_empty_week_trend(DateTimeImmutable $weekStart): array
@@ -810,8 +810,8 @@ function dashboard_warranty_expiring_lots(PDO $pdo): int
         $lotAdjustments[(int) $row['product_id']][(int) $row['reference_id']] = (int) $row['quantity_change'];
     }
 
-    $today = date('Y-m-d');
-    $warningCutoff = date('Y-m-d', strtotime('+30 days'));
+    $today = app_today();
+    $warningCutoff = (new DateTimeImmutable($today))->modify('+30 days')->format('Y-m-d');
     $expiringLots = 0;
 
     foreach ($lotRows as $lot) {

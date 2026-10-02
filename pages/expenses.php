@@ -5,8 +5,8 @@
 $expenseSearch = trim((string) ($_GET['q'] ?? ''));
 $categoryFilter = trim((string) ($_GET['category'] ?? ''));
 $statusFilter = (string) ($_GET['expense_status'] ?? 'active');
-$startDate = expense_valid_date((string) ($_GET['start_date'] ?? date('Y-m-01')), date('Y-m-01'));
-$endDate = expense_valid_date((string) ($_GET['end_date'] ?? date('Y-m-d')), date('Y-m-d'));
+$startDate = expense_valid_date((string) ($_GET['start_date'] ?? substr(app_today(), 0, 7) . '-01'), substr(app_today(), 0, 7) . '-01');
+$endDate = expense_valid_date((string) ($_GET['end_date'] ?? app_today()), app_today());
 $allowedStatuses = ['active', 'voided', 'all'];
 
 if (! in_array($statusFilter, $allowedStatuses, true)) {
@@ -162,7 +162,7 @@ if ($dbReady && $pdo !== null) {
 
                 <label class="field">
                     <span>Date</span>
-                    <input type="date" name="expense_date" value="<?php echo e(date('Y-m-d')); ?>" required>
+                    <input type="date" name="expense_date" value="<?php echo e(app_today()); ?>" required>
                 </label>
 
                 <label class="field">

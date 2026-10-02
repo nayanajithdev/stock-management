@@ -21,7 +21,7 @@ if (! auth_can_view_product_cost($pdo, $currentUser ?? null)) {
 $supplierId = ($_POST['supplier_id'] ?? '') !== '' ? (int) $_POST['supplier_id'] : null;
 $purchaseId = max(0, (int) ($_POST['purchase_id'] ?? 0));
 $invoiceNo = nullable_string((string) ($_POST['invoice_no'] ?? ''));
-$purchaseDate = trim((string) ($_POST['purchase_date'] ?? date('Y-m-d')));
+$purchaseDate = trim((string) ($_POST['purchase_date'] ?? app_today()));
 $discount = max(0.0, input_decimal('discount'));
 $paid = max(0.0, input_decimal('paid'));
 $productIds = $_POST['product_id'] ?? [];

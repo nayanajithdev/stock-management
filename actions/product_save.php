@@ -39,7 +39,7 @@ $rawOpeningStock = trim((string) ($_POST['opening_stock'] ?? '0'));
 $unlimitedStock = str_starts_with($rawOpeningStock, '*') ? 1 : 0;
 $openingStockValue = $unlimitedStock === 1 ? trim(substr($rawOpeningStock, 1)) : $rawOpeningStock;
 $openingStock = $openingStockValue === '' ? 0 : max(0, (int) $openingStockValue);
-$purchaseDate = trim((string) ($_POST['purchase_date'] ?? date('Y-m-d')));
+$purchaseDate = trim((string) ($_POST['purchase_date'] ?? app_today()));
 $formRedirect = '?page=products' . ($productId !== null ? '&edit=' . $productId : '&form=product');
 
 if ($name === '' || $sku === '') {

@@ -7,6 +7,26 @@ function e(mixed $value): string
     return htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
 }
 
+/**
+ * Returns the application date, optionally overridden for local testing.
+ * Set fake_today in config/database.local.php to a YYYY-MM-DD value.
+ */
+function app_today(): string
+{
+    $fakeToday = defined('LOCAL_APP_CONFIG') && is_array(LOCAL_APP_CONFIG)
+        ? trim((string) (LOCAL_APP_CONFIG['fake_today'] ?? ''))
+        : '';
+
+    if ($fakeToday !== '') {
+        $parsed = DateTimeImmutable::createFromFormat('!Y-m-d', $fakeToday);
+        if ($parsed instanceof DateTimeImmutable && $parsed->format('Y-m-d') === $fakeToday) {
+            return $fakeToday;
+        }
+    }
+
+    return date('Y-m-d');
+}
+
 function app_base_path(): string
 {
     $scriptName = str_replace('\\', '/', (string) ($_SERVER['SCRIPT_NAME'] ?? ''));

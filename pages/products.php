@@ -324,7 +324,7 @@ if ($stockFilter !== '') {
                 <?php if ($editingProduct === null && $canViewProductCost): ?>
                     <label class="field">
                         <span>Purchase Date</span>
-                        <input type="date" name="purchase_date" value="<?php echo e(date('Y-m-d')); ?>" required>
+                        <input type="date" name="purchase_date" value="<?php echo e(app_today()); ?>" required>
                     </label>
 
                     <label class="field">

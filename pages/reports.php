@@ -11,8 +11,8 @@ if (! in_array($reportTab, $validReportTabs, true)) {
 }
 
 $canViewProductCost = $dbReady && $pdo instanceof PDO && auth_can_view_product_cost($pdo, $currentUser ?? null);
-$defaultDate = date('Y-m-d');
-$defaultMonthStart = date('Y-m-01');
+$defaultDate = app_today();
+$defaultMonthStart = substr($defaultDate, 0, 7) . '-01';
 $dailySalesSearch = trim((string) ($_GET['daily_q'] ?? ''));
 $dailyDate = report_valid_date((string) ($_GET['daily_date'] ?? $defaultDate), $defaultDate);
 $monthlySalesSearch = trim((string) ($_GET['monthly_q'] ?? ''));

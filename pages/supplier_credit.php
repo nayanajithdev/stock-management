@@ -205,7 +205,7 @@ if ($dbReady && $pdo !== null) {
 
                 <label class="field">
                     <span>Payment Date</span>
-                    <input type="datetime-local" name="payment_date" value="<?php echo e(date('Y-m-d\TH:i')); ?>" required>
+                    <input type="datetime-local" name="payment_date" value="<?php echo e(app_now('Y-m-d\TH:i')); ?>" required>
                 </label>
 
                 <label class="field span-2">

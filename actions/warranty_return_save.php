@@ -26,7 +26,7 @@ $exchangeUnitPrices = is_array($_POST['exchange_unit_price'] ?? null) ? $_POST['
 $itemConditions = is_array($_POST['item_condition'] ?? null) ? $_POST['item_condition'] : [];
 $itemQuantities = is_array($_POST['item_quantity'] ?? null) ? $_POST['item_quantity'] : [];
 $itemActions = is_array($_POST['item_action'] ?? null) ? $_POST['item_action'] : [];
-$returnDate = trim((string) ($_POST['return_date'] ?? date('Y-m-d\TH:i')));
+$returnDate = trim((string) ($_POST['return_date'] ?? app_now('Y-m-d\TH:i')));
 $issueDescription = trim((string) ($_POST['issue_description'] ?? ''));
 $notes = nullable_string((string) ($_POST['notes'] ?? ''));
 $validRefundMethods = ['cash', 'card', 'bank', 'store_credit', 'none'];
@@ -266,7 +266,7 @@ try {
             default => 'pending',
         };
         $supplierReplacementStatus = 'pending';
-        $customerReplacedAt = in_array($customerReplacementStatus, ['issued', 'refunded'], true) ? date('Y-m-d H:i:s') : null;
+        $customerReplacedAt = in_array($customerReplacementStatus, ['issued', 'refunded'], true) ? app_now() : null;
 
         foreach ($itemContexts as $context) {
             $claimSaleItemId = in_array($outcome, ['warranty_refund_now', 'warranty_exchange'], true) ? null : $context['sale_item_id'];
@@ -511,7 +511,7 @@ function wr_save_mixed_return(
                         'refund' => 'refunded',
                         default => 'pending',
                     },
-                    $isImmediate ? date('Y-m-d H:i:s') : null,
+                    $isImmediate ? app_now() : null,
                     'pending'
                 );
 
@@ -923,7 +923,7 @@ function wr_recalculate_sale_status(PDO $pdo, int $saleId): void
 
 function wr_next_sales_return_no(PDO $pdo): string
 {
-    $prefix = 'SR-' . date('Ymd') . '-';
+    $prefix = 'SR-' . app_now('Ymd') . '-';
     $statement = $pdo->prepare('SELECT return_no FROM sales_returns WHERE return_no LIKE :prefix ORDER BY id DESC LIMIT 1');
     $statement->execute(['prefix' => $prefix . '%']);
     $lastReturn = (string) ($statement->fetchColumn() ?: '');
@@ -938,7 +938,7 @@ function wr_next_sales_return_no(PDO $pdo): string
 
 function wr_next_sale_invoice_no(PDO $pdo): string
 {
-    $prefix = 'INV-' . date('Ymd') . '-';
+    $prefix = 'INV-' . app_now('Ymd') . '-';
     $statement = $pdo->prepare('SELECT invoice_no FROM sales WHERE invoice_no LIKE :prefix ORDER BY id DESC LIMIT 1');
     $statement->execute(['prefix' => $prefix . '%']);
     $lastInvoice = (string) ($statement->fetchColumn() ?: '');
@@ -953,7 +953,7 @@ function wr_next_sale_invoice_no(PDO $pdo): string
 
 function wr_next_warranty_claim_no(PDO $pdo): string
 {
-    $prefix = 'RMA-' . date('Ymd') . '-';
+    $prefix = 'RMA-' . app_now('Ymd') . '-';
     $statement = $pdo->prepare('SELECT claim_no FROM warranty_claims WHERE claim_no LIKE :prefix ORDER BY id DESC LIMIT 1');
     $statement->execute(['prefix' => $prefix . '%']);
     $lastClaim = (string) ($statement->fetchColumn() ?: '');

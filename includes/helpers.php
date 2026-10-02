@@ -27,6 +27,20 @@ function app_today(): string
     return date('Y-m-d');
 }
 
+/**
+ * Returns the current application date and local clock time.
+ * When fake_today is enabled, only the date is replaced; the current time is kept.
+ */
+function app_now(string $format = 'Y-m-d H:i:s'): string
+{
+    $dateTime = DateTimeImmutable::createFromFormat(
+        '!Y-m-d H:i:s',
+        app_today() . ' ' . date('H:i:s')
+    );
+
+    return ($dateTime ?: new DateTimeImmutable('now'))->format($format);
+}
+
 function app_base_path(): string
 {
     $scriptName = str_replace('\\', '/', (string) ($_SERVER['SCRIPT_NAME'] ?? ''));

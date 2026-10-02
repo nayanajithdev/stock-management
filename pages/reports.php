@@ -37,6 +37,7 @@ if (! in_array($salesSort, $validSalesSorts, true)) {
 
 $salesSortDir = (string) ($_GET['report_dir'] ?? 'desc') === 'asc' ? 'asc' : 'desc';
 $summary = [
+    'shop_balance' => 0.0,
     'revenue' => 0.0,
     'sold_cost' => 0.0,
     'gross_profit' => 0.0,
@@ -62,24 +63,49 @@ if ($dbReady && $pdo !== null) {
                 ELSE 0
             END';
             $lineRecoveredCostSql = 'COALESCE(exchange_adjustment.recovered_cost, 0) * (' . $lineShareSql . ')';
-            $lineRevenueSql = '(' . $baseLineRevenueSql . ')';
-            $lineCostSql = '((si.quantity * si.unit_cost) - ' . $lineRecoveredCostSql . ')';
+            $lineRevenueSql = '(CASE
+                WHEN exchange_adjustment.exchange_sale_id IS NOT NULL AND exchange_adjustment.is_same_day = 0
+                    THEN GREATEST(' . $baseLineRevenueSql . ', 0)
+                ELSE ' . $baseLineRevenueSql . '
+            END)';
+            $lineCostSql = '(CASE
+                WHEN exchange_adjustment.exchange_sale_id IS NOT NULL AND exchange_adjustment.is_same_day = 1
+                    THEN si.quantity * si.unit_cost
+                WHEN exchange_adjustment.exchange_sale_id IS NOT NULL
+                    THEN (si.quantity * si.unit_cost) - ' . $lineRecoveredCostSql . '
+                ELSE GREATEST((si.quantity * si.unit_cost) - COALESCE(same_day_return_line.recovered_cost, 0), 0)
+            END)';
             $exchangeAdjustmentJoin = ' LEFT JOIN (
                                     SELECT linked.exchange_sale_id,
                                            COALESCE(SUM(linked.recovered_cost), 0) AS recovered_cost,
-                                           COALESCE(SUM(linked.returned_value), 0) AS returned_value
+                                           COALESCE(SUM(linked.returned_value), 0) AS returned_value,
+                                           MAX(linked.is_same_day) AS is_same_day
                                     FROM (
                                         SELECT sr.id,
                                                sr.exchange_sale_id,
                                                COALESCE(SUM(sri.total), 0) AS returned_value,
-                                               COALESCE(SUM(CASE WHEN sri.restock = 1 THEN sri.quantity * sri.unit_cost ELSE 0 END), 0) AS recovered_cost
+                                               COALESCE(SUM(CASE WHEN sri.restock = 1 THEN sri.quantity * sri.unit_cost ELSE 0 END), 0) AS recovered_cost,
+                                               CASE WHEN DATE(original_sale.sale_date) = DATE(exchange_sale.sale_date) THEN 1 ELSE 0 END AS is_same_day
                                         FROM sales_returns sr
                                         LEFT JOIN sales_return_items sri ON sri.return_id = sr.id
+                                        INNER JOIN sales original_sale ON original_sale.id = sr.sale_id
+                                        INNER JOIN sales exchange_sale ON exchange_sale.id = sr.exchange_sale_id
                                         WHERE sr.exchange_sale_id IS NOT NULL
-                                        GROUP BY sr.id, sr.exchange_sale_id
+                                        GROUP BY sr.id, sr.exchange_sale_id, original_sale.sale_date, exchange_sale.sale_date
                                     ) linked
                                     GROUP BY linked.exchange_sale_id
-                                ) exchange_adjustment ON exchange_adjustment.exchange_sale_id = s.id';
+                                ) exchange_adjustment ON exchange_adjustment.exchange_sale_id = s.id
+                                LEFT JOIN (
+                                    SELECT sri.sale_item_id,
+                                           SUM(CASE WHEN sri.restock = 1 THEN sri.quantity * sri.unit_cost ELSE 0 END) AS recovered_cost
+                                    FROM sales_returns sr
+                                    INNER JOIN sales_return_items sri ON sri.return_id = sr.id
+                                    INNER JOIN sales original_sale ON original_sale.id = sr.sale_id
+                                    INNER JOIN sales exchange_sale ON exchange_sale.id = sr.exchange_sale_id
+                                    WHERE sr.exchange_sale_id IS NOT NULL
+                                      AND DATE(original_sale.sale_date) = DATE(exchange_sale.sale_date)
+                                    GROUP BY sri.sale_item_id
+                                ) same_day_return_line ON same_day_return_line.sale_item_id = si.id';
             $salesSummarySql = 'SELECT COUNT(DISTINCT s.id) AS invoices,
                                        COALESCE(SUM(si.quantity), 0) AS units_sold,
                                        COALESCE(SUM(' . $lineRevenueSql . '), 0) AS revenue,
@@ -191,6 +217,76 @@ if ($dbReady && $pdo !== null) {
                 'end_date' => $activeEndDate,
             ]);
 
+            $initialPaidSummary = $pdo->prepare(
+                'SELECT COALESCE(SUM(GREATEST(s.paid - COALESCE(cp.total_collected, 0), 0)), 0)
+                 FROM sales s
+                 LEFT JOIN (
+                    SELECT sale_id, SUM(amount) AS total_collected
+                    FROM customer_payments
+                    GROUP BY sale_id
+                 ) cp ON cp.sale_id = s.id
+                 WHERE s.sale_date BETWEEN :day_start AND :day_end
+                   AND COALESCE(s.exchange_credit, 0) = 0'
+            );
+            $initialPaidSummary->execute([
+                'day_start' => $activeStartDateTime,
+                'day_end' => $activeEndDateTime,
+            ]);
+
+            $exchangePaidSummary = $pdo->prepare(
+                'SELECT COALESCE(SUM(GREATEST(
+                    s.total - COALESCE(exchange_adjustment.returned_value, s.exchange_credit, 0),
+                    0
+                 )), 0)
+                 FROM sales s
+                 LEFT JOIN (
+                    SELECT sr.exchange_sale_id, SUM(sri.total) AS returned_value
+                    FROM sales_returns sr
+                    INNER JOIN sales_return_items sri ON sri.return_id = sr.id
+                    WHERE sr.exchange_sale_id IS NOT NULL
+                    GROUP BY sr.exchange_sale_id
+                 ) exchange_adjustment ON exchange_adjustment.exchange_sale_id = s.id
+                 WHERE s.sale_date BETWEEN :day_start AND :day_end
+                   AND COALESCE(s.exchange_credit, 0) > 0'
+            );
+            $exchangePaidSummary->execute([
+                'day_start' => $activeStartDateTime,
+                'day_end' => $activeEndDateTime,
+            ]);
+
+            $collectionSummary = $pdo->prepare(
+                'SELECT COALESCE(SUM(cp.amount), 0)
+                 FROM customer_payments cp
+                 INNER JOIN sales s ON s.id = cp.sale_id
+                 WHERE cp.payment_date BETWEEN :day_start AND :day_end
+                   AND COALESCE(s.exchange_credit, 0) = 0'
+            );
+            $collectionSummary->execute([
+                'day_start' => $activeStartDateTime,
+                'day_end' => $activeEndDateTime,
+            ]);
+
+            $customerRefundSummary = $pdo->prepare(
+                'SELECT COALESCE(SUM(refund_amount), 0)
+                 FROM sales_returns
+                 WHERE return_date BETWEEN :day_start AND :day_end
+                   AND refund_method NOT IN ("store_credit", "none")'
+            );
+            $customerRefundSummary->execute([
+                'day_start' => $activeStartDateTime,
+                'day_end' => $activeEndDateTime,
+            ]);
+
+            $supplierPaidSummary = $pdo->prepare(
+                'SELECT COALESCE(SUM(amount), 0)
+                 FROM supplier_payments
+                 WHERE payment_date BETWEEN :day_start AND :day_end'
+            );
+            $supplierPaidSummary->execute([
+                'day_start' => $activeStartDateTime,
+                'day_end' => $activeEndDateTime,
+            ]);
+
             $summary['revenue'] = (float) ($salesSummaryRow['revenue'] ?? 0);
             $summary['sold_cost'] = (float) ($salesSummaryRow['sold_cost'] ?? 0);
             $summary['invoices'] = (int) ($salesSummaryRow['invoices'] ?? 0);
@@ -200,6 +296,13 @@ if ($dbReady && $pdo !== null) {
             $summary['return_value'] = (float) $returnValueSummary->fetchColumn();
             $summary['return_cost_recovered'] = (float) $returnCostSummary->fetchColumn();
             $summary['supplier_refunds'] = (float) $supplierRefundSummary->fetchColumn();
+            $summary['shop_balance'] = (float) $initialPaidSummary->fetchColumn()
+                + (float) $exchangePaidSummary->fetchColumn()
+                + (float) $collectionSummary->fetchColumn()
+                + $summary['supplier_refunds']
+                - (float) $customerRefundSummary->fetchColumn()
+                - $summary['expenses']
+                - (float) $supplierPaidSummary->fetchColumn();
             $summary['net_profit'] = $summary['gross_profit']
                 - $summary['expenses']
                 - $summary['return_value']
@@ -295,6 +398,15 @@ if ($dbReady && $pdo !== null) {
     <section class="stats-grid compact-stats report-tab-stats" aria-label="Sales summary">
         <article class="stat-card">
             <div>
+                <span>Shop Balance</span>
+                <strong><?php echo e(format_money($summary['shop_balance'])); ?></strong>
+            </div>
+            <div class="stat-icon"><i data-lucide="badge-dollar-sign"></i></div>
+            <small>Net cash flow for the selected <?php echo $reportTab === 'daily-sales' ? 'date' : 'range'; ?></small>
+        </article>
+
+        <article class="stat-card">
+            <div>
                 <span>Revenue</span>
                 <strong><?php echo e(format_money($summary['revenue'])); ?></strong>
             </div>
@@ -304,7 +416,7 @@ if ($dbReady && $pdo !== null) {
 
         <article class="stat-card">
             <div>
-                <span><?php echo $reportTab === 'daily-sales' ? 'Today Sold Cost' : 'Sold Cost'; ?></span>
+                <span>Sold Cost</span>
                 <strong><?php echo e(format_money($summary['sold_cost'])); ?></strong>
             </div>
             <div class="stat-icon"><i data-lucide="package-check"></i></div>

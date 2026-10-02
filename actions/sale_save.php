@@ -21,8 +21,8 @@ $customerName = trim((string) ($_POST['customer_name'] ?? ''));
 $customerPhone = nullable_string((string) ($_POST['customer_phone'] ?? ''));
 $canChangeSaleDate = auth_user_has_permission($pdo, $currentUser, 'sale_date_change');
 $saleDate = $canChangeSaleDate
-    ? trim((string) ($_POST['sale_date'] ?? date('Y-m-d\TH:i')))
-    : date('Y-m-d\TH:i');
+    ? trim((string) ($_POST['sale_date'] ?? app_now('Y-m-d\TH:i')))
+    : app_now('Y-m-d\TH:i');
 $paymentMethod = (string) ($_POST['payment_method'] ?? 'cash');
 $afterSave = (string) ($_POST['after_save'] ?? 'stay');
 $discount = max(0.0, input_decimal('discount'));
@@ -833,7 +833,7 @@ function sale_save_recalculate_status(PDO $pdo, int $saleId): void
 
 function next_sale_invoice_no(PDO $pdo): string
 {
-    $prefix = 'INV-' . date('Ymd') . '-';
+    $prefix = 'INV-' . app_now('Ymd') . '-';
     $statement = $pdo->prepare('SELECT invoice_no FROM sales WHERE invoice_no LIKE :prefix ORDER BY id DESC LIMIT 1');
     $statement->execute(['prefix' => $prefix . '%']);
     $lastInvoice = (string) ($statement->fetchColumn() ?: '');

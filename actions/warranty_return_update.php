@@ -83,7 +83,7 @@ try {
     $productId = (int) $claim['product_id'];
     $productCost = (float) $claim['cost_price'];
     $existingSupplierRefundAmount = (float) ($claim['supplier_refund_amount'] ?? 0);
-    $now = date('Y-m-d H:i:s');
+    $now = app_now();
     $stockChanges = [];
 
     if (! $canManageProductCost) {

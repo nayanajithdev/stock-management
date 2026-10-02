@@ -161,7 +161,7 @@ if ($dbReady && $pdo !== null) {
                         <div class="warranty-form service-details-form">
                             <label class="field">
                                 <span>Date</span>
-                                <input type="datetime-local" name="return_date" value="<?php echo e(date('Y-m-d\TH:i')); ?>" required>
+                                <input type="datetime-local" name="return_date" value="<?php echo e(app_now('Y-m-d\TH:i')); ?>" required>
                             </label>
 
                             <div class="service-exchange-fields span-2" data-service-exchange-fields>

@@ -23,7 +23,7 @@ if (! auth_can_view_product_cost($pdo, $currentUser ?? null)) {
 $purchaseId = (int) ($_POST['purchase_id'] ?? 0);
 $amount = max(0.0, input_decimal('amount'));
 $paymentMethod = (string) ($_POST['payment_method'] ?? 'cash');
-$paymentDate = trim((string) ($_POST['payment_date'] ?? date('Y-m-d\TH:i')));
+$paymentDate = trim((string) ($_POST['payment_date'] ?? app_now('Y-m-d\TH:i')));
 $notes = nullable_string((string) ($_POST['notes'] ?? ''));
 $validPaymentMethods = ['cash', 'card', 'bank', 'cheque', 'online'];
 

@@ -10,8 +10,8 @@ $isEditingSale = $saleEditId > 0 && (int) ($saleOldInput['sale_id'] ?? 0) === $s
 $saleEditMissing = $saleEditId > 0 && ! $isEditingSale;
 $canChangeSaleDate = $dbReady && $pdo instanceof PDO && auth_user_has_permission($pdo, $currentUser ?? null, 'sale_date_change');
 $saleDateValue = $canChangeSaleDate || $isEditingSale
-    ? (string) ($saleOldInput['sale_date'] ?? date('Y-m-d\TH:i'))
-    : date('Y-m-d\TH:i');
+    ? (string) ($saleOldInput['sale_date'] ?? app_now('Y-m-d\TH:i'))
+    : app_now('Y-m-d\TH:i');
 ?>
 
 <div class="page-heading">
@@ -409,7 +409,7 @@ function sales_form_product_details(array $productIds, ?PDO $pdo): array
 
 function sales_form_datetime_value(string $value): string
 {
-    return preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/', $value) === 1 ? $value : date('Y-m-d\TH:i');
+    return preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/', $value) === 1 ? $value : app_now('Y-m-d\TH:i');
 }
 
 function sales_form_payment_method(string $value): string

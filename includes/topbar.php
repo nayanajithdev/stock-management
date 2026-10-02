@@ -26,7 +26,7 @@
         <?php endif; ?>
 
         <div class="topbar-account">
-            <span class="date-pill"><?php echo e(date('d/m/Y')); ?></span>
+            <span class="date-pill"><?php echo e((new DateTimeImmutable(app_today()))->format('d/m/Y')); ?></span>
 
             <form class="theme-toggle-form" action="<?php echo e(app_url('actions/theme_save.php')); ?>" method="post">
                 <?php echo csrf_field(); ?>

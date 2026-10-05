@@ -37,7 +37,8 @@ $quantities = $_POST['quantity'] ?? [];
 $unitPrices = $_POST['unit_price'] ?? [];
 $warrantyMonthsInput = $_POST['warranty_months'] ?? [];
 $lineDiscounts = $_POST['line_discount'] ?? [];
-$validPaymentMethods = ['cash', 'card', 'bank', 'credit'];
+$validPaymentMethods = ['cash', 'card', 'bank', 'credit', 'exchange'];
+$editItemReferences = $postedSaleId > 0 ? sale_save_form_item_references($pdo, $postedSaleId) : [];
 
 if (! in_array($paymentMethod, $validPaymentMethods, true)) {
     sale_save_fail('Choose a valid payment method.', $postedSaleId);
@@ -66,6 +67,16 @@ foreach ($productIds as $index => $rawProductId) {
     $warrantyMonths = max(0, (int) ($warrantyMonthsInput[$index] ?? 0));
     $lineDiscount = str_replace(',', '', trim((string) ($lineDiscounts[$index] ?? '0')));
     $lineDiscount = is_numeric($lineDiscount) ? max(0.0, (float) $lineDiscount) : 0.0;
+    $itemReference = $saleItemId > 0 ? ($editItemReferences[$saleItemId] ?? null) : null;
+
+    if (is_array($itemReference) && $productId <= 0 && $itemReference['product_id'] !== null) {
+        $productId = (int) $itemReference['product_id'];
+    }
+
+    if (is_array($itemReference) && $productId <= 0 && $customItemName === '' && $itemReference['item_name'] !== null) {
+        $customItemName = substr(trim((string) $itemReference['item_name']), 0, 180);
+        $customItemCost = (float) $itemReference['unit_cost'];
+    }
 
     if ($productId <= 0 && $productSearch === '' && $customItemName === '') {
         continue;
@@ -115,10 +126,6 @@ if ($discount > $subtotal) {
 
 $total = $subtotal - $discount + $tax;
 
-if ($paid > $total) {
-    sale_save_fail('Paid amount cannot be higher than invoice total.', $postedSaleId);
-}
-
 try {
     $pdo->beginTransaction();
 
@@ -128,8 +135,26 @@ try {
         throw new RuntimeException('Invoice was not found.');
     }
 
-    if (is_array($existingSale) && (float) ($existingSale['exchange_credit'] ?? 0) > 0.0) {
-        throw new RuntimeException('Exchange invoices cannot be edited because their values are linked to a completed return.');
+    $exchangeReturn = is_array($existingSale) ? sale_save_fetch_exchange_return($pdo, $postedSaleId) : null;
+    $isExchangeEdit = is_array($exchangeReturn);
+
+    if (is_array($existingSale) && (float) ($existingSale['exchange_credit'] ?? 0) > 0.0 && ! $isExchangeEdit) {
+        throw new RuntimeException('The linked return for this exchange invoice could not be found.');
+    }
+
+    if (! $isExchangeEdit && $paymentMethod === 'exchange') {
+        throw new RuntimeException('Choose a valid payment method.');
+    }
+
+    if ($isExchangeEdit) {
+        sale_save_validate_exchange_edit($pdo, $postedSaleId, $items);
+        $customerId = $existingSale['customer_id'] !== null ? (int) $existingSale['customer_id'] : null;
+        $customerName = '';
+        $customerPhone = null;
+        $saleDate = date('Y-m-d\TH:i', strtotime((string) $existingSale['sale_date']));
+        $paid = $total;
+    } elseif ($paid > $total) {
+        throw new RuntimeException('Paid amount cannot be higher than invoice total.');
     }
 
     if ($customerId === null && ($customerName !== '' || $customerPhone !== null)) {
@@ -165,22 +190,33 @@ try {
             throw new RuntimeException('Selected customer is not active.');
         }
 
-        $updateCustomerPhone = $pdo->prepare(
-            'UPDATE customers
-             SET phone = :phone,
-                 updated_at = CURRENT_TIMESTAMP
-             WHERE id = :id'
-        );
-        $updateCustomerPhone->execute([
-            'phone' => $customerPhone,
-            'id' => $customerId,
-        ]);
+        if (! $isExchangeEdit) {
+            $updateCustomerPhone = $pdo->prepare(
+                'UPDATE customers
+                 SET phone = :phone,
+                     updated_at = CURRENT_TIMESTAMP
+                 WHERE id = :id'
+            );
+            $updateCustomerPhone->execute([
+                'phone' => $customerPhone,
+                'id' => $customerId,
+            ]);
+        }
     }
 
     $linkedPaymentTotal = $postedSaleId > 0 ? sale_save_linked_payment_total($pdo, $postedSaleId) : 0.0;
 
     if ($paid < $linkedPaymentTotal) {
         throw new RuntimeException('Paid amount cannot be less than recorded payment receipts.');
+    }
+
+    $exchangeCredit = is_array($existingSale) ? (float) ($existingSale['exchange_credit'] ?? 0) : 0.0;
+    if ($isExchangeEdit) {
+        $returnedValue = round((float) ($exchangeReturn['returned_value'] ?? 0), 2);
+        $exchangeCredit = round(min($returnedValue, $total), 2);
+        if (abs($total - $returnedValue) > 0.005 && $paymentMethod === 'exchange') {
+            throw new RuntimeException('Choose how the customer payment or refund difference was settled.');
+        }
     }
 
     $returnTotals = $postedSaleId > 0 ? sale_save_return_totals($pdo, $postedSaleId) : ['returned_total' => 0.0, 'refund_total' => 0.0];
@@ -200,6 +236,7 @@ try {
                  tax = :tax,
                  total = :total,
                  paid = :paid,
+                 exchange_credit = :exchange_credit,
                  payment_method = :payment_method,
                  status = :status,
                  updated_at = CURRENT_TIMESTAMP
@@ -213,6 +250,7 @@ try {
             'tax' => $tax,
             'total' => $total,
             'paid' => $paid,
+            'exchange_credit' => $exchangeCredit,
             'payment_method' => $paymentMethod,
             'status' => $status,
             'id' => $postedSaleId,
@@ -243,6 +281,10 @@ try {
     }
 
     sale_save_apply_items($pdo, $saleId, $invoiceNo, $items, (int) ($currentUser['id'] ?? 0) ?: null);
+    if ($isExchangeEdit) {
+        sale_save_update_exchange_return($pdo, $exchangeReturn, $invoiceNo, $total, $paymentMethod);
+        sale_save_recalculate_status($pdo, (int) $exchangeReturn['sale_id']);
+    }
     sale_save_recalculate_return_items($pdo, $saleId);
     sale_save_validate_return_refunds($pdo, $saleId);
     sale_save_recalculate_status($pdo, $saleId);
@@ -290,6 +332,7 @@ function sale_save_old_input(): array
         'discount',
         'tax',
         'paid',
+        'exchange_credit',
     ];
     $arrayKeys = [
         'sale_item_id',
@@ -333,6 +376,113 @@ function sale_save_fetch_sale(PDO $pdo, int $saleId): ?array
     $sale = $statement->fetch();
 
     return is_array($sale) ? $sale : null;
+}
+
+function sale_save_form_item_references(PDO $pdo, int $saleId): array
+{
+    $statement = $pdo->prepare(
+        'SELECT id, product_id, item_name, unit_cost
+         FROM sale_items
+         WHERE sale_id = :sale_id'
+    );
+    $statement->execute(['sale_id' => $saleId]);
+    $items = [];
+
+    foreach ($statement->fetchAll() as $item) {
+        $items[(int) $item['id']] = $item;
+    }
+
+    return $items;
+}
+
+function sale_save_fetch_exchange_return(PDO $pdo, int $saleId): ?array
+{
+    $statement = $pdo->prepare(
+        'SELECT sr.*,
+                (SELECT COALESCE(SUM(sri.total), 0)
+                 FROM sales_return_items sri
+                 WHERE sri.return_id = sr.id) AS returned_value
+         FROM sales_returns sr
+         WHERE sr.exchange_sale_id = :sale_id
+         ORDER BY sr.id ASC
+         LIMIT 2
+         FOR UPDATE'
+    );
+    $statement->execute(['sale_id' => $saleId]);
+    $returns = $statement->fetchAll();
+
+    if (count($returns) > 1) {
+        throw new RuntimeException('This exchange invoice has more than one linked return and cannot be edited safely.');
+    }
+
+    return isset($returns[0]) && is_array($returns[0]) ? $returns[0] : null;
+}
+
+function sale_save_validate_exchange_edit(PDO $pdo, int $saleId, array $items): void
+{
+    $dependentReturn = $pdo->prepare('SELECT 1 FROM sales_returns WHERE sale_id = :sale_id LIMIT 1');
+    $dependentReturn->execute(['sale_id' => $saleId]);
+    if ($dependentReturn->fetchColumn() !== false) {
+        throw new RuntimeException('This exchange invoice already has a later return and cannot be edited.');
+    }
+
+    $existingItems = sale_save_existing_items($pdo, $saleId);
+    if (count($items) !== count($existingItems)) {
+        throw new RuntimeException('Exchange invoice items cannot be added or removed. Correct the price or discount only.');
+    }
+
+    foreach ($items as $item) {
+        $itemId = (int) ($item['sale_item_id'] ?? 0);
+        $existingItem = $existingItems[$itemId] ?? null;
+        if (! is_array($existingItem)) {
+            throw new RuntimeException('Exchange invoice items cannot be changed. Correct the price or discount only.');
+        }
+
+        $sameProduct = (int) ($item['product_id'] ?? 0) === (int) ($existingItem['product_id'] ?? 0);
+        $sameQuantity = (int) ($item['quantity'] ?? 0) === (int) $existingItem['quantity'];
+        $sameWarranty = (int) ($item['warranty_months'] ?? 0) === (int) $existingItem['warranty_months'];
+        $sameCustomName = trim((string) ($item['item_name'] ?? '')) === trim((string) ($existingItem['item_name'] ?? ''));
+
+        if (! $sameProduct || ! $sameQuantity || ! $sameWarranty || ! $sameCustomName) {
+            throw new RuntimeException('Exchange invoice product, quantity, and warranty cannot be changed. Correct the price or discount only.');
+        }
+    }
+}
+
+function sale_save_update_exchange_return(PDO $pdo, array $exchangeReturn, string $invoiceNo, float $saleTotal, string $paymentMethod): void
+{
+    $returnedValue = round((float) ($exchangeReturn['returned_value'] ?? 0), 2);
+    $refundAmount = round(max($returnedValue - $saleTotal, 0), 2);
+    $customerPays = round(max($saleTotal - $returnedValue, 0), 2);
+    $settlement = $customerPays > 0.005
+        ? 'Customer pays ' . format_money($customerPays)
+        : ($refundAmount > 0.005 ? 'Customer refund ' . format_money($refundAmount) : 'No payment difference');
+    $notes = rtrim((string) ($exchangeReturn['notes'] ?? ''));
+    $notes = preg_replace(
+        '/(?:\r?\n)(?:Exchange invoice|Replacement purchase)\s+' . preg_quote($invoiceNo, '/') . '\..*$/s',
+        '',
+        $notes
+    ) ?? $notes;
+    $notes = rtrim($notes) . "\nReplacement purchase " . $invoiceNo . '. ' . $settlement . '.';
+    $refundMethod = match ($paymentMethod) {
+        'credit' => 'store_credit',
+        'exchange' => 'none',
+        default => $paymentMethod,
+    };
+
+    $statement = $pdo->prepare(
+        'UPDATE sales_returns
+         SET refund_amount = :refund_amount,
+             refund_method = :refund_method,
+             notes = :notes
+         WHERE id = :id'
+    );
+    $statement->execute([
+        'refund_amount' => $refundAmount,
+        'refund_method' => $refundMethod,
+        'notes' => $notes,
+        'id' => (int) $exchangeReturn['id'],
+    ]);
 }
 
 function sale_save_linked_payment_total(PDO $pdo, int $saleId): float

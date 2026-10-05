@@ -912,6 +912,7 @@ if (saleForm) {
     const balanceInput = saleForm.querySelector('[data-sale-balance]');
     const saleProductSearchUrl = saleForm.dataset.saleProductSearchUrl || '';
     const saleCustomerSearchUrl = saleForm.dataset.saleCustomerSearchUrl || '';
+    const saleStructureLocked = saleForm.dataset.saleLockedStructure === '1';
     const customerInput = saleForm.querySelector('[data-sale-customer-search]');
     const customerHidden = saleForm.querySelector('[data-sale-customer]');
     const customerPhoneInput = saleForm.querySelector('[data-sale-customer-phone]');
@@ -1614,7 +1615,7 @@ if (saleForm) {
     const lastCustomItemName = lastSaleRow?.querySelector('[data-sale-custom-name]')?.value.trim() || '';
     const lastProductSearch = lastSaleRow?.querySelector('[data-sale-product-search]')?.value.trim() || '';
 
-    if (lastSaleRow && (lastProductId !== '' || lastCustomItemName !== '' || lastProductSearch !== '')) {
+    if (!saleStructureLocked && lastSaleRow && (lastProductId !== '' || lastCustomItemName !== '' || lastProductSearch !== '')) {
         createSaleRow();
     }
 

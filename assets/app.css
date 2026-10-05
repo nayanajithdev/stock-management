@@ -1680,6 +1680,14 @@ meter {
     margin-top: 20px;
 }
 
+.exchange-edit-note {
+    margin-top: 18px;
+}
+
+.sale-row [hidden] {
+    display: none !important;
+}
+
 .purchase-meta {
     display: grid;
     grid-template-columns: minmax(220px, 1fr) minmax(180px, .7fr) 170px;

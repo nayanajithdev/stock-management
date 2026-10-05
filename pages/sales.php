@@ -7,6 +7,7 @@ $saleEditId = max(0, (int) ($_GET['edit'] ?? 0));
 $saleOldInput = sales_form_pull_old_input($dbReady && $pdo instanceof PDO ? $pdo : null, $saleEditId);
 $saleRows = $saleOldInput['rows'] ?? [[]];
 $isEditingSale = $saleEditId > 0 && (int) ($saleOldInput['sale_id'] ?? 0) === $saleEditId;
+$isEditingExchange = $isEditingSale && (float) ($saleOldInput['exchange_credit'] ?? 0) > 0.0;
 $saleEditMissing = $saleEditId > 0 && ! $isEditingSale;
 $canChangeSaleDate = $dbReady && $pdo instanceof PDO && auth_user_has_permission($pdo, $currentUser ?? null, 'sale_date_change');
 $saleDateValue = $canChangeSaleDate || $isEditingSale
@@ -46,26 +47,35 @@ $saleDateValue = $canChangeSaleDate || $isEditingSale
                 Back to Sales History
             </a>
         <?php else: ?>
-            <form class="sale-form" method="post" action="<?php echo e(app_url('actions/sale_save.php')); ?>" data-sale-form data-sale-product-search-url="<?php echo e(app_url('actions/sale_product_search.php')); ?>" data-sale-customer-search-url="<?php echo e(app_url('actions/customer_search.php')); ?>" <?php echo $saleOldInput !== [] ? 'data-sale-preserve-paid="1"' : ''; ?>>
+            <?php if ($isEditingExchange): ?>
+                <div class="purchase-note exchange-edit-note">
+                    <i data-lucide="info"></i>
+                    <span>This is an exchange invoice. Correct the price or discount below; its linked customer payment or refund will update automatically.</span>
+                </div>
+            <?php endif; ?>
+            <form class="sale-form" method="post" action="<?php echo e(app_url('actions/sale_save.php')); ?>" data-sale-form data-sale-product-search-url="<?php echo e(app_url('actions/sale_product_search.php')); ?>" data-sale-customer-search-url="<?php echo e(app_url('actions/customer_search.php')); ?>" <?php echo $saleOldInput !== [] && ! $isEditingExchange ? 'data-sale-preserve-paid="1"' : ''; ?> <?php echo $isEditingExchange ? 'data-sale-locked-structure="1"' : ''; ?>>
                 <?php echo csrf_field(); ?>
                 <?php if ($isEditingSale): ?>
                     <input type="hidden" name="sale_id" value="<?php echo (int) $saleEditId; ?>">
+                <?php endif; ?>
+                <?php if ($isEditingExchange): ?>
+                    <input type="hidden" name="exchange_credit" value="<?php echo e($saleOldInput['exchange_credit'] ?? '0.00'); ?>">
                 <?php endif; ?>
 
                 <div class="sale-meta">
                     <div class="field product-picker" data-sale-customer-picker>
                         <span>Customer</span>
                         <input type="hidden" name="customer_id" value="<?php echo e($saleOldInput['customer_id'] ?? ''); ?>" data-sale-customer>
-                        <input type="search" name="customer_name" value="<?php echo e($saleOldInput['customer_name'] ?? ''); ?>" placeholder="Search customer, phone, email or type new customer" autocomplete="off" data-sale-customer-search>
+                        <input type="search" name="customer_name" value="<?php echo e($saleOldInput['customer_name'] ?? ''); ?>" placeholder="Search customer, phone, email or type new customer" autocomplete="off" data-sale-customer-search <?php echo $isEditingExchange ? 'readonly' : ''; ?>>
                         <div class="product-suggestions" data-sale-customer-suggestions hidden></div>
                     </div>
                     <label class="field">
                         <span>Phone</span>
-                        <input type="text" name="customer_phone" value="<?php echo e($saleOldInput['customer_phone'] ?? ''); ?>" placeholder="Optional" data-sale-customer-phone>
+                        <input type="text" name="customer_phone" value="<?php echo e($saleOldInput['customer_phone'] ?? ''); ?>" placeholder="Optional" data-sale-customer-phone <?php echo $isEditingExchange ? 'readonly' : ''; ?>>
                     </label>
                     <label class="field">
                         <span>Sale Date</span>
-                        <input type="datetime-local" name="sale_date" value="<?php echo e($saleDateValue); ?>" <?php echo $canChangeSaleDate ? '' : 'readonly'; ?> required>
+                        <input type="datetime-local" name="sale_date" value="<?php echo e($saleDateValue); ?>" <?php echo $canChangeSaleDate && ! $isEditingExchange ? '' : 'readonly'; ?> required>
                     </label>
                 </div>
 
@@ -83,7 +93,7 @@ $saleDateValue = $canChangeSaleDate || $isEditingSale
 
                     <div data-sale-rows>
                         <?php foreach ($saleRows as $saleRow): ?>
-                            <?php render_sale_row($saleRow); ?>
+                            <?php render_sale_row($saleRow, $isEditingExchange); ?>
                         <?php endforeach; ?>
                     </div>
 
@@ -120,11 +130,14 @@ $saleDateValue = $canChangeSaleDate || $isEditingSale
                                 <option value="card" <?php echo $paymentMethod === 'card' ? 'selected' : ''; ?>>Card</option>
                                 <option value="bank" <?php echo $paymentMethod === 'bank' ? 'selected' : ''; ?>>Bank Transfer</option>
                                 <option value="credit" <?php echo $paymentMethod === 'credit' ? 'selected' : ''; ?>>Credit</option>
+                                <?php if ($isEditingExchange && $paymentMethod === 'exchange'): ?>
+                                    <option value="exchange" selected>No payment difference</option>
+                                <?php endif; ?>
                             </select>
                         </label>
                         <label>
                             <span>Paid</span>
-                            <input type="number" name="paid" value="<?php echo e($saleOldInput['paid'] ?? '0.00'); ?>" min="0" step="0.01" data-sale-paid>
+                            <input type="number" name="paid" value="<?php echo e($saleOldInput['paid'] ?? '0.00'); ?>" min="0" step="0.01" data-sale-paid <?php echo $isEditingExchange ? 'readonly' : ''; ?>>
                         </label>
                         <label>
                             <span>Balance</span>
@@ -207,6 +220,7 @@ function sales_form_normalize_old_input(array $oldInput, ?PDO $pdo): array
         'discount' => sales_form_money_value($oldInput['discount'] ?? '0.00'),
         'tax' => sales_form_money_value($oldInput['tax'] ?? '0.00'),
         'paid' => sales_form_money_value($oldInput['paid'] ?? '0.00'),
+        'exchange_credit' => sales_form_money_value($oldInput['exchange_credit'] ?? '0.00'),
         'rows' => $rows === [] ? [[]] : $rows,
     ];
 }
@@ -323,6 +337,7 @@ function sales_form_fetch_invoice_input(PDO $pdo, int $saleId): array
         'discount' => (string) $sale['discount'],
         'tax' => (string) $sale['tax'],
         'paid' => (string) $sale['paid'],
+        'exchange_credit' => (string) ($sale['exchange_credit'] ?? '0.00'),
         'sale_item_id' => [],
         'product_id' => [],
         'product_search' => [],
@@ -414,7 +429,7 @@ function sales_form_datetime_value(string $value): string
 
 function sales_form_payment_method(string $value): string
 {
-    return in_array($value, ['cash', 'card', 'bank', 'credit'], true) ? $value : 'cash';
+    return in_array($value, ['cash', 'card', 'bank', 'credit', 'exchange'], true) ? $value : 'cash';
 }
 
 function sales_form_money_value(mixed $value): string
@@ -425,7 +440,7 @@ function sales_form_money_value(mixed $value): string
     return number_format($amount, 2, '.', '');
 }
 
-function render_sale_row(array $row = []): void
+function render_sale_row(array $row = [], bool $lockedStructure = false): void
 {
     $saleItemId = (string) ($row['sale_item_id'] ?? '');
     $productId = (string) ($row['product_id'] ?? '');
@@ -450,7 +465,7 @@ function render_sale_row(array $row = []): void
             <input type="hidden" name="product_id[]" value="<?php echo e($productId); ?>" data-stock="<?php echo e($stock); ?>" data-unlimited="<?php echo $isUnlimitedStock ? '1' : '0'; ?>" data-price="<?php echo e($price); ?>" data-cost="<?php echo e($cost); ?>" data-custom="<?php echo $customItemName !== '' ? '1' : '0'; ?>" data-sale-product required>
             <input type="hidden" name="custom_item_name[]" value="<?php echo e($customItemName); ?>" data-sale-custom-name>
             <input type="hidden" name="custom_item_cost[]" value="<?php echo e($cost); ?>" data-sale-custom-cost>
-            <input type="search" name="product_search[]" value="<?php echo e($productSearch); ?>" placeholder="Search product, SKU, barcode, @category or #custom" autocomplete="off" data-sale-product-search>
+            <input type="search" name="product_search[]" value="<?php echo e($productSearch); ?>" placeholder="Search product, SKU, barcode, @category or #custom" autocomplete="off" data-sale-product-search <?php echo $lockedStructure ? 'readonly' : ''; ?>>
             <div class="product-suggestions" data-sale-product-suggestions hidden></div>
             <div class="sale-custom-item-popover" data-sale-custom-popover hidden>
                 <label>
@@ -469,12 +484,12 @@ function render_sale_row(array $row = []): void
         </div>
         <label class="field compact-field">
             <span>Warranty</span>
-            <input type="number" name="warranty_months[]" value="<?php echo e($warrantyMonths); ?>" min="0" step="1" data-sale-warranty>
+            <input type="number" name="warranty_months[]" value="<?php echo e($warrantyMonths); ?>" min="0" step="1" data-sale-warranty <?php echo $lockedStructure ? 'readonly' : ''; ?>>
         </label>
         <div class="stock-pill" data-sale-stock><?php echo $customItemName !== '' ? '-' : ($isUnlimitedStock ? 'Unlimited' : e($stock)); ?></div>
         <label class="field compact-field">
             <span>Qty</span>
-            <input type="number" name="quantity[]" value="<?php echo e($quantity); ?>" min="1" step="1" <?php echo $stock > 0 && $customItemName === '' && ! $isUnlimitedStock ? 'max="' . e($stock) . '"' : ''; ?> data-sale-quantity required>
+            <input type="number" name="quantity[]" value="<?php echo e($quantity); ?>" min="1" step="1" <?php echo $stock > 0 && $customItemName === '' && ! $isUnlimitedStock ? 'max="' . e($stock) . '"' : ''; ?> data-sale-quantity <?php echo $lockedStructure ? 'readonly' : ''; ?> required>
         </label>
         <label class="field compact-field">
             <span>Price</span>
@@ -488,7 +503,7 @@ function render_sale_row(array $row = []): void
             <span>Total</span>
             <input type="text" value="0.00" data-sale-line-total readonly>
         </label>
-        <button class="icon-button danger-button" type="button" data-remove-sale-row aria-label="Remove item">
+        <button class="icon-button danger-button" type="button" data-remove-sale-row aria-label="Remove item" <?php echo $lockedStructure ? 'hidden disabled' : ''; ?>>
             <i data-lucide="trash-2"></i>
         </button>
     </div>

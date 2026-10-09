@@ -648,7 +648,7 @@ $cashOutToday = $metrics['today_expenses']
                 <span>Open warranty</span>
                 <strong><?php echo (int) $metrics['open_warranty']; ?></strong>
             </a>
-            <a href="<?php echo e(app_url('?page=products')); ?>">
+            <a href="<?php echo e(app_url('?page=supplier-warranty-ending')); ?>">
                 <i data-lucide="shield-alert"></i>
                 <span>Supplier warranty ending</span>
                 <strong><?php echo (int) $metrics['warranty_expiring']; ?></strong>
@@ -855,74 +855,7 @@ function dashboard_week_range_label(DateTimeImmutable $weekStart, DateTimeImmuta
 
 function dashboard_warranty_expiring_lots(PDO $pdo): int
 {
-    $stockOutRows = $pdo->query(
-        'SELECT product_id, COALESCE(SUM(ABS(quantity_change)), 0) AS stock_out
-         FROM stock_movements
-         WHERE quantity_change < 0
-           AND (reference_type IS NULL OR reference_type <> "stock_lot")
-         GROUP BY product_id'
-    )->fetchAll();
-    $stockOutByProduct = [];
-
-    foreach ($stockOutRows as $row) {
-        $stockOutByProduct[(int) $row['product_id']] = (int) $row['stock_out'];
-    }
-
-    $lotRows = $pdo->query(
-        'SELECT sm.id,
-                sm.product_id,
-                sm.quantity_change,
-                sm.warranty_months,
-                COALESCE(pu.purchase_date, DATE(sm.created_at)) AS warranty_start,
-                DATE_ADD(COALESCE(pu.purchase_date, DATE(sm.created_at)), INTERVAL sm.warranty_months MONTH) AS warranty_ends_at
-         FROM stock_movements sm
-         INNER JOIN products p ON p.id = sm.product_id
-         LEFT JOIN purchases pu ON sm.reference_type = "purchase" AND pu.id = sm.reference_id
-         WHERE p.status = "active"
-           AND p.current_stock > 0
-           AND p.item_tracking = 1
-           AND sm.warranty_months > 0
-           AND sm.quantity_change > 0
-           AND sm.movement_type IN ("opening", "purchase", "return_in", "adjustment_in", "warranty_supplier_in")
-         ORDER BY sm.product_id ASC, COALESCE(pu.purchase_date, DATE(sm.created_at)) ASC, sm.id ASC'
-    )->fetchAll();
-
-    $adjustmentRows = $pdo->query(
-        'SELECT product_id, reference_id, COALESCE(SUM(quantity_change), 0) AS quantity_change
-         FROM stock_movements
-         WHERE reference_type = "stock_lot"
-           AND reference_id IS NOT NULL
-         GROUP BY product_id, reference_id'
-    )->fetchAll();
-    $lotAdjustments = [];
-
-    foreach ($adjustmentRows as $row) {
-        $lotAdjustments[(int) $row['product_id']][(int) $row['reference_id']] = (int) $row['quantity_change'];
-    }
-
-    $today = app_today();
-    $warningCutoff = (new DateTimeImmutable($today))->modify('+30 days')->format('Y-m-d');
-    $expiringLots = 0;
-
-    foreach ($lotRows as $lot) {
-        $productId = (int) $lot['product_id'];
-        $lotId = (int) $lot['id'];
-        $lotQuantity = max(0, (int) $lot['quantity_change'] + (int) ($lotAdjustments[$productId][$lotId] ?? 0));
-        $remainingStockOut = $stockOutByProduct[$productId] ?? 0;
-        $deducted = min($lotQuantity, $remainingStockOut);
-        $stockOutByProduct[$productId] = max(0, $remainingStockOut - $deducted);
-
-        if (($lotQuantity - $deducted) <= 0) {
-            continue;
-        }
-
-        $warrantyEndsAt = (string) ($lot['warranty_ends_at'] ?? '');
-        if ($warrantyEndsAt >= $today && $warrantyEndsAt <= $warningCutoff) {
-            $expiringLots++;
-        }
-    }
-
-    return $expiringLots;
+    return count(app_supplier_warranty_expiring_lots($pdo));
 }
 
 function dashboard_receivable_total(PDO $pdo): float

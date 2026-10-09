@@ -176,6 +176,11 @@ $pages = [
         'description' => 'View stock movement history and warranty tracking for one product',
         'view' => __DIR__ . '/../pages/product_history.php',
     ],
+    'supplier-warranty-ending' => [
+        'title' => 'Supplier Warranty Ending',
+        'description' => 'View in-stock supplier warranty lots ending within 30 days',
+        'view' => __DIR__ . '/../pages/supplier_warranty_ending.php',
+    ],
     'zero-cost-products' => [
         'title' => 'Zero Cost Products',
         'description' => 'Temporary list of products with zero latest cost',

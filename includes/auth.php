@@ -487,7 +487,7 @@ function auth_permission_definitions(): array
         'products' => [
             'label' => 'Products',
             'description' => 'Create, update, archive, and view products.',
-            'pages' => ['products', 'product-history'],
+            'pages' => ['products', 'product-history', 'supplier-warranty-ending'],
         ],
         'product_cost' => [
             'label' => 'Product Cost',

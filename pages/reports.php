@@ -182,6 +182,18 @@ if ($dbReady && $pdo !== null) {
                 'end_date' => $activeEndDate,
             ]);
 
+            $cashExpenseSummary = $pdo->prepare(
+                'SELECT COALESCE(SUM(amount), 0)
+                 FROM expenses
+                 WHERE status = "active"
+                   AND payment_method = "cash"
+                   AND expense_date BETWEEN :start_date AND :end_date'
+            );
+            $cashExpenseSummary->execute([
+                'start_date' => $activeStartDate,
+                'end_date' => $activeEndDate,
+            ]);
+
             $returnValueSummary = $pdo->prepare(
                 'SELECT COALESCE(SUM(sri.total), 0)
                  FROM sales_return_items sri
@@ -226,6 +238,7 @@ if ($dbReady && $pdo !== null) {
                     GROUP BY sale_id
                  ) cp ON cp.sale_id = s.id
                  WHERE s.sale_date BETWEEN :day_start AND :day_end
+                   AND s.payment_method = "cash"
                    AND COALESCE(s.exchange_credit, 0) = 0'
             );
             $initialPaidSummary->execute([
@@ -247,6 +260,7 @@ if ($dbReady && $pdo !== null) {
                     GROUP BY sr.exchange_sale_id
                  ) exchange_adjustment ON exchange_adjustment.exchange_sale_id = s.id
                  WHERE s.sale_date BETWEEN :day_start AND :day_end
+                   AND s.payment_method = "cash"
                    AND COALESCE(s.exchange_credit, 0) > 0'
             );
             $exchangePaidSummary->execute([
@@ -259,6 +273,7 @@ if ($dbReady && $pdo !== null) {
                  FROM customer_payments cp
                  INNER JOIN sales s ON s.id = cp.sale_id
                  WHERE cp.payment_date BETWEEN :day_start AND :day_end
+                   AND cp.payment_method = "cash"
                    AND COALESCE(s.exchange_credit, 0) = 0'
             );
             $collectionSummary->execute([
@@ -270,7 +285,7 @@ if ($dbReady && $pdo !== null) {
                 'SELECT COALESCE(SUM(refund_amount), 0)
                  FROM sales_returns
                  WHERE return_date BETWEEN :day_start AND :day_end
-                   AND refund_method NOT IN ("store_credit", "none")'
+                   AND refund_method = "cash"'
             );
             $customerRefundSummary->execute([
                 'day_start' => $activeStartDateTime,
@@ -280,11 +295,27 @@ if ($dbReady && $pdo !== null) {
             $supplierPaidSummary = $pdo->prepare(
                 'SELECT COALESCE(SUM(amount), 0)
                  FROM supplier_payments
-                 WHERE payment_date BETWEEN :day_start AND :day_end'
+                 WHERE payment_date BETWEEN :day_start AND :day_end
+                   AND payment_method = "cash"'
             );
             $supplierPaidSummary->execute([
                 'day_start' => $activeStartDateTime,
                 'day_end' => $activeEndDateTime,
+            ]);
+
+            $initialPurchasePaidSummary = $pdo->prepare(
+                'SELECT COALESCE(SUM(GREATEST(p.paid - COALESCE(sp.recorded_paid, 0), 0)), 0)
+                 FROM purchases p
+                 LEFT JOIN (
+                    SELECT purchase_id, SUM(amount) AS recorded_paid
+                    FROM supplier_payments
+                    GROUP BY purchase_id
+                 ) sp ON sp.purchase_id = p.id
+                 WHERE p.purchase_date BETWEEN :start_date AND :end_date'
+            );
+            $initialPurchasePaidSummary->execute([
+                'start_date' => $activeStartDate,
+                'end_date' => $activeEndDate,
             ]);
 
             $summary['revenue'] = (float) ($salesSummaryRow['revenue'] ?? 0);
@@ -301,7 +332,8 @@ if ($dbReady && $pdo !== null) {
                 + (float) $collectionSummary->fetchColumn()
                 + $summary['supplier_refunds']
                 - (float) $customerRefundSummary->fetchColumn()
-                - $summary['expenses']
+                - (float) $cashExpenseSummary->fetchColumn()
+                - (float) $initialPurchasePaidSummary->fetchColumn()
                 - (float) $supplierPaidSummary->fetchColumn();
             $summary['net_profit'] = $summary['gross_profit']
                 - $summary['expenses']
@@ -402,7 +434,7 @@ if ($dbReady && $pdo !== null) {
                 <strong><?php echo e(format_money($summary['shop_balance'])); ?></strong>
             </div>
             <div class="stat-icon"><i data-lucide="badge-dollar-sign"></i></div>
-            <small>Net cash flow for the selected <?php echo $reportTab === 'daily-sales' ? 'date' : 'range'; ?></small>
+            <small>Net locker cash for the selected <?php echo $reportTab === 'daily-sales' ? 'date' : 'range'; ?></small>
         </article>
 
         <article class="stat-card">

@@ -5,7 +5,7 @@
 
 $canViewProductCost = $dbReady && $pdo instanceof PDO && auth_can_view_product_cost($pdo, $currentUser ?? null);
 $primaryStats = [
-    ['label' => 'Shop Balance', 'value' => format_money(0), 'meta' => 'Net cash flow for today', 'icon' => 'badge-dollar-sign'],
+    ['label' => 'Shop Balance', 'value' => format_money(0), 'meta' => "Today's net cash in the locker", 'icon' => 'badge-dollar-sign'],
     ['label' => 'Today Revenue', 'value' => format_money(0), 'meta' => "Today's sales after same-day returns", 'icon' => 'wallet'],
     ['label' => $canViewProductCost ? 'Today Sold Cost' : 'Credit Collected Today', 'value' => format_money(0), 'meta' => $canViewProductCost ? "Item cost from today's invoices" : 'Payments for earlier invoices', 'icon' => $canViewProductCost ? 'package-check' : 'hand-coins'],
     ['label' => 'Customer Due', 'value' => format_money(0), 'meta' => 'Open receivables', 'icon' => 'receipt-text'],
@@ -43,6 +43,7 @@ $metrics = [
     'today_collections' => 0.0,
     'today_customer_refunds' => 0.0,
     'today_expenses' => 0.0,
+    'today_purchase_paid' => 0.0,
     'today_supplier_paid' => 0.0,
     'today_supplier_refunds' => 0.0,
     'month_revenue' => 0.0,
@@ -101,6 +102,7 @@ if ($dbReady && $pdo !== null) {
             GROUP BY sale_id
          ) cp ON cp.sale_id = s.id
          WHERE DATE(s.sale_date) = CURRENT_DATE
+           AND s.payment_method = "cash"
            AND COALESCE(s.exchange_credit, 0) = 0'
     )->fetchColumn();
     $todayExchangePaid = (float) $pdo->query(
@@ -118,6 +120,7 @@ if ($dbReady && $pdo !== null) {
             GROUP BY sr.exchange_sale_id
          ) exchange_adjustment ON exchange_adjustment.exchange_sale_id = s.id
          WHERE DATE(s.sale_date) = CURRENT_DATE
+           AND s.payment_method = "cash"
            AND COALESCE(s.exchange_credit, 0) > 0'
     )->fetchColumn();
     $monthSalesRow = dashboard_fetch_one($pdo,
@@ -160,8 +163,26 @@ if ($dbReady && $pdo !== null) {
          WHERE DATE(cp.payment_date) = CURRENT_DATE
            AND COALESCE(s.exchange_credit, 0) = 0'
     )->fetchColumn();
-    $metrics['today_customer_refunds'] = (float) $pdo->query('SELECT COALESCE(SUM(refund_amount), 0) FROM sales_returns WHERE DATE(return_date) = CURRENT_DATE AND refund_method NOT IN ("store_credit", "none")')->fetchColumn();
-    $metrics['today_expenses'] = (float) $pdo->query('SELECT COALESCE(SUM(amount), 0) FROM expenses WHERE status = "active" AND expense_date = CURRENT_DATE')->fetchColumn();
+    $todayCashCollections = (float) $pdo->query(
+        'SELECT COALESCE(SUM(amount), 0)
+         FROM customer_payments
+         WHERE DATE(payment_date) = CURRENT_DATE
+           AND payment_method = "cash"'
+    )->fetchColumn();
+    $metrics['today_customer_refunds'] = (float) $pdo->query('SELECT COALESCE(SUM(refund_amount), 0) FROM sales_returns WHERE DATE(return_date) = CURRENT_DATE AND refund_method = "cash"')->fetchColumn();
+    $metrics['today_expenses'] = (float) $pdo->query('SELECT COALESCE(SUM(amount), 0) FROM expenses WHERE status = "active" AND expense_date = CURRENT_DATE AND payment_method = "cash"')->fetchColumn();
+    $metrics['today_purchase_paid'] = (float) $pdo->query(
+        'SELECT COALESCE(SUM(GREATEST(p.paid - COALESCE(sp.recorded_paid, 0), 0)), 0)
+         FROM purchases p
+         LEFT JOIN (
+            SELECT purchase_id, SUM(amount) AS recorded_paid
+            FROM supplier_payments
+            GROUP BY purchase_id
+         ) sp ON sp.purchase_id = p.id
+         WHERE p.purchase_date = CURRENT_DATE'
+    )->fetchColumn();
+    $metrics['today_supplier_paid'] = (float) $pdo->query('SELECT COALESCE(SUM(amount), 0) FROM supplier_payments WHERE DATE(payment_date) = CURRENT_DATE AND payment_method = "cash"')->fetchColumn();
+    $metrics['today_supplier_refunds'] = (float) $pdo->query('SELECT COALESCE(SUM(supplier_refund_amount), 0) FROM warranty_claims WHERE supplier_refund_date = CURRENT_DATE')->fetchColumn();
     $metrics['month_orders'] = (int) ($monthSalesRow['orders'] ?? 0);
     $metrics['month_revenue'] = (float) ($monthSalesRow['total'] ?? 0);
     $metrics['month_expenses'] = (float) $pdo->query('SELECT COALESCE(SUM(amount), 0) FROM expenses WHERE status = "active" AND expense_date >= DATE_FORMAT(CURRENT_DATE, "%Y-%m-01")')->fetchColumn();
@@ -227,8 +248,6 @@ if ($dbReady && $pdo !== null) {
              WHERE s.sale_date >= DATE_FORMAT(CURRENT_DATE, "%Y-%m-01")'
         );
 
-        $metrics['today_supplier_paid'] = (float) $pdo->query('SELECT COALESCE(SUM(amount), 0) FROM supplier_payments WHERE DATE(payment_date) = CURRENT_DATE')->fetchColumn();
-        $metrics['today_supplier_refunds'] = (float) $pdo->query('SELECT COALESCE(SUM(supplier_refund_amount), 0) FROM warranty_claims WHERE supplier_refund_date = CURRENT_DATE')->fetchColumn();
         $metrics['today_sold_cost'] = (float) $pdo->query(
             'SELECT COALESCE(SUM(
                 CASE
@@ -309,15 +328,17 @@ if ($dbReady && $pdo !== null) {
     }
 
     $shopBalanceToday = $metrics['today_paid']
-        + $metrics['today_collections']
+        + $todayCashCollections
         - $metrics['today_customer_refunds']
         - $metrics['today_expenses']
-        + ($canViewProductCost ? $metrics['today_supplier_refunds'] - $metrics['today_supplier_paid'] : 0.0);
+        - $metrics['today_purchase_paid']
+        + $metrics['today_supplier_refunds']
+        - $metrics['today_supplier_paid'];
     $primaryStats = [
         [
             'label' => 'Shop Balance',
             'value' => format_money($shopBalanceToday),
-            'meta' => 'Net cash flow for today',
+            'meta' => "Today's net cash in the locker",
             'icon' => 'badge-dollar-sign',
         ],
         [
@@ -503,7 +524,10 @@ $trendBadge = match ($trendMode) {
     default => format_money($trendTotal) . ' this month',
 };
 $chartAxisStep = $trendMode === 'monthly' ? 4 : 1;
-$cashOutToday = $metrics['today_expenses'] + $metrics['today_customer_refunds'] + ($canViewProductCost ? $metrics['today_supplier_paid'] : 0.0);
+$cashOutToday = $metrics['today_expenses']
+    + $metrics['today_customer_refunds']
+    + $metrics['today_purchase_paid']
+    + $metrics['today_supplier_paid'];
 ?>
 
 <div class="page-heading">

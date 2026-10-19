@@ -4901,6 +4901,24 @@ body.theme-light .modal-backdrop {
         flex-direction: column;
     }
 
+    .product-table-panel {
+        min-width: 0;
+        overflow: hidden;
+    }
+
+    .product-table-panel .table-wrap {
+        width: 100%;
+        max-width: 100%;
+        overflow: auto;
+        -webkit-overflow-scrolling: touch;
+        overscroll-behavior-inline: contain;
+        touch-action: pan-x pan-y;
+    }
+
+    .product-table-panel .table-wrap table {
+        min-width: 920px;
+    }
+
     .table-tabs-outside {
         width: 100%;
     }
